@@ -1,90 +1,87 @@
-ARG DOCKER_TAG=v5.5.1
-FROM espressif/idf:${DOCKER_TAG}
-
+ARG VARIANT=bookworm-slim
+FROM debian:${VARIANT}
+ENV DEBIAN_FRONTEND=noninteractive
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 
-RUN apt-get update -y && apt-get install udev curl -y 
+# Arguments
+ARG CONTAINER_USER=vscode
+ARG CONTAINER_GROUP=vscode
+# Support both ESP32-S3 (Xtensa) and ESP32-P4 (RISC-V)
+ARG ESP_BOARD=esp32s3,esp32p4
+ARG GITHUB_TOKEN
 
-# Install Node.js 18.x (LTS)
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+# Install dependencies and Node.js
+RUN apt-get update \
+    && apt-get install -y pkg-config curl gcc clang libudev-dev unzip xz-utils \
+    git wget flex bison gperf python3 python3-pip python3-venv cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0 \
+    vim bash-completion ca-certificates gnupg \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_18.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update \
     && apt-get install -y nodejs \
-	&& apt-get install -y vim \
-	&& apt-get install -y bash-completion 
-# Install Python packages for parameter code generation (Feature 4)
-# - jsonschema: Validate parameters.yaml against JSON Schema
-# - pyyaml: Already included in ESP-IDF, but listed here for clarity
-#RUN pip install --no-cache-dir jsonschema
+    && apt-get clean -y && rm -rf /var/lib/apt/lists/* /tmp/library-scripts
 
-ARG USERNAME=vscode
-ARG USER_UID=1000
-ARG USER_GID=${USER_UID}
+# Set users
+RUN if ! getent group ${CONTAINER_GROUP} > /dev/null; then \
+        groupadd --gid 1000 ${CONTAINER_GROUP}; \
+    fi && \
+    if ! getent passwd ${CONTAINER_USER} > /dev/null; then \
+        useradd --uid 1000 --gid ${CONTAINER_GROUP} -m -s /bin/bash ${CONTAINER_USER}; \
+    fi && \
+    usermod -aG dialout ${CONTAINER_USER}
 
-RUN if getent group "${USER_GID}" > /dev/null; then \
-			existing_group="$(getent group "${USER_GID}" | cut -d: -f1)"; \
-			if [ "${existing_group}" != "${USERNAME}" ]; then \
-				groupmod -n "${USERNAME}" "${existing_group}"; \
-			fi; \
-		else \
-			groupadd --gid "${USER_GID}" "${USERNAME}"; \
-		fi \
-	&& if getent passwd "${USER_UID}" > /dev/null; then \
-			existing_user="$(getent passwd "${USER_UID}" | cut -d: -f1)"; \
-			existing_home="$(getent passwd "${USER_UID}" | cut -d: -f6)"; \
-			if [ "${existing_user}" != "${USERNAME}" ]; then \
-				usermod -l "${USERNAME}" "${existing_user}"; \
-			fi; \
-			if [ "${existing_home}" != "/home/${USERNAME}" ]; then \
-				usermod -d "/home/${USERNAME}" -m "${USERNAME}"; \
-			fi; \
-			usermod -g "${USER_GID}" "${USERNAME}"; \
-		else \
-			useradd --uid "${USER_UID}" --gid "${USER_GID}" -m -s /bin/bash "${USERNAME}"; \
-		fi \
-	&& usermod -aG dialout "${USERNAME}"
+USER ${CONTAINER_USER}
+WORKDIR /home/${CONTAINER_USER}
 
-RUN echo "source /opt/esp/idf/export.sh > /dev/null 2>&1" >> ~/.bashrc
-RUN echo "source /opt/esp/idf/export.sh > /dev/null 2>&1" >> /home/${USERNAME}/.bashrc
+# Install rustup
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
+    --default-toolchain none -y --profile minimal
 
-RUN mkdir -p \
-	/home/${USERNAME}/.vscode-server/bin \
-	/home/${USERNAME}/.vscode-server/extensions \
-	/home/${USERNAME}/.vscode-server/data/User \
-	/home/${USERNAME}/.vscode-server/data/Machine \
-	&& chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.vscode-server
-RUN /opt/esp/python_env/idf5.5_py3.12_env/bin/pip  install --no-cache-dir  jsonschema
-RUN /opt/esp/python_env/idf5.5_py3.12_env/bin/pip  install --no-cache-dir  gcovr
-RUN /opt/esp/python_env/idf5.5_py3.12_env/bin/pip  install --no-cache-dir  pyyaml
+# Update envs
+ENV PATH=${PATH}:/home/${CONTAINER_USER}/.cargo/bin
 
-# ============================================================================
-# Rust toolchain for ESP32 development
-# ============================================================================
+# Install extra crates
+RUN ARCH=$($HOME/.cargo/bin/rustup show | grep "Default host" | sed -e 's/.* //') && \
+    curl -L "https://github.com/esp-rs/espup/releases/latest/download/espup-${ARCH}" -o "${HOME}/.cargo/bin/espup" && \
+    chmod u+x "${HOME}/.cargo/bin/espup" && \
+    curl -L "https://github.com/esp-rs/espflash/releases/latest/download/cargo-espflash-${ARCH}.zip" -o "${HOME}/.cargo/bin/cargo-espflash.zip" && \
+    unzip "${HOME}/.cargo/bin/cargo-espflash.zip" -d "${HOME}/.cargo/bin/" && \
+    rm "${HOME}/.cargo/bin/cargo-espflash.zip" && \
+    chmod u+x "${HOME}/.cargo/bin/cargo-espflash" && \
+    curl -L "https://github.com/esp-rs/espflash/releases/latest/download/espflash-${ARCH}.zip" -o "${HOME}/.cargo/bin/espflash.zip" && \
+    unzip "${HOME}/.cargo/bin/espflash.zip" -d "${HOME}/.cargo/bin/" && \
+    rm "${HOME}/.cargo/bin/espflash.zip" && \
+    chmod u+x "${HOME}/.cargo/bin/espflash" && \
+    curl -L "https://github.com/esp-rs/embuild/releases/latest/download/ldproxy-${ARCH}.zip" -o "${HOME}/.cargo/bin/ldproxy.zip" && \
+    unzip "${HOME}/.cargo/bin/ldproxy.zip" -d "${HOME}/.cargo/bin/" && \
+    rm "${HOME}/.cargo/bin/ldproxy.zip" && \
+    chmod u+x "${HOME}/.cargo/bin/ldproxy" && \
+    curl -L "https://github.com/esp-rs/esp-web-flash-server/releases/latest/download/web-flash-${ARCH}.zip" -o "${HOME}/.cargo/bin/web-flash.zip" && \
+    unzip "${HOME}/.cargo/bin/web-flash.zip" -d "${HOME}/.cargo/bin/" && \
+    rm "${HOME}/.cargo/bin/web-flash.zip" && \
+    chmod u+x "${HOME}/.cargo/bin/web-flash"
 
-USER ${USERNAME}
+# Install Xtensa Rust and ESP-IDF
+# Using esp-idf-version v5.3 (latest stable compatible with espup)
+RUN if [ -n "${GITHUB_TOKEN}" ]; then export GITHUB_TOKEN=${GITHUB_TOKEN}; fi  \
+    && ${HOME}/.cargo/bin/espup install \
+    --targets "${ESP_BOARD}" \
+    --esp-idf-version "v5.3" \
+    --log-level debug \
+    --export-file /home/${CONTAINER_USER}/export-esp.sh
 
-# Install Rust via rustup
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable \
-    && echo 'source $HOME/.cargo/env' >> /home/${USERNAME}/.bashrc
+# Set default toolchain
+# For ESP32-S3 (Xtensa) use esp toolchain, for ESP32-P4 (RISC-V) use nightly
+# Since we support both, we'll use esp as default (most compatible)
+RUN rustup default esp && \
+    rustup toolchain install nightly --component rust-src
 
-ENV PATH="/home/${USERNAME}/.cargo/bin:${PATH}"
+# Install Python packages for parameter code generation
+RUN pip install --no-cache-dir --break-system-packages jsonschema pyyaml gcovr
 
-# Install espup (ESP Rust toolchain installer)
-RUN /home/${USERNAME}/.cargo/bin/cargo install espup
+# Activate ESP environment
+RUN echo "source /home/${CONTAINER_USER}/export-esp.sh" >> ~/.bashrc
 
-# Install ESP Rust toolchains (Xtensa for ESP32-S3, RISC-V for ESP32-P4)
-RUN /home/${USERNAME}/.cargo/bin/espup install \
-    && echo 'source $HOME/export-esp.sh' >> /home/${USERNAME}/.bashrc
-
-# Install additional Rust tools
-RUN /home/${USERNAME}/.cargo/bin/cargo install cargo-espflash \
-    && /home/${USERNAME}/.cargo/bin/cargo install ldproxy
-
-# Install rust-analyzer for IDE support
-RUN /home/${USERNAME}/.cargo/bin/rustup component add rust-analyzer
-
-# Install Claude Code CLI
-RUN npm install -g @anthropic-ai/claude-code
-
-ENTRYPOINT [ "/opt/esp/entrypoint.sh" ]
-
-CMD ["/bin/bash", "-c"]
+CMD [ "/bin/bash" ]

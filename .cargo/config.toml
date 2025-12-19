@@ -1,13 +1,25 @@
 [build]
+# Default target for ESP32-S3
 target = "xtensa-esp32s3-espidf"
 
+# ESP32-S3 (Xtensa architecture)
 [target.xtensa-esp32s3-espidf]
+linker = "ldproxy"
+runner = "espflash flash --monitor"
+
+# ESP32-P4 (RISC-V architecture)
+[target.riscv32imafc-esp-espidf]
 linker = "ldproxy"
 runner = "espflash flash --monitor"
 
 [env]
 MCU = "esp32s3"
-ESP_IDF_VERSION = "v5.5"
+# Note: ESP-IDF version is managed by espup, not here
+# espup will install ESP-IDF v5.3 which is the latest stable version
+# compatible with the Rust ESP toolchain
+#
+# To build for ESP32-P4 instead, use:
+# cargo build --target riscv32imafc-esp-espidf
 
 [unstable]
 build-std = ["std", "panic_abort"]
