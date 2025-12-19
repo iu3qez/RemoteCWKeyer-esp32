@@ -64,11 +64,10 @@ RUN ARCH=$($HOME/.cargo/bin/rustup show | grep "Default host" | sed -e 's/.* //'
     chmod u+x "${HOME}/.cargo/bin/web-flash"
 
 # Install Xtensa Rust and ESP-IDF
-# Using esp-idf-version v5.3 (latest stable compatible with espup)
+# espup automatically installs the latest compatible ESP-IDF version
 RUN if [ -n "${GITHUB_TOKEN}" ]; then export GITHUB_TOKEN=${GITHUB_TOKEN}; fi  \
     && ${HOME}/.cargo/bin/espup install \
     --targets "${ESP_BOARD}" \
-    --esp-idf-version "v5.3" \
     --log-level debug \
     --export-file /home/${CONTAINER_USER}/export-esp.sh
 
