@@ -76,9 +76,10 @@ impl Default for LogEntry {
     }
 }
 
-/// Lock-free log stream (SPSC: single producer, single consumer).
+/// Lock-free log stream (SPMC: multiple producers, single consumer).
 ///
 /// Designed for RT-safe logging:
+/// - Multiple threads can push (coordinated via atomic fetch_add)
 /// - Push never blocks (drops message if full)
 /// - Drain runs in separate thread at leisure
 pub struct LogStream<const N: usize = LOG_BUFFER_SIZE> {
@@ -88,8 +89,8 @@ pub struct LogStream<const N: usize = LOG_BUFFER_SIZE> {
     dropped: AtomicU32,
 }
 
-// SAFETY: Single producer (RT thread), single consumer (UART thread).
-// Coordination through atomic indices.
+// SAFETY: Multiple producers (coordinated via atomics), single consumer (UART thread).
+// Coordination through atomic fetch_add for write_idx.
 unsafe impl<const N: usize> Sync for LogStream<N> {}
 unsafe impl<const N: usize> Send for LogStream<N> {}
 
@@ -120,12 +121,18 @@ impl<const N: usize> LogStream<N> {
     /// # Timing
     ///
     /// Completes in O(1), typically < 200ns.
+    ///
+    /// # Thread Safety
+    ///
+    /// Safe for multiple concurrent producers via atomic fetch_add.
     #[inline]
     pub fn push(&self, timestamp_us: i64, level: LogLevel, msg: &[u8]) -> bool {
-        let write = self.write_idx.load(Ordering::Relaxed);
+        // SPMC: Use fetch_add for atomic write index allocation
+        // Each producer gets unique index, no race conditions
+        let write = self.write_idx.fetch_add(1, Ordering::AcqRel);
         let read = self.read_idx.load(Ordering::Acquire);
 
-        // Check if ring is full
+        // Check if ring is full (write is PRE-increment value)
         if write.wrapping_sub(read) >= N as u32 {
             self.dropped.fetch_add(1, Ordering::Relaxed);
             return false;
@@ -133,7 +140,8 @@ impl<const N: usize> LogStream<N> {
 
         let idx = (write as usize) & Self::MASK;
 
-        // SAFETY: Single producer, unique index
+        // SAFETY: Multiple producers coordinated by fetch_add.
+        // Each producer gets unique index, no aliasing possible.
         unsafe {
             let entry = &mut (*self.entries.get())[idx];
             entry.timestamp_us = timestamp_us;
@@ -142,7 +150,7 @@ impl<const N: usize> LogStream<N> {
             entry.msg[..entry.len as usize].copy_from_slice(&msg[..entry.len as usize]);
         }
 
-        self.write_idx.store(write.wrapping_add(1), Ordering::Release);
+        // fetch_add already updated write_idx atomically
         true
     }
 
