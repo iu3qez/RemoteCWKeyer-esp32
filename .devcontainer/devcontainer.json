@@ -10,14 +10,26 @@
 				"terminal.integrated.defaultProfile.linux": "bash",
 				"idf.espIdfPath": "/opt/esp/idf",
 				"idf.toolsPath": "/opt/esp",
-				"idf.gitPath": "/usr/bin/git"
+				"idf.gitPath": "/usr/bin/git",
+				"rust-analyzer.check.command": "clippy",
+				"rust-analyzer.cargo.target": "xtensa-esp32s3-espidf",
+				"rust-analyzer.server.extraEnv": {
+					"PATH": "/home/vscode/.cargo/bin:/home/vscode/.rustup/toolchains/esp/bin:${env:PATH}"
+				},
+				"[rust]": {
+					"editor.defaultFormatter": "rust-lang.rust-analyzer",
+					"editor.formatOnSave": true
+				}
 			},
 			"extensions": [
 				"espressif.esp-idf-extension",
 				"espressif.esp-idf-web",
 				"Anthropic.claude-code",
 				"ms-vscode.cpptools-extension-pack",
-				"ms-vscode.cpptools"
+				"ms-vscode.cpptools",
+				"rust-lang.rust-analyzer",
+				"vadimcn.vscode-lldb",
+				"tamasfe.even-better-toml"
 			]
 		}
 	},

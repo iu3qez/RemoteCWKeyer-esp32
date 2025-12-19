@@ -52,10 +52,34 @@ RUN mkdir -p \
 	/home/${USERNAME}/.vscode-server/data/User \
 	/home/${USERNAME}/.vscode-server/data/Machine \
 	&& chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.vscode-server
-RUN /opt/esp/python_env/idf5.5_py3.12_env/bin/pip  install --no-cache-dir  jsonschema 
+RUN /opt/esp/python_env/idf5.5_py3.12_env/bin/pip  install --no-cache-dir  jsonschema
 RUN /opt/esp/python_env/idf5.5_py3.12_env/bin/pip  install --no-cache-dir  gcovr
 
+# ============================================================================
+# Rust toolchain for ESP32 development
+# ============================================================================
+
 USER ${USERNAME}
+
+# Install Rust via rustup
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable \
+    && echo 'source $HOME/.cargo/env' >> /home/${USERNAME}/.bashrc
+
+ENV PATH="/home/${USERNAME}/.cargo/bin:${PATH}"
+
+# Install espup (ESP Rust toolchain installer)
+RUN /home/${USERNAME}/.cargo/bin/cargo install espup
+
+# Install ESP Rust toolchains (Xtensa for ESP32-S3, RISC-V for ESP32-P4)
+RUN /home/${USERNAME}/.cargo/bin/espup install \
+    && echo 'source $HOME/export-esp.sh' >> /home/${USERNAME}/.bashrc
+
+# Install additional Rust tools
+RUN /home/${USERNAME}/.cargo/bin/cargo install cargo-espflash \
+    && /home/${USERNAME}/.cargo/bin/cargo install ldproxy
+
+# Install rust-analyzer for IDE support
+RUN /home/${USERNAME}/.cargo/bin/rustup component add rust-analyzer
 
 ENTRYPOINT [ "/opt/esp/entrypoint.sh" ]
 
