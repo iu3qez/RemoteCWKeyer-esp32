@@ -1,49 +1,53 @@
 {
-	"name": "ESP-IDF QEMU",
+	"name": "RustRemoteCWKeyer",
 	"build": {
-		"dockerfile": "Dockerfile"
-	},
-
-	"customizations": {
-		"vscode": {
-			"settings": {
-				"terminal.integrated.defaultProfile.linux": "bash",
-				"idf.espIdfPath": "/opt/esp/idf",
-				"idf.toolsPath": "/opt/esp",
-				"idf.gitPath": "/usr/bin/git",
-				"rust-analyzer.check.command": "clippy",
-				"rust-analyzer.cargo.target": "xtensa-esp32s3-espidf",
-				"rust-analyzer.server.extraEnv": {
-					"PATH": "/home/vscode/.cargo/bin:/home/vscode/.rustup/toolchains/esp/bin:${env:PATH}"
-				},
-				"[rust]": {
-					"editor.defaultFormatter": "rust-lang.rust-analyzer",
-					"editor.formatOnSave": true
-				}
-			},
-			"extensions": [
-				"espressif.esp-idf-extension",
-				"espressif.esp-idf-web",
-				"Anthropic.claude-code",
-				"ms-vscode.cpptools-extension-pack",
-				"ms-vscode.cpptools",
-				"rust-lang.rust-analyzer",
-				"vadimcn.vscode-lldb",
-				"tamasfe.even-better-toml"
-			]
+		"dockerfile": "Dockerfile",
+		"args": {
+			"CONTAINER_USER": "vscode",
+			"CONTAINER_GROUP": "vscode",
+			"ESP_BOARD": "esp32s3,esp32p4"
 		}
 	},
 	"runArgs": [
-		"--privileged",
-		"--device=/dev/ttyUSB0:/dev/ttyUSB0"
+		"--mount",
+		"type=bind,source=/run/udev,target=/run/udev,readonly"
 	],
-	"containerUser": "vscode",
-	"remoteUser": "vscode",
-
-
-
+	"customizations": {
+		"vscode": {
+			"settings": {
+				"editor.formatOnPaste": true,
+				"editor.formatOnSave": true,
+				"editor.formatOnSaveMode": "file",
+				"editor.formatOnType": true,
+				"lldb.executable": "/usr/bin/lldb",
+				"files.watcherExclude": {
+					"**/target/**": true
+				},
+				"rust-analyzer.checkOnSave.command": "clippy",
+				"rust-analyzer.checkOnSave.allTargets": false,
+				"[rust]": {
+					"editor.defaultFormatter": "rust-lang.rust-analyzer"
+				}
+			},
+			"extensions": [
+				"rust-lang.rust-analyzer",
+				"tamasfe.even-better-toml",
+				"serayuzgur.crates",
+				"mutantdino.resourcemonitor",
+				"yzhang.markdown-all-in-one",
+				"ms-vscode.cpptools",
+				"actboy168.tasks",
+				"Wokwi.wokwi-vscode",
+				"Anthropic.claude-code"
+			]
+		}
+	},
+	"forwardPorts": [
+		3333,
+		8000
+	],
 	"mounts": [
-    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
-    "source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind,consistency=cached"
-  ]
+		"source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
+		"source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind,consistency=cached"
+	]
 }

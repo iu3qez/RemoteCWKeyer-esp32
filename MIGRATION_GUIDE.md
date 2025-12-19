@@ -12,8 +12,9 @@ This causes linking failures because `esp-idf-sys` expects libraries from one to
 
 The official [esp-idf-template](https://github.com/esp-rs/esp-idf-template) uses a cleaner approach:
 - Start from Debian base (not espressif/idf)
-- Let `espup` install EVERYTHING (Rust toolchain + ESP-IDF)
-- Use coordinated versions that are known to work together
+- Let `espup` install Rust toolchains (Xtensa and RISC-V)
+- Let `esp-idf-sys` download and manage ESP-IDF during build time
+- Use released crate versions compatible with ESP-IDF v5.3
 
 ## Multi-Target Support
 
@@ -34,11 +35,14 @@ The migration has been applied automatically. The following changes were made:
    - `.cargo/config.toml.old` - Original cargo config
 
 2. **New configuration applied:**
-   - [`.devcontainer/Dockerfile`](.devcontainer/Dockerfile) - New multi-target Dockerfile
-   - [`.cargo/config.toml`](.cargo/config.toml) - New cargo config with ESP32-S3 and ESP32-P4 support
+   - [`.devcontainer/Dockerfile`](.devcontainer/Dockerfile) - Official esp-rs template Dockerfile
+   - [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json) - Official esp-rs devcontainer config
+   - [`.cargo/config.toml`](.cargo/config.toml) - Cargo config with ESP32-S3 and ESP32-P4 support
+   - [`Cargo.toml`](Cargo.toml) - Using esp-idf-svc 0.51.0 (compatible with ESP-IDF v5.3)
 
 3. **Removed:**
    - `build.sh` - No longer needed, use `cargo build` directly
+   - Git dependency patches - Using released versions instead
 
 ### 3. Update devcontainer.json (if needed)
 
@@ -95,43 +99,57 @@ cargo build
 
 ### ESP-IDF Version
 
-**Important:** The new setup uses ESP-IDF v5.3 instead of v5.5.
+**Important:** The new setup uses ESP-IDF v5.3.
 
-This is because:
-- v5.3 is the latest stable version fully compatible with espup
-- v5.5 support in espup may still have issues
-- All toolchain versions are coordinated by espup
+How it works:
+- `espup` installs only Rust toolchains (not ESP-IDF)
+- ESP-IDF v5.3 is downloaded by `esp-idf-sys` during the first build
+- Version is specified in [`.cargo/config.toml`](.cargo/config.toml) via `ESP_IDF_VERSION = { value = "v5.3", force = true }`
+- Released crate versions (esp-idf-svc 0.51.0) are compatible with ESP-IDF v5.3
 
-If you MUST use ESP-IDF v5.5, you'll need to:
-1. Wait for espup to officially support it
-2. Or manually configure everything (not recommended)
+**Note:** `espup` does NOT support `--esp-idf-version` parameter. ESP-IDF must be managed by `esp-idf-sys` at build time.
 
-### .cargo/config.toml Changes
+### Cargo.toml Changes
 
-**Removed:**
-- Manual linker path specification
-- ESP_IDF_VERSION environment variable
+**Before:**
+```toml
+esp-idf-svc = { git = "https://github.com/esp-rs/esp-idf-svc.git", features = ["binstart"] }
 
-**Why:** espup handles all this automatically through export-esp.sh
+[patch.crates-io]
+esp-idf-sys = { git = "https://github.com/esp-rs/esp-idf-sys.git" }
+esp-idf-hal = { git = "https://github.com/esp-rs/esp-idf-hal.git" }
+```
+
+**After:**
+```toml
+esp-idf-svc = { version = "0.51.0", features = ["binstart"] }
+# No patches needed - using released versions
+```
+
+**Why:** Git HEAD versions were incompatible with ESP-IDF v5.3. Version 0.51.0 is the stable release for ESP-IDF v5.3.
 
 ## Troubleshooting
 
 ### Build still fails with linking errors
 
 1. Make sure you're using `cargo build` directly, not the old `build.sh` script
-2. Verify `source ~/export-esp.sh` is in your shell
-3. Check `echo $PATH` includes `~/.rustup/toolchains/esp/`
+2. Run `cargo clean` to remove old build artifacts
+3. Verify `source ~/export-esp.sh` is in your shell: `echo $PATH` should include `~/.rustup/toolchains/esp/`
+4. Check ESP-IDF will be downloaded: First build will take longer as `esp-idf-sys` downloads ESP-IDF v5.3
 
 ### Wrong ESP-IDF version
 
-The installed version is determined by espup during container build.
-To change it, modify the Dockerfile line:
+ESP-IDF version is controlled by [`.cargo/config.toml`](.cargo/config.toml):
 
-```dockerfile
---esp-idf-version "v5.3" \
+```toml
+[env]
+ESP_IDF_VERSION = { value = "v5.3", force = true }
 ```
 
-Then rebuild the container.
+To change version:
+1. Edit the version in `.cargo/config.toml`
+2. Verify your crate versions are compatible (check esp-idf-svc releases)
+3. Run `cargo clean` and rebuild
 
 ### espup installation fails
 
