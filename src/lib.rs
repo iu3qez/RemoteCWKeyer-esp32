@@ -13,6 +13,7 @@
 
 #![cfg_attr(not(test), no_std)]
 
+pub mod config;
 pub mod sample;
 pub mod stream;
 pub mod consumer;
@@ -20,6 +21,7 @@ pub mod iambic;
 pub mod logging;
 pub mod fault;
 
+pub use config::CONFIG;
 pub use sample::{StreamSample, GpioState};
 pub use stream::KeyingStream;
 pub use consumer::{HardRtConsumer, BestEffortConsumer};

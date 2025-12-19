@@ -21,3 +21,6 @@ target
 #.idea/
 .embuild/
 .claude/settings.local.json
+
+# Auto-generated code (regenerated at build time)
+src/generated/*.rs

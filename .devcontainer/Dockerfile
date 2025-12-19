@@ -54,6 +54,7 @@ RUN mkdir -p \
 	&& chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.vscode-server
 RUN /opt/esp/python_env/idf5.5_py3.12_env/bin/pip  install --no-cache-dir  jsonschema
 RUN /opt/esp/python_env/idf5.5_py3.12_env/bin/pip  install --no-cache-dir  gcovr
+RUN /opt/esp/python_env/idf5.5_py3.12_env/bin/pip  install --no-cache-dir  pyyaml
 
 # ============================================================================
 # Rust toolchain for ESP32 development
