@@ -82,6 +82,9 @@ RUN /home/${USERNAME}/.cargo/bin/cargo install cargo-espflash \
 # Install rust-analyzer for IDE support
 RUN /home/${USERNAME}/.cargo/bin/rustup component add rust-analyzer
 
+# Install Claude Code CLI
+RUN npm install -g @anthropic-ai/claude-code
+
 ENTRYPOINT [ "/opt/esp/entrypoint.sh" ]
 
 CMD ["/bin/bash", "-c"]
