@@ -1,0 +1,36 @@
+[package]
+name = "rust-remote-cw-keyer"
+version = "0.1.0"
+edition = "2021"
+authors = ["RustRemoteCWKeyer Contributors"]
+description = "Professional CW keyer with remote operation capability"
+repository = "https://github.com/TODO/RustRemoteCWKeyer"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+
+[dependencies]
+esp-idf-sys = { version = "0.34", features = ["binstart"] }
+esp-idf-hal = "0.43"
+esp-idf-svc = "0.48"
+
+[build-dependencies]
+embuild = "0.31"
+
+[profile.release]
+opt-level = "s"         # Optimize for size
+lto = true              # Link-time optimization
+codegen-units = 1       # Better optimization
+debug = false
+
+[profile.dev]
+opt-level = 1           # Some optimization for faster testing
+debug = true
+
+[[bin]]
+name = "keyer"
+path = "src/main.rs"
+
+[features]
+default = ["esp32s3"]
+esp32s3 = []
+esp32p4 = []
