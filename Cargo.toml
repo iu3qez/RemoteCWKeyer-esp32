@@ -9,12 +9,16 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [dependencies]
-esp-idf-sys = { version = "0.34", features = ["binstart"] }
-esp-idf-hal = "0.43"
-esp-idf-svc = "0.48"
+# esp-idf-svc porta esp-idf-hal e esp-idf-sys come dipendenze transitive
+esp-idf-svc = { git = "https://github.com/esp-rs/esp-idf-svc.git", features = ["binstart"] }
+
+[patch.crates-io]
+# Forza uso delle versioni git per compatibilità ESP-IDF 5.5
+esp-idf-sys = { git = "https://github.com/esp-rs/esp-idf-sys.git" }
+esp-idf-hal = { git = "https://github.com/esp-rs/esp-idf-hal.git" }
 
 [build-dependencies]
-embuild = "0.31"
+embuild = "0.32"
 
 [profile.release]
 opt-level = "s"         # Optimize for size

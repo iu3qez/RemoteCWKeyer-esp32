@@ -9,26 +9,74 @@
 #![no_std]
 #![no_main]
 
-use esp_idf_sys as _;
+use esp_idf_svc::sys as esp_idf_sys;
 
+use core::cell::UnsafeCell;
 use rust_remote_cw_keyer::{
     stream::KeyingStream,
     fault::FaultState,
     consumer::HardRtConsumer,
     iambic::{IambicProcessor, IambicConfig},
-    sample::GpioState,
+    sample::{GpioState, StreamSample},
     logging::LogStream,
 };
 
+// Wrapper to make UnsafeCell Sync for static buffers.
+// SAFETY: Single producer architecture guarantees no data races.
+// Only the RT thread writes, consumers read with proper ordering.
+#[repr(transparent)]
+struct SyncCell<T>(UnsafeCell<T>);
+unsafe impl<T> Sync for SyncCell<T> {}
+
+impl<T> SyncCell<T> {
+    const fn new(value: T) -> Self {
+        Self(UnsafeCell::new(value))
+    }
+
+    fn as_unsafe_cell(&self) -> &UnsafeCell<T> {
+        &self.0
+    }
+}
+
+// Static buffer for KeyingStream (ARCHITECTURE.md §9.1.4: PSRAM for stream buffer)
+// In production: allocate in PSRAM. For now: small static buffer.
+// Size must be power of 2.
+const STREAM_BUFFER_SIZE: usize = 4096;
+static STREAM_BUFFER: [SyncCell<StreamSample>; STREAM_BUFFER_SIZE] = {
+    const EMPTY_CELL: SyncCell<StreamSample> = SyncCell::new(StreamSample::EMPTY);
+    [EMPTY_CELL; STREAM_BUFFER_SIZE]
+};
+
 // Static allocations (ARCHITECTURE.md §9.1)
-static KEYING_STREAM: KeyingStream = KeyingStream::new();
+// Note: KeyingStream must be initialized at runtime with the buffer reference
+static mut KEYING_STREAM: Option<KeyingStream> = None;
 static FAULT_STATE: FaultState = FaultState::new();
 static LOG_STREAM: LogStream = LogStream::new();
+
+/// Initialize the keying stream (call once at startup)
+fn init_keying_stream() -> &'static KeyingStream {
+    // SAFETY: SyncCell<T> is #[repr(transparent)] wrapper around UnsafeCell<T>,
+    // so &[SyncCell<T>] has the same layout as &[UnsafeCell<T>].
+    let buffer: &'static [UnsafeCell<StreamSample>] = unsafe {
+        core::mem::transmute::<
+            &'static [SyncCell<StreamSample>],
+            &'static [UnsafeCell<StreamSample>]
+        >(&STREAM_BUFFER[..])
+    };
+
+    unsafe {
+        KEYING_STREAM = Some(KeyingStream::with_buffer(buffer));
+        KEYING_STREAM.as_ref().unwrap()
+    }
+}
 
 #[no_mangle]
 fn main() {
     // Initialize ESP-IDF
     esp_idf_sys::link_patches();
+
+    // Initialize keying stream
+    let _stream = init_keying_stream();
 
     // TODO: Initialize hardware
     // - GPIO for paddle input
@@ -62,8 +110,11 @@ fn main() {
 /// No blocking calls, no allocation, no logging (except rt_log!).
 #[allow(dead_code)]
 fn rt_task() {
+    // Get the initialized stream
+    let stream = unsafe { KEYING_STREAM.as_ref().expect("stream not initialized") };
+
     let mut iambic = IambicProcessor::new(IambicConfig::with_wpm(25));
-    let mut consumer = HardRtConsumer::new(&KEYING_STREAM, &FAULT_STATE, 2);
+    let mut consumer = HardRtConsumer::new(stream, &FAULT_STATE, 2);
 
     loop {
         let now_us = timestamp_us();
@@ -75,7 +126,7 @@ fn rt_task() {
         let sample = iambic.tick(now_us, gpio);
 
         // 3. Push to stream
-        KEYING_STREAM.push(sample);
+        stream.push(sample);
 
         // 4. Consume for audio/TX
         match consumer.tick() {
@@ -107,7 +158,7 @@ fn timestamp_us() -> i64 {
 #[allow(dead_code)]
 fn poll_gpio() -> GpioState {
     // TODO: Read actual GPIO pins
-    GpioState::new()
+    GpioState::IDLE
 }
 
 #[allow(dead_code)]

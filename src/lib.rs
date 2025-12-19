@@ -23,7 +23,7 @@ pub mod fault;
 
 pub use config::CONFIG;
 pub use sample::{StreamSample, GpioState};
-pub use stream::KeyingStream;
+pub use stream::{KeyingStream, StreamConsumer};
 pub use consumer::{HardRtConsumer, BestEffortConsumer};
 pub use fault::{FaultState, FaultCode};
 pub use iambic::IambicProcessor;

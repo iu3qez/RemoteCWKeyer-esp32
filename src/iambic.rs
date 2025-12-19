@@ -206,8 +206,9 @@ impl IambicProcessor {
         StreamSample {
             gpio,
             local_key: self.key_down,
-            remote_key: false,
+            audio_level: 0,  // Filled by audio envelope later
             flags: 0,
+            config_gen: 0,   // Set by RT loop
         }
     }
 

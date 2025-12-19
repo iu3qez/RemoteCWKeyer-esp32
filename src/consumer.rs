@@ -30,9 +30,6 @@ use crate::stream::KeyingStream;
 /// # Example
 ///
 /// ```ignore
-/// static STREAM: KeyingStream = KeyingStream::new();
-/// static FAULT: FaultState = FaultState::new();
-///
 /// let mut consumer = HardRtConsumer::new(&STREAM, &FAULT, 2);
 ///
 /// loop {
@@ -50,14 +47,14 @@ use crate::stream::KeyingStream;
 ///     }
 /// }
 /// ```
-pub struct HardRtConsumer<'a, const N: usize = { crate::stream::DEFAULT_STREAM_SIZE }> {
-    stream: &'a KeyingStream<N>,
+pub struct HardRtConsumer<'a> {
+    stream: &'a KeyingStream,
     fault: &'a FaultState,
-    read_idx: u32,
-    max_lag: u32,
+    read_idx: usize,
+    max_lag: usize,
 }
 
-impl<'a, const N: usize> HardRtConsumer<'a, N> {
+impl<'a> HardRtConsumer<'a> {
     /// Create a new Hard RT consumer.
     ///
     /// # Arguments
@@ -65,11 +62,11 @@ impl<'a, const N: usize> HardRtConsumer<'a, N> {
     /// * `stream` - The keying stream to consume
     /// * `fault` - Fault state to set on timing failure
     /// * `max_lag` - Maximum allowed samples behind before FAULT
-    pub fn new(stream: &'a KeyingStream<N>, fault: &'a FaultState, max_lag: u32) -> Self {
+    pub fn new(stream: &'a KeyingStream, fault: &'a FaultState, max_lag: usize) -> Self {
         Self {
             stream,
             fault,
-            read_idx: stream.write_head(),
+            read_idx: stream.write_position(),
             max_lag,
         }
     }
@@ -90,7 +87,7 @@ impl<'a, const N: usize> HardRtConsumer<'a, N> {
     pub fn tick(&mut self) -> Result<Option<StreamSample>, FaultCode> {
         // Check overrun FIRST (most severe)
         if self.stream.is_overrun(self.read_idx) {
-            let lag = self.stream.lag(self.read_idx);
+            let lag = self.stream.lag(self.read_idx) as u32;
             self.fault.set(FaultCode::Overrun, lag);
             return Err(FaultCode::Overrun);
         }
@@ -98,7 +95,7 @@ impl<'a, const N: usize> HardRtConsumer<'a, N> {
         // Check latency
         let lag = self.stream.lag(self.read_idx);
         if lag > self.max_lag {
-            self.fault.set(FaultCode::LatencyExceeded, lag);
+            self.fault.set(FaultCode::LatencyExceeded, lag as u32);
             return Err(FaultCode::LatencyExceeded);
         }
 
@@ -117,18 +114,18 @@ impl<'a, const N: usize> HardRtConsumer<'a, N> {
     /// Call this after clearing the fault to resume operation.
     #[inline]
     pub fn resync(&mut self) {
-        self.read_idx = self.stream.write_head();
+        self.read_idx = self.stream.write_position();
     }
 
     /// Get current lag (samples behind producer).
     #[inline]
-    pub fn lag(&self) -> u32 {
+    pub fn lag(&self) -> usize {
         self.stream.lag(self.read_idx)
     }
 
     /// Get current read index.
     #[inline]
-    pub fn read_idx(&self) -> u32 {
+    pub fn read_idx(&self) -> usize {
         self.read_idx
     }
 }
@@ -148,8 +145,6 @@ impl<'a, const N: usize> HardRtConsumer<'a, N> {
 /// # Example
 ///
 /// ```ignore
-/// static STREAM: KeyingStream = KeyingStream::new();
-///
 /// let mut consumer = BestEffortConsumer::new(&STREAM);
 ///
 /// loop {
@@ -159,18 +154,18 @@ impl<'a, const N: usize> HardRtConsumer<'a, N> {
 ///     delay_ms(5);
 /// }
 /// ```
-pub struct BestEffortConsumer<'a, const N: usize = { crate::stream::DEFAULT_STREAM_SIZE }> {
-    stream: &'a KeyingStream<N>,
-    read_idx: u32,
-    dropped: u32,
+pub struct BestEffortConsumer<'a> {
+    stream: &'a KeyingStream,
+    read_idx: usize,
+    dropped: usize,
 }
 
-impl<'a, const N: usize> BestEffortConsumer<'a, N> {
+impl<'a> BestEffortConsumer<'a> {
     /// Create a new Best-Effort consumer.
-    pub fn new(stream: &'a KeyingStream<N>) -> Self {
+    pub fn new(stream: &'a KeyingStream) -> Self {
         Self {
             stream,
-            read_idx: stream.write_head(),
+            read_idx: stream.write_position(),
             dropped: 0,
         }
     }
@@ -188,11 +183,12 @@ impl<'a, const N: usize> BestEffortConsumer<'a, N> {
     pub fn tick(&mut self) -> Option<StreamSample> {
         // Check if we're too far behind (overrun)
         if self.stream.is_overrun(self.read_idx) {
-            let write = self.stream.write_head();
+            let write = self.stream.write_position();
             let skipped = write.wrapping_sub(self.read_idx);
 
             // Skip to half-buffer behind (leave room for catchup)
-            self.read_idx = write.wrapping_sub((N / 2) as u32);
+            let capacity = self.stream.capacity();
+            self.read_idx = write.wrapping_sub(capacity / 2);
             self.dropped = self.dropped.saturating_add(skipped);
         }
 
@@ -211,25 +207,25 @@ impl<'a, const N: usize> BestEffortConsumer<'a, N> {
     /// Returns an iterator that yields all samples from current
     /// read position to write head. Useful for batch processing.
     #[inline]
-    pub fn drain(&mut self) -> DrainIterator<'_, 'a, N> {
+    pub fn drain(&mut self) -> DrainIterator<'_, 'a> {
         DrainIterator { consumer: self }
     }
 
     /// Get count of dropped samples (due to falling behind).
     #[inline]
-    pub fn dropped(&self) -> u32 {
+    pub fn dropped(&self) -> usize {
         self.dropped
     }
 
     /// Get current lag (samples behind producer).
     #[inline]
-    pub fn lag(&self) -> u32 {
+    pub fn lag(&self) -> usize {
         self.stream.lag(self.read_idx)
     }
 
     /// Get current read index.
     #[inline]
-    pub fn read_idx(&self) -> u32 {
+    pub fn read_idx(&self) -> usize {
         self.read_idx
     }
 
@@ -241,11 +237,11 @@ impl<'a, const N: usize> BestEffortConsumer<'a, N> {
 }
 
 /// Iterator for draining all available samples.
-pub struct DrainIterator<'c, 'a, const N: usize> {
-    consumer: &'c mut BestEffortConsumer<'a, N>,
+pub struct DrainIterator<'c, 'a> {
+    consumer: &'c mut BestEffortConsumer<'a>,
 }
 
-impl<'c, 'a, const N: usize> Iterator for DrainIterator<'c, 'a, N> {
+impl<'c, 'a> Iterator for DrainIterator<'c, 'a> {
     type Item = StreamSample;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -257,12 +253,24 @@ impl<'c, 'a, const N: usize> Iterator for DrainIterator<'c, 'a, N> {
 mod tests {
     use super::*;
     use crate::sample::GpioState;
+    use core::cell::UnsafeCell;
+
+    // Helper to create test buffer
+    fn make_buffer<const N: usize>() -> &'static [UnsafeCell<StreamSample>] {
+        let buf: Box<[UnsafeCell<StreamSample>; N]> = Box::new(
+            core::array::from_fn(|_| UnsafeCell::new(StreamSample::EMPTY))
+        );
+        Box::leak(buf) as &'static [UnsafeCell<StreamSample>]
+    }
 
     #[test]
     fn test_hard_rt_consumer_basic() {
-        let stream = KeyingStream::<64>::new();
+        let buffer = make_buffer::<64>();
+        let stream: &'static KeyingStream = Box::leak(Box::new(
+            KeyingStream::with_buffer(buffer)
+        ));
         let fault = FaultState::new();
-        let mut consumer = HardRtConsumer::new(&stream, &fault, 10);
+        let mut consumer = HardRtConsumer::new(stream, &fault, 10);
 
         // Push a sample
         let mut sample = StreamSample::EMPTY;
@@ -277,9 +285,12 @@ mod tests {
 
     #[test]
     fn test_hard_rt_consumer_fault_on_lag() {
-        let stream = KeyingStream::<64>::new();
+        let buffer = make_buffer::<64>();
+        let stream: &'static KeyingStream = Box::leak(Box::new(
+            KeyingStream::with_buffer(buffer)
+        ));
         let fault = FaultState::new();
-        let mut consumer = HardRtConsumer::new(&stream, &fault, 5);
+        let mut consumer = HardRtConsumer::new(stream, &fault, 5);
 
         // Push more than max_lag samples
         for _ in 0..10 {
@@ -295,9 +306,12 @@ mod tests {
 
     #[test]
     fn test_hard_rt_consumer_resync() {
-        let stream = KeyingStream::<64>::new();
+        let buffer = make_buffer::<64>();
+        let stream: &'static KeyingStream = Box::leak(Box::new(
+            KeyingStream::with_buffer(buffer)
+        ));
         let fault = FaultState::new();
-        let mut consumer = HardRtConsumer::new(&stream, &fault, 5);
+        let mut consumer = HardRtConsumer::new(stream, &fault, 5);
 
         // Push many samples to cause fault
         for _ in 0..100 {
@@ -320,8 +334,11 @@ mod tests {
 
     #[test]
     fn test_best_effort_consumer_skips() {
-        let stream = KeyingStream::<64>::new();
-        let mut consumer = BestEffortConsumer::new(&stream);
+        let buffer = make_buffer::<64>();
+        let stream: &'static KeyingStream = Box::leak(Box::new(
+            KeyingStream::with_buffer(buffer)
+        ));
+        let mut consumer = BestEffortConsumer::new(stream);
 
         // Push many samples to cause overrun
         for i in 0..100u8 {
@@ -340,8 +357,11 @@ mod tests {
 
     #[test]
     fn test_best_effort_drain() {
-        let stream = KeyingStream::<64>::new();
-        let mut consumer = BestEffortConsumer::new(&stream);
+        let buffer = make_buffer::<64>();
+        let stream: &'static KeyingStream = Box::leak(Box::new(
+            KeyingStream::with_buffer(buffer)
+        ));
+        let mut consumer = BestEffortConsumer::new(stream);
 
         // Push 5 samples
         for _ in 0..5 {

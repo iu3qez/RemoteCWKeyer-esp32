@@ -1,0 +1,5 @@
+[toolchain]
+channel = "esp"
+
+[target.xtensa-esp32s3-espidf]
+rustflags = ["--cfg", "espidf_time64"]

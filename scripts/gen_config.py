@@ -93,9 +93,12 @@ impl KeyerConfig {
 
     # Add initializers
     for p in params:
-        default_val = get_default_value(p)
+        default_val, comment = get_default_value(p)
         atomic_type = get_atomic_type(p)
-        code += f"            {p['name']}: {atomic_type}::new({default_val}),\n"
+        if comment:
+            code += f"            {p['name']}: {atomic_type}::new({default_val}),  // {comment}\n"
+        else:
+            code += f"            {p['name']}: {atomic_type}::new({default_val}),\n"
 
     code += """            generation: AtomicU16::new(0),
         }
@@ -123,6 +126,9 @@ def generate_config_meta_rs(params: List[Dict], output_dir: Path):
 //
 // This file defines GUI metadata for all configuration parameters.
 // Includes labels, descriptions, widget types, and validation rules.
+
+extern crate alloc;
+use alloc::vec::Vec;
 
 /// Parameter metadata for GUI generation
 #[derive(Debug, Clone)]
@@ -239,7 +245,8 @@ def generate_config_nvs_rs(params: List[Dict], output_dir: Path):
 // This file defines NVS (Non-Volatile Storage) persistence for configuration.
 // Load/save functions for ESP32 NVS flash storage.
 
-use super::config::CONFIG;
+// Note: CONFIG will be accessed via crate::config::CONFIG when implemented
+#![allow(unused_imports)]
 use core::sync::atomic::Ordering;
 
 /// NVS namespace for keyer configuration
@@ -355,18 +362,21 @@ def get_nvs_type(param: Dict) -> str:
     }
     return type_map.get(param['type'], 'u32')
 
-def get_default_value(param: Dict) -> str:
-    """Get default value as Rust literal"""
+def get_default_value(param: Dict) -> tuple:
+    """Get default value as Rust literal and optional comment.
+
+    Returns: (value_str, comment_str or None)
+    """
     if param['type'] == 'bool':
-        return str(param['default']).lower()
+        return (str(param['default']).lower(), None)
     elif param['type'] == 'enum':
-        # Enums: return 0 for first value
+        # Enums: return index and enum name as comment
         enum_values = param['enum_values']
         default_enum = param['default']
         idx = enum_values.index(default_enum)
-        return f"{idx}  // {default_enum}"
+        return (str(idx), default_enum)
     else:
-        return str(param['default'])
+        return (str(param['default']), None)
 
 def get_field_comment(param: Dict) -> str:
     """Generate field documentation comment"""

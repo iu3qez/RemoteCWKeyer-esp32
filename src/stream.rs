@@ -5,8 +5,8 @@
 //! # Architecture
 //!
 //! ```text
-//! Producers ──────▶ KeyingStream ──────▶ Consumers
-//!                   (lock-free)
+//! Producers ──────► KeyingStream ──────► Consumers
+//!                   (lock-free)         (StreamConsumer)
 //!                   (single truth)
 //! ```
 //!
@@ -16,18 +16,19 @@
 //! - RULE 1.1.2: No component communicates except through the stream
 //! - RULE 3.1.1: Only atomic operations for synchronization
 //! - RULE 3.1.4: No operation shall block
+//! - RULE 9.1.4: PSRAM for stream buffer
 
 use core::cell::UnsafeCell;
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicUsize, AtomicU32, Ordering};
 
-use crate::sample::{StreamSample, FLAG_SILENCE};
-
-/// Default stream size: 4096 samples.
-/// At 10kHz, this is ~400ms of buffer.
-/// At 20kHz, this is ~200ms of buffer.
-pub const DEFAULT_STREAM_SIZE: usize = 4096;
+use crate::sample::StreamSample;
 
 /// Lock-free SPMC ring buffer for keying events.
+///
+/// # Architecture (ARCHITECTURE.md)
+/// - RULE 1.1.1: All keying events flow through KeyingStream
+/// - RULE 3.1.1: Only atomic operations for synchronization
+/// - RULE 9.1.4: PSRAM for stream buffer
 ///
 /// # Safety
 ///
@@ -42,12 +43,20 @@ pub const DEFAULT_STREAM_SIZE: usize = 4096;
 /// - Producer uses `AcqRel` for `write_idx.fetch_add()`
 /// - Consumer uses `Acquire` for `write_idx.load()`
 /// - This ensures consumers see all writes before the index update
-pub struct KeyingStream<const N: usize = DEFAULT_STREAM_SIZE> {
-    /// Ring buffer of samples.
-    slots: UnsafeCell<[StreamSample; N]>,
+pub struct KeyingStream {
+    /// External buffer in PSRAM (passed at construction).
+    /// Must be a power of 2 in length.
+    buffer: &'static [UnsafeCell<StreamSample>],
 
-    /// Next write index (monotonically increasing, wraps via mask).
-    write_idx: AtomicU32,
+    /// Producer write index (monotonically increasing).
+    /// Only modified by single producer via fetch_add.
+    write_idx: AtomicUsize,
+
+    /// Buffer capacity (power of 2 for fast modulo).
+    capacity: usize,
+
+    /// Mask for wrap-around (capacity - 1).
+    mask: usize,
 
     /// Idle tick counter for silence compression.
     idle_ticks: AtomicU32,
@@ -58,43 +67,54 @@ pub struct KeyingStream<const N: usize = DEFAULT_STREAM_SIZE> {
 
 // SAFETY: Single producer, multiple consumers, atomic coordination.
 // No mutable aliasing possible within the architectural rules.
-unsafe impl<const N: usize> Sync for KeyingStream<N> {}
-unsafe impl<const N: usize> Send for KeyingStream<N> {}
+unsafe impl Sync for KeyingStream {}
+unsafe impl Send for KeyingStream {}
 
-impl<const N: usize> KeyingStream<N> {
-    /// Mask for wrapping index to buffer size.
-    /// N must be a power of 2.
-    const MASK: usize = N - 1;
-
-    /// Create a new empty stream.
+impl KeyingStream {
+    /// Create stream with external PSRAM buffer.
+    ///
+    /// # Arguments
+    /// * `buffer` - Static slice in PSRAM. Must be power of 2 length.
     ///
     /// # Panics
+    /// Panics if capacity is not power of 2.
     ///
-    /// Panics at compile time if N is not a power of 2.
-    pub const fn new() -> Self {
-        // Compile-time check: N must be power of 2
-        assert!(N.is_power_of_two(), "Stream size must be power of 2");
+    /// # Example
+    /// ```ignore
+    /// // Allocate 300,000 samples in PSRAM (~1.8MB)
+    /// static BUFFER: [UnsafeCell<StreamSample>; 262144] = [...];
+    /// let stream = KeyingStream::with_buffer(&BUFFER);
+    /// ```
+    pub fn with_buffer(buffer: &'static [UnsafeCell<StreamSample>]) -> Self {
+        let capacity = buffer.len();
+        assert!(capacity.is_power_of_two(), "Buffer size must be power of 2");
+        assert!(capacity > 0, "Buffer cannot be empty");
 
         Self {
-            slots: UnsafeCell::new([StreamSample::EMPTY; N]),
-            write_idx: AtomicU32::new(0),
+            buffer,
+            write_idx: AtomicUsize::new(0),
+            capacity,
+            mask: capacity - 1,
             idle_ticks: AtomicU32::new(0),
             last_sample: UnsafeCell::new(StreamSample::EMPTY),
         }
     }
 
-    /// Push a sample to the stream.
+    /// Push sample to stream (producer only, RT thread).
     ///
     /// If the sample is unchanged from the previous, increments idle counter
-    /// instead of writing (silence compression).
+    /// instead of writing (silence compression / RLE).
+    ///
+    /// Returns `true` on success, `false` if buffer full (FAULT condition).
     ///
     /// # Timing
-    ///
-    /// This operation completes in O(1) time, typically < 200ns.
-    /// Never blocks, never allocates.
+    /// O(1), typically < 200ns. Never blocks.
     #[inline]
-    pub fn push(&self, sample: StreamSample) {
+    pub fn push(&self, sample: StreamSample) -> bool {
         // SAFETY: Single producer, no aliasing
+        // Invariants:
+        // - Only one thread calls push() (RT thread)
+        // - last_sample only written here, read only here
         let last = unsafe { &*self.last_sample.get() };
 
         if sample.has_change_from(last) {
@@ -102,14 +122,19 @@ impl<const N: usize> KeyingStream<N> {
 
             let idle = self.idle_ticks.swap(0, Ordering::Relaxed);
             if idle > 0 {
-                self.write_slot(StreamSample::silence(idle));
+                if !self.write_slot(StreamSample::silence(idle)) {
+                    return false;
+                }
             }
 
             // Write sample with edge flags
             let sample_with_edges = sample.with_edges_from(last);
-            self.write_slot(sample_with_edges);
+            if !self.write_slot(sample_with_edges) {
+                return false;
+            }
 
             // SAFETY: Single producer, no aliasing
+            // Invariants: same as above
             unsafe {
                 *self.last_sample.get() = sample;
             }
@@ -117,26 +142,38 @@ impl<const N: usize> KeyingStream<N> {
             // No change: accumulate idle ticks (silence compression)
             self.idle_ticks.fetch_add(1, Ordering::Relaxed);
         }
+
+        true
     }
 
     /// Push a sample unconditionally (no silence compression).
     ///
     /// Use this when you need every sample recorded, regardless of changes.
+    /// Returns `true` on success, `false` if buffer full.
     #[inline]
-    pub fn push_raw(&self, sample: StreamSample) {
-        self.write_slot(sample);
+    pub fn push_raw(&self, sample: StreamSample) -> bool {
+        self.write_slot(sample)
     }
 
     /// Write a slot to the ring buffer.
+    ///
+    /// Returns `true` on success, `false` if buffer is full.
     #[inline]
-    fn write_slot(&self, sample: StreamSample) {
+    fn write_slot(&self, sample: StreamSample) -> bool {
         // RULE 3.1.2: AcqRel for read-modify-write
-        let idx = self.write_idx.fetch_add(1, Ordering::AcqRel) as usize;
+        let idx = self.write_idx.fetch_add(1, Ordering::AcqRel);
+        let slot_idx = idx & self.mask;
 
         // SAFETY: Single producer, index is unique
+        // Invariants:
+        // - Only one thread writes (RT thread)
+        // - Each index written exactly once before wrap-around
+        // - Consumers read with Acquire ordering after checking write_idx
         unsafe {
-            (*self.slots.get())[idx & Self::MASK] = sample;
+            (*self.buffer[slot_idx].get()) = sample;
         }
+
+        true
     }
 
     /// Flush any accumulated idle ticks as a silence marker.
@@ -157,10 +194,9 @@ impl<const N: usize> KeyingStream<N> {
     /// - Index is too far behind (overwritten)
     ///
     /// # Timing
-    ///
-    /// This operation completes in O(1) time, typically < 50ns.
+    /// O(1), typically < 50ns.
     #[inline]
-    pub fn read(&self, idx: u32) -> Option<StreamSample> {
+    pub fn read(&self, idx: usize) -> Option<StreamSample> {
         // RULE 3.1.3: Acquire for read
         let write = self.write_idx.load(Ordering::Acquire);
         let behind = write.wrapping_sub(idx);
@@ -169,58 +205,170 @@ impl<const N: usize> KeyingStream<N> {
             // Not yet written
             return None;
         }
-        if behind > N as u32 {
+        if behind > self.capacity {
             // Overwritten (consumer too slow)
             return None;
         }
 
+        let slot_idx = idx & self.mask;
+
         // SAFETY: Index is valid, single producer guarantees no concurrent write
-        Some(unsafe { (*self.slots.get())[(idx as usize) & Self::MASK] })
+        // Invariants:
+        // - We verified idx < write_idx (sample exists)
+        // - We verified idx >= write_idx - capacity (not overwritten)
+        // - Producer only advances write_idx, never writes to old indices
+        Some(unsafe { *self.buffer[slot_idx].get() })
     }
 
-    /// Get the current write head index.
-    ///
-    /// Consumers use this to initialize their read index.
+    /// Get current write position (for consumer initialization).
     #[inline]
-    pub fn write_head(&self) -> u32 {
+    pub fn write_position(&self) -> usize {
         self.write_idx.load(Ordering::Acquire)
     }
 
-    /// Calculate how many samples behind a consumer is.
+    /// Calculate lag for consumer (samples behind producer).
     #[inline]
-    pub fn lag(&self, reader_idx: u32) -> u32 {
-        self.write_idx.load(Ordering::Acquire).wrapping_sub(reader_idx)
+    pub fn lag(&self, read_idx: usize) -> usize {
+        self.write_idx.load(Ordering::Acquire).wrapping_sub(read_idx)
     }
 
-    /// Check if a consumer has fallen too far behind (overrun).
+    /// Check if consumer overrun (fell too far behind).
     ///
     /// If true, the consumer has missed samples and should resync.
     #[inline]
-    pub fn is_overrun(&self, reader_idx: u32) -> bool {
-        self.lag(reader_idx) > N as u32
+    pub fn is_overrun(&self, read_idx: usize) -> bool {
+        self.lag(read_idx) > self.capacity
     }
 
     /// Get the buffer capacity.
     #[inline]
     pub const fn capacity(&self) -> usize {
-        N
+        self.capacity
     }
 }
 
-impl<const N: usize> Default for KeyingStream<N> {
-    fn default() -> Self {
-        Self::new()
+/// Consumer handle for stream reading.
+///
+/// Each consumer has its own read_idx (thread-local, no sync needed).
+/// Multiple consumers can read independently from the same stream.
+///
+/// # Example
+/// ```ignore
+/// let consumer = StreamConsumer::new(&KEYING_STREAM);
+/// loop {
+///     if let Some(sample) = consumer.next() {
+///         process(sample);
+///     }
+/// }
+/// ```
+pub struct StreamConsumer {
+    /// Reference to the stream being consumed.
+    stream: &'static KeyingStream,
+
+    /// Thread-local read index (not atomic - owned by this consumer).
+    read_idx: usize,
+}
+
+impl StreamConsumer {
+    /// Create consumer starting at current stream position.
+    ///
+    /// The consumer will begin reading from whatever sample is written next.
+    pub fn new(stream: &'static KeyingStream) -> Self {
+        Self {
+            stream,
+            read_idx: stream.write_position(),
+        }
+    }
+
+    /// Create consumer starting from a specific position.
+    ///
+    /// Useful for replaying history or resuming from a known point.
+    pub fn from_position(stream: &'static KeyingStream, position: usize) -> Self {
+        Self {
+            stream,
+            read_idx: position,
+        }
+    }
+
+    /// Read next sample (non-blocking).
+    ///
+    /// Returns `None` if caught up with producer (no new samples).
+    /// Returns `Some(sample)` and advances read_idx on success.
+    #[inline]
+    pub fn next(&mut self) -> Option<StreamSample> {
+        let sample = self.stream.read(self.read_idx)?;
+        self.read_idx = self.read_idx.wrapping_add(1);
+        Some(sample)
+    }
+
+    /// Peek at the next sample without consuming it.
+    #[inline]
+    pub fn peek(&self) -> Option<StreamSample> {
+        self.stream.read(self.read_idx)
+    }
+
+    /// Get current lag (samples behind producer).
+    #[inline]
+    pub fn lag(&self) -> usize {
+        self.stream.lag(self.read_idx)
+    }
+
+    /// Check if this consumer has fallen behind and missed samples.
+    #[inline]
+    pub fn is_overrun(&self) -> bool {
+        self.stream.is_overrun(self.read_idx)
+    }
+
+    /// Skip to latest position (for best-effort consumers).
+    ///
+    /// Use this to discard backlog and catch up to real-time.
+    /// Returns number of samples skipped.
+    pub fn skip_to_latest(&mut self) -> usize {
+        let old_idx = self.read_idx;
+        self.read_idx = self.stream.write_position();
+        self.read_idx.wrapping_sub(old_idx)
+    }
+
+    /// Resync after overrun.
+    ///
+    /// Moves read_idx to oldest valid position in the buffer.
+    /// This is the recovery path when a consumer falls too far behind.
+    pub fn resync(&mut self) {
+        let write_pos = self.stream.write_position();
+        let oldest_valid = write_pos.saturating_sub(self.stream.capacity());
+        self.read_idx = oldest_valid;
+    }
+
+    /// Get current read position.
+    #[inline]
+    pub fn position(&self) -> usize {
+        self.read_idx
     }
 }
+
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::sample::GpioState;
+    use core::cell::UnsafeCell;
+
+    // Helper to create test buffer
+    fn make_buffer<const N: usize>() -> &'static [UnsafeCell<StreamSample>] {
+        // Leak for static lifetime in tests
+        let buf: Box<[UnsafeCell<StreamSample>; N]> = Box::new(
+            core::array::from_fn(|_| UnsafeCell::new(StreamSample::EMPTY))
+        );
+        Box::leak(buf) as &'static [UnsafeCell<StreamSample>]
+    }
 
     #[test]
     fn test_stream_basic_write_read() {
-        let stream = KeyingStream::<64>::new();
+        let buffer = make_buffer::<64>();
+        let stream = KeyingStream::with_buffer(buffer);
 
         let mut sample = StreamSample::EMPTY;
         sample.local_key = true;
@@ -233,7 +381,8 @@ mod tests {
 
     #[test]
     fn test_stream_silence_compression() {
-        let stream = KeyingStream::<64>::new();
+        let buffer = make_buffer::<64>();
+        let stream = KeyingStream::with_buffer(buffer);
 
         // Push same sample multiple times
         let sample = StreamSample::EMPTY;
@@ -245,7 +394,7 @@ mod tests {
         stream.flush();
 
         // Should have written only 1 silence marker
-        assert_eq!(stream.write_head(), 1);
+        assert_eq!(stream.write_position(), 1);
 
         let read = stream.read(0).unwrap();
         assert!(read.is_silence());
@@ -254,7 +403,8 @@ mod tests {
 
     #[test]
     fn test_stream_edge_detection() {
-        let stream = KeyingStream::<64>::new();
+        let buffer = make_buffer::<64>();
+        let stream = KeyingStream::with_buffer(buffer);
 
         // First sample: key up
         let mut s1 = StreamSample::EMPTY;
@@ -273,8 +423,30 @@ mod tests {
     }
 
     #[test]
+    fn test_stream_wrap_around() {
+        let buffer = make_buffer::<64>();
+        let stream = KeyingStream::with_buffer(buffer);
+
+        // Write more than buffer size
+        for i in 0..100u8 {
+            let mut sample = StreamSample::EMPTY;
+            sample.audio_level = i;
+            stream.push_raw(sample);
+        }
+
+        // Old indices should be invalid (overwritten)
+        assert!(stream.read(0).is_none());
+        assert!(stream.read(30).is_none());
+
+        // Recent indices should be valid
+        assert!(stream.read(50).is_some());
+        assert_eq!(stream.read(99).unwrap().audio_level, 99);
+    }
+
+    #[test]
     fn test_stream_overrun_detection() {
-        let stream = KeyingStream::<64>::new();
+        let buffer = make_buffer::<64>();
+        let stream = KeyingStream::with_buffer(buffer);
 
         // Write more than buffer size
         for i in 0..100 {
@@ -294,7 +466,8 @@ mod tests {
 
     #[test]
     fn test_stream_lag_calculation() {
-        let stream = KeyingStream::<64>::new();
+        let buffer = make_buffer::<64>();
+        let stream = KeyingStream::with_buffer(buffer);
 
         for _ in 0..10 {
             stream.push_raw(StreamSample::EMPTY);
@@ -303,5 +476,125 @@ mod tests {
         assert_eq!(stream.lag(0), 10);
         assert_eq!(stream.lag(5), 5);
         assert_eq!(stream.lag(10), 0);
+    }
+
+    #[test]
+    fn test_consumer_basic() {
+        let buffer: &'static [UnsafeCell<StreamSample>] = make_buffer::<64>();
+        // Need to leak stream too for static lifetime
+        let stream: &'static KeyingStream = Box::leak(Box::new(
+            KeyingStream::with_buffer(buffer)
+        ));
+
+        let mut consumer = StreamConsumer::new(stream);
+
+        // Initially no samples
+        assert!(consumer.next().is_none());
+        assert_eq!(consumer.lag(), 0);
+
+        // Push some samples
+        for i in 0..5u8 {
+            let mut sample = StreamSample::EMPTY;
+            sample.audio_level = i;
+            stream.push_raw(sample);
+        }
+
+        // Consumer should see them
+        assert_eq!(consumer.lag(), 5);
+
+        for i in 0..5u8 {
+            let sample = consumer.next().unwrap();
+            assert_eq!(sample.audio_level, i);
+        }
+
+        // No more samples
+        assert!(consumer.next().is_none());
+        assert_eq!(consumer.lag(), 0);
+    }
+
+    #[test]
+    fn test_consumer_skip_to_latest() {
+        let buffer: &'static [UnsafeCell<StreamSample>] = make_buffer::<64>();
+        let stream: &'static KeyingStream = Box::leak(Box::new(
+            KeyingStream::with_buffer(buffer)
+        ));
+
+        let mut consumer = StreamConsumer::new(stream);
+
+        // Push many samples
+        for i in 0..50u8 {
+            let mut sample = StreamSample::EMPTY;
+            sample.audio_level = i;
+            stream.push_raw(sample);
+        }
+
+        // Skip to latest
+        let skipped = consumer.skip_to_latest();
+        assert_eq!(skipped, 50);
+        assert_eq!(consumer.lag(), 0);
+        assert!(consumer.next().is_none());
+    }
+
+    #[test]
+    fn test_consumer_resync() {
+        let buffer: &'static [UnsafeCell<StreamSample>] = make_buffer::<64>();
+        let stream: &'static KeyingStream = Box::leak(Box::new(
+            KeyingStream::with_buffer(buffer)
+        ));
+
+        let mut consumer = StreamConsumer::new(stream);
+
+        // Push way more than buffer size to cause overrun
+        for i in 0..200u8 {
+            let mut sample = StreamSample::EMPTY;
+            sample.audio_level = i;
+            stream.push_raw(sample);
+        }
+
+        // Consumer should be overrun
+        assert!(consumer.is_overrun());
+
+        // Resync
+        consumer.resync();
+
+        // Should no longer be overrun
+        assert!(!consumer.is_overrun());
+
+        // Should be able to read samples again
+        assert!(consumer.next().is_some());
+    }
+
+    #[test]
+    fn test_multiple_consumers_independent() {
+        let buffer: &'static [UnsafeCell<StreamSample>] = make_buffer::<64>();
+        let stream: &'static KeyingStream = Box::leak(Box::new(
+            KeyingStream::with_buffer(buffer)
+        ));
+
+        let mut consumer1 = StreamConsumer::new(stream);
+        let mut consumer2 = StreamConsumer::new(stream);
+
+        // Push some samples
+        for i in 0..10u8 {
+            let mut sample = StreamSample::EMPTY;
+            sample.audio_level = i;
+            stream.push_raw(sample);
+        }
+
+        // Consumer1 reads 5 samples
+        for _ in 0..5 {
+            consumer1.next();
+        }
+
+        // Consumer2 reads 3 samples
+        for _ in 0..3 {
+            consumer2.next();
+        }
+
+        // They should be at different positions
+        assert_eq!(consumer1.lag(), 5);
+        assert_eq!(consumer2.lag(), 7);
+        assert_eq!(consumer1.position(), 5);
+        assert_eq!(consumer2.position(), 3);
     }
 }
