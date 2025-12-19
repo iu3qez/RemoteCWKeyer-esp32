@@ -1,0 +1,37 @@
+{
+	"name": "ESP-IDF QEMU",
+	"build": {
+		"dockerfile": "Dockerfile"
+	},
+
+	"customizations": {
+		"vscode": {
+			"settings": {
+				"terminal.integrated.defaultProfile.linux": "bash",
+				"idf.espIdfPath": "/opt/esp/idf",
+				"idf.toolsPath": "/opt/esp",
+				"idf.gitPath": "/usr/bin/git"
+			},
+			"extensions": [
+				"espressif.esp-idf-extension",
+				"espressif.esp-idf-web",
+				"Anthropic.claude-code",
+				"ms-vscode.cpptools-extension-pack",
+				"ms-vscode.cpptools"
+			]
+		}
+	},
+	"runArgs": [
+		"--privileged",
+		"--device=/dev/ttyUSB0:/dev/ttyUSB0"
+	],
+	"containerUser": "vscode",
+	"remoteUser": "vscode",
+
+
+
+	"mounts": [
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind,consistency=cached"
+  ]
+}
