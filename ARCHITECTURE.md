@@ -181,13 +181,15 @@ GPIO Poll ──▶ Iambic FSM ──▶ Stream Push ──▶ Audio/TX Consumer
 
 **RULE 4.3.1**: The Hard RT path is: GPIO → Iambic → Stream → Audio/TX.
 
-**RULE 4.3.2**: Total latency budget for Hard RT path: 100 microseconds.
+**RULE 4.3.2**: Hard RT path shall achieve minimum possible latency, with an absolute ceiling of 100 microseconds.
 
 **RULE 4.3.3**: Nothing in the Hard RT path may allocate memory.
 
 **RULE 4.3.4**: Nothing in the Hard RT path may perform I/O (except GPIO).
 
 **RULE 4.3.5**: Nothing in the Hard RT path may log (ESP_LOGx is forbidden).
+
+**RULE 4.3.6**: The entire Hard RT path (GPIO read → Iambic tick → Stream push → Audio/TX output) MUST execute in a single thread with zero context switches. Producer and Hard RT consumer are co-located in the same task.
 
 ---
 
@@ -531,6 +533,27 @@ This document may only be amended by unanimous agreement and documented rational
 6. Testability
 
 In case of conflict, higher-ranked principles take precedence.
+
+### Amendment History
+
+**Amendment 001** (2025-01-19):
+- **Section**: 4.3.2 (Hard Real-Time Consumers)
+- **Change**: Clarified latency requirement from "Total latency budget: 100 microseconds" to "achieve minimum possible latency, with an absolute ceiling of 100 microseconds"
+- **Rationale**: The original formulation could be misinterpreted as a target rather than a limit. The new wording emphasizes that:
+  1. Latency must be **minimized** in the design (not just "kept under budget")
+  2. 100µs is an **absolute ceiling**, not a performance goal
+  3. This strengthens the real-time guarantee without weakening core principles
+- **Impact**: README.md updated for consistency. Does not weaken any core principle; strengthens real-time commitment.
+
+**Amendment 002** (2025-01-19):
+- **Section**: 4.3.6 (Hard Real-Time Consumers)
+- **Change**: Added new rule mandating zero context switches on RT path
+- **Rationale**: Context switching is a major source of latency and jitter:
+  1. ESP32 context switch: 5-20µs typical, unpredictable
+  2. Cumulative effect at 10 kHz tick rate would violate latency ceiling
+  3. Co-locating Producer and Hard RT Consumer in single thread eliminates this entirely
+  4. GPIO→Audio/TX path becomes deterministic single-thread execution
+- **Impact**: Threading model simplified. Producer and Audio/TX consumer run in same task. Reinforces minimum latency principle (Amendment 001).
 
 ---
 

@@ -7,7 +7,7 @@ Professional-grade CW (Morse code) keyer with remote operation capability, built
 - **Iambic Keying**: Mode A/B with configurable memory and timing
 - **Remote CW**: Network-transparent keying over WiFi
 - **Lock-Free Architecture**: SPMC stream buffer, zero mutexes
-- **Hard Real-Time**: Guaranteed sub-100µs latency on critical path
+- **Hard Real-Time**: Minimum latency design, <100µs ceiling on critical path
 - **Fault-Safe**: Corrupted timing triggers FAULT, not bad CW
 
 ## Architecture
@@ -15,11 +15,17 @@ Professional-grade CW (Morse code) keyer with remote operation capability, built
 See [ARCHITECTURE.md](ARCHITECTURE.md) for immutable design principles.
 
 ```
-┌──────────┐     ┌─────────────────┐     ┌──────────────────┐
-│PaddleHal │────▶│  KeyingStream   │────▶│ Audio/TX (RT)    │
-│          │     │  (lock-free)    │────▶│ Remote (best-ef) │
-│          │     │                 │────▶│ Decoder (best-ef)│
-└──────────┘     └─────────────────┘     └──────────────────┘
+┌────────────────────────────────┐
+│   RT Thread (Core 0)           │
+│  ┌──────────┐   ┌────────────┐ │     ┌──────────────────┐
+│  │PaddleHal │──▶│  Iambic    │─┼────▶│  KeyingStream    │
+│  └──────────┘   └────────────┘ │     │  (lock-free)     │
+│         │                       │     └────────┬─────────┘
+│         └──────▶ Audio/TX ◀─────┼──────────────┘
+│           (zero context switch) │              │
+└────────────────────────────────┘              │
+                                                 ├──▶ Remote (best-ef)
+                                                 └──▶ Decoder (best-ef)
 ```
 
 ## Hardware
