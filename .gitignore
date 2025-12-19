@@ -24,3 +24,5 @@ target
 
 # Auto-generated code (regenerated at build time)
 src/generated/*.rs
+.devcontainer/Dockerfile.old
+.cargo/config.toml.old
