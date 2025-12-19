@@ -1,274 +1,329 @@
-//! Stream sample types for RustRemoteCWKeyer.
+//! Module: sample
 //!
-//! Each sample captures the state of all three channels (GPIO, local keyer, remote CW)
-//! at a single point in time. Samples are time-aligned at the stream tick rate.
+//! Purpose: StreamSample types for keying events. Represents a single time-slice
+//! (tick) of keyer state at a specific moment in time.
+//!
+//! Architecture:
+//! - Compact 6-byte structure for memory efficiency (ARCHITECTURE.md Rule 9)
+//! - All samples time-aligned at TICK_RATE_HZ (typically 10 kHz)
+//! - Silence is data (explicitly represented, can be compressed with RLE)
+//!
+//! Safety: Safe. No unsafe blocks. Copy types only.
 
-/// Edge flags for StreamSample
-pub const FLAG_GPIO_EDGE: u8 = 0x01;
-pub const FLAG_LOCAL_EDGE: u8 = 0x02;
-pub const FLAG_REMOTE_EDGE: u8 = 0x04;
-pub const FLAG_SILENCE: u8 = 0x80;
-
-/// Physical paddle GPIO state.
+/// A single sample in the keying stream
 ///
-/// Packed into a single byte for efficiency.
-/// - bit 0: DIT paddle pressed
-/// - bit 1: DAH paddle pressed
-/// - bit 2: Straight key pressed
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct GpioState {
-    pub bits: u8,
-}
-
-impl GpioState {
-    pub const IDLE: Self = Self { bits: 0 };
-
-    #[inline]
-    pub const fn new() -> Self {
-        Self { bits: 0 }
-    }
-
-    #[inline]
-    pub const fn dit(&self) -> bool {
-        self.bits & 0x01 != 0
-    }
-
-    #[inline]
-    pub const fn dah(&self) -> bool {
-        self.bits & 0x02 != 0
-    }
-
-    #[inline]
-    pub const fn straight_key(&self) -> bool {
-        self.bits & 0x04 != 0
-    }
-
-    #[inline]
-    pub fn set_dit(&mut self, pressed: bool) {
-        if pressed {
-            self.bits |= 0x01;
-        } else {
-            self.bits &= !0x01;
-        }
-    }
-
-    #[inline]
-    pub fn set_dah(&mut self, pressed: bool) {
-        if pressed {
-            self.bits |= 0x02;
-        } else {
-            self.bits &= !0x02;
-        }
-    }
-
-    #[inline]
-    pub fn set_straight_key(&mut self, pressed: bool) {
-        if pressed {
-            self.bits |= 0x04;
-        } else {
-            self.bits &= !0x04;
-        }
-    }
-
-    /// Returns true if any paddle/key is pressed.
-    #[inline]
-    pub const fn any_pressed(&self) -> bool {
-        self.bits != 0
-    }
-
-    /// Returns true if both DIT and DAH are pressed (squeeze).
-    #[inline]
-    pub const fn is_squeeze(&self) -> bool {
-        (self.bits & 0x03) == 0x03
-    }
-}
-
-impl core::fmt::Debug for GpioState {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(
-            f,
-            "GPIO[{}{}{}]",
-            if self.dit() { "D" } else { "." },
-            if self.dah() { "A" } else { "." },
-            if self.straight_key() { "K" } else { "." },
-        )
-    }
-}
-
-/// A single time-aligned sample of all keying channels.
+/// Represents one time-slice (tick) of the keyer state. All samples are
+/// time-aligned at the configured tick rate (typically 10 kHz = 100µs period).
 ///
-/// Size: 4 bytes, aligned to 4 bytes for atomic-friendly access.
+/// Size: 6 bytes (compact for PSRAM efficiency)
 ///
-/// # Channels
-/// - `gpio`: Physical paddle state (DIT, DAH, straight key)
-/// - `local_key`: Output of iambic/manual keyer (drives audio + TX)
-/// - `remote_key`: CW received from remote station
-/// - `flags`: Edge detection and silence compression markers
-#[derive(Clone, Copy, Default)]
-#[repr(C, align(4))]
+/// Memory layout:
+/// ```text
+/// [gpio:1][key:1][audio_level:1][flags:1][config_gen:2] = 6 bytes
+/// ```
+///
+/// At 10 kHz tick rate:
+/// - 10,000 samples/second
+/// - 60,000 bytes/second worst-case (no compression)
+/// - ~3.6 MB for 1 minute uncompressed
+/// - Typical: 90% silence, ~360 KB/minute with RLE
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StreamSample {
+    /// GPIO paddle state (raw hardware input)
+    ///
+    /// Bit 0: DIT paddle (1 = pressed, 0 = released)
+    /// Bit 1: DAH paddle (1 = pressed, 0 = released)
+    /// Remaining bits: reserved for future use
     pub gpio: GpioState,
-    pub local_key: bool,
-    pub remote_key: bool,
+
+    /// Keying output state (post-Iambic processing)
+    ///
+    /// true = key down (transmitting)
+    /// false = key up (idle)
+    ///
+    /// This is the final keying decision after Iambic FSM processing.
+    /// Both local and remote TX consumers read this field.
+    pub key: bool,
+
+    /// Audio sidetone level with envelope applied
+    ///
+    /// 0 = silent
+    /// 255 = full volume
+    ///
+    /// Includes fade in/out envelope to eliminate clicks.
+    /// Calculated by AudioEnvelope in RT thread.
+    pub audio_level: u8,
+
+    /// Sample flags (edges, state transitions, markers)
+    ///
+    /// See FLAG_* constants for bit definitions.
+    /// Multiple flags can be set simultaneously (bitwise OR).
     pub flags: u8,
+
+    /// Configuration generation number
+    ///
+    /// Copied from CONFIG.generation at sample creation time.
+    /// Incremented when any config parameter changes.
+    ///
+    /// Consumers can detect config changes by comparing this value
+    /// with their cached generation number.
+    pub config_gen: u16,
 }
 
 impl StreamSample {
-    /// Empty sample (all channels idle).
-    pub const EMPTY: Self = Self {
-        gpio: GpioState::IDLE,
-        local_key: false,
-        remote_key: false,
-        flags: 0,
-    };
-
-    /// Create a silence marker encoding N idle ticks.
+    /// Create a new sample with all fields zero/false
     ///
-    /// Silence markers compress consecutive identical samples.
-    /// Max encodable ticks: 2^23 - 1 = 8,388,607 (~14 minutes @ 10kHz)
-    #[inline]
-    pub fn silence(ticks: u32) -> Self {
+    /// Used for initialization and testing.
+    pub const fn zero() -> Self {
         Self {
-            gpio: GpioState {
-                bits: (ticks & 0xFF) as u8,
-            },
-            local_key: (ticks >> 8) & 1 != 0,
-            remote_key: (ticks >> 9) & 1 != 0,
-            flags: FLAG_SILENCE | (((ticks >> 16) & 0x7F) as u8),
+            gpio: GpioState::IDLE,
+            key: false,
+            audio_level: 0,
+            flags: 0,
+            config_gen: 0,
         }
     }
 
-    /// Check if this sample is a silence marker.
-    #[inline]
-    pub const fn is_silence(&self) -> bool {
-        self.flags & FLAG_SILENCE != 0
+    /// Check if this sample represents silence (no activity)
+    ///
+    /// A sample is considered silent when:
+    /// - No GPIO activity (paddles released)
+    /// - Key is up (not transmitting)
+    /// - Audio level is zero
+    /// - No edge transitions
+    ///
+    /// Silent samples are candidates for RLE compression.
+    pub fn is_silent(&self) -> bool {
+        self.gpio.is_idle()
+            && !self.key
+            && self.audio_level == 0
+            && (self.flags & FLAG_GPIO_EDGE) == 0
     }
 
-    /// Decode silence tick count (only valid if `is_silence()` is true).
-    #[inline]
-    pub const fn silence_ticks(&self) -> u32 {
-        if !self.is_silence() {
-            return 0;
-        }
-        (self.gpio.bits as u32)
-            | ((self.local_key as u32) << 8)
-            | ((self.remote_key as u32) << 9)
-            | (((self.flags & 0x7F) as u32) << 16)
+    /// Check if config changed at this sample
+    pub fn config_changed(&self) -> bool {
+        (self.flags & FLAG_CONFIG_CHANGE) != 0
     }
 
-    /// Check if any channel changed from the previous sample.
-    #[inline]
-    pub fn has_change_from(&self, prev: &Self) -> bool {
-        self.gpio.bits != prev.gpio.bits
-            || self.local_key != prev.local_key
-            || self.remote_key != prev.remote_key
+    /// Check if TX mode started at this sample
+    pub fn tx_started(&self) -> bool {
+        (self.flags & FLAG_TX_START) != 0
     }
 
-    /// Create a copy of this sample with edge flags computed from previous sample.
-    #[inline]
-    pub fn with_edges_from(&self, prev: &Self) -> Self {
-        let mut flags = 0u8;
-        if self.gpio.bits != prev.gpio.bits {
-            flags |= FLAG_GPIO_EDGE;
-        }
-        if self.local_key != prev.local_key {
-            flags |= FLAG_LOCAL_EDGE;
-        }
-        if self.remote_key != prev.remote_key {
-            flags |= FLAG_REMOTE_EDGE;
-        }
-        Self { flags, ..*self }
-    }
-
-    /// Check if GPIO changed in this sample.
-    #[inline]
-    pub const fn has_gpio_edge(&self) -> bool {
-        self.flags & FLAG_GPIO_EDGE != 0
-    }
-
-    /// Check if local keyer output changed in this sample.
-    #[inline]
-    pub const fn has_local_edge(&self) -> bool {
-        self.flags & FLAG_LOCAL_EDGE != 0
-    }
-
-    /// Check if remote CW changed in this sample.
-    #[inline]
-    pub const fn has_remote_edge(&self) -> bool {
-        self.flags & FLAG_REMOTE_EDGE != 0
+    /// Check if RX mode started at this sample
+    pub fn rx_started(&self) -> bool {
+        (self.flags & FLAG_RX_START) != 0
     }
 }
 
-impl core::fmt::Debug for StreamSample {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        if self.is_silence() {
-            write!(f, "Silence({})", self.silence_ticks())
-        } else {
-            write!(
-                f,
-                "Sample({:?}, L={}, R={}, f={:02x})",
-                self.gpio, self.local_key as u8, self.remote_key as u8, self.flags
-            )
-        }
+/// GPIO paddle state
+///
+/// Represents the physical state of DIT and DAH paddle inputs.
+/// Stored as a single byte with bit flags for memory efficiency.
+///
+/// Bit layout:
+/// - Bit 0: DIT paddle
+/// - Bit 1: DAH paddle
+/// - Bits 2-7: Reserved (future: straight key, additional inputs)
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GpioState(u8);
+
+impl GpioState {
+    /// DIT paddle bit mask (bit 0)
+    pub const DIT: u8 = 0x01;
+
+    /// DAH paddle bit mask (bit 1)
+    pub const DAH: u8 = 0x02;
+
+    /// Idle state constant (no paddles pressed)
+    pub const IDLE: Self = Self(0);
+
+    /// Both paddles pressed (squeeze)
+    pub const BOTH: Self = Self(Self::DIT | Self::DAH);
+
+    /// Create GPIO state from raw byte
+    ///
+    /// # Arguments
+    /// * `bits` - Raw GPIO bits (only bits 0-1 used currently)
+    pub const fn from_bits(bits: u8) -> Self {
+        Self(bits)
+    }
+
+    /// Get raw bits value
+    pub const fn bits(&self) -> u8 {
+        self.0
+    }
+
+    /// Check if DIT paddle is pressed
+    pub const fn dit(&self) -> bool {
+        (self.0 & Self::DIT) != 0
+    }
+
+    /// Check if DAH paddle is pressed
+    pub const fn dah(&self) -> bool {
+        (self.0 & Self::DAH) != 0
+    }
+
+    /// Check if no paddles are pressed (idle)
+    pub const fn is_idle(&self) -> bool {
+        self.0 == 0
+    }
+
+    /// Check if both paddles are pressed (squeeze)
+    pub const fn both(&self) -> bool {
+        (self.0 & (Self::DIT | Self::DAH)) == (Self::DIT | Self::DAH)
+    }
+
+    /// Check if only DIT is pressed (not DAH)
+    pub const fn dit_only(&self) -> bool {
+        self.0 == Self::DIT
+    }
+
+    /// Check if only DAH is pressed (not DIT)
+    pub const fn dah_only(&self) -> bool {
+        self.0 == Self::DAH
     }
 }
+
+// ============================================================================
+// Sample Flags
+// ============================================================================
+
+/// GPIO state changed this tick (edge detected)
+///
+/// Set when GPIO transitions from one state to another.
+/// Used for edge detection and timeline analysis.
+pub const FLAG_GPIO_EDGE: u8 = 0x01;
+
+/// Configuration changed at this sample
+///
+/// Set when CONFIG.generation incremented and applied.
+/// Signals to consumers that they should reload config parameters.
+pub const FLAG_CONFIG_CHANGE: u8 = 0x02;
+
+/// TX mode started (transition from RX to TX)
+///
+/// Set on first sample after GPIO ISR wakes RT thread.
+/// Marks beginning of transmission session.
+pub const FLAG_TX_START: u8 = 0x04;
+
+/// RX mode started (transition from TX to RX)
+///
+/// Set on first sample after PTT tail timeout.
+/// Marks end of transmission session.
+pub const FLAG_RX_START: u8 = 0x08;
+
+/// Silence marker for RLE compression
+///
+/// Set on samples that represent compressed silence.
+/// Used by stream replay and diagnostics.
+pub const FLAG_SILENCE: u8 = 0x10;
+
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_gpio_state_basic() {
-        let mut gpio = GpioState::new();
-        assert!(!gpio.dit());
-        assert!(!gpio.dah());
-        assert!(!gpio.any_pressed());
-
-        gpio.set_dit(true);
-        assert!(gpio.dit());
-        assert!(!gpio.dah());
-        assert!(gpio.any_pressed());
-
-        gpio.set_dah(true);
-        assert!(gpio.dit());
-        assert!(gpio.dah());
-        assert!(gpio.is_squeeze());
+    fn test_stream_sample_size() {
+        // Verify sample is exactly 6 bytes as specified
+        assert_eq!(core::mem::size_of::<StreamSample>(), 6);
     }
 
     #[test]
-    fn test_silence_encoding() {
-        // Small value
-        let s = StreamSample::silence(42);
-        assert!(s.is_silence());
-        assert_eq!(s.silence_ticks(), 42);
-
-        // Large value
-        let s = StreamSample::silence(1_000_000);
-        assert!(s.is_silence());
-        assert_eq!(s.silence_ticks(), 1_000_000);
-
-        // Max value (23 bits)
-        let s = StreamSample::silence(0x7FFFFF);
-        assert!(s.is_silence());
-        assert_eq!(s.silence_ticks(), 0x7FFFFF);
+    fn test_stream_sample_zero() {
+        let sample = StreamSample::zero();
+        assert_eq!(sample.gpio, GpioState::IDLE);
+        assert_eq!(sample.key, false);
+        assert_eq!(sample.audio_level, 0);
+        assert_eq!(sample.flags, 0);
+        assert_eq!(sample.config_gen, 0);
     }
 
     #[test]
-    fn test_edge_detection() {
-        let prev = StreamSample::EMPTY;
-        let mut curr = StreamSample::EMPTY;
-        curr.local_key = true;
+    fn test_stream_sample_is_silent() {
+        let silent = StreamSample::zero();
+        assert!(silent.is_silent());
 
-        let with_edges = curr.with_edges_from(&prev);
-        assert!(with_edges.has_local_edge());
-        assert!(!with_edges.has_gpio_edge());
-        assert!(!with_edges.has_remote_edge());
+        let mut not_silent = StreamSample::zero();
+        not_silent.key = true;
+        assert!(!not_silent.is_silent());
+
+        not_silent = StreamSample::zero();
+        not_silent.audio_level = 100;
+        assert!(!not_silent.is_silent());
+
+        not_silent = StreamSample::zero();
+        not_silent.gpio = GpioState::from_bits(GpioState::DIT);
+        assert!(!not_silent.is_silent());
     }
 
     #[test]
-    fn test_sample_size() {
-        assert_eq!(core::mem::size_of::<StreamSample>(), 4);
-        assert_eq!(core::mem::align_of::<StreamSample>(), 4);
+    fn test_gpio_state_dit() {
+        let dit = GpioState::from_bits(GpioState::DIT);
+        assert!(dit.dit());
+        assert!(!dit.dah());
+        assert!(!dit.is_idle());
+        assert!(!dit.both());
+        assert!(dit.dit_only());
+        assert!(!dit.dah_only());
+    }
+
+    #[test]
+    fn test_gpio_state_dah() {
+        let dah = GpioState::from_bits(GpioState::DAH);
+        assert!(!dah.dit());
+        assert!(dah.dah());
+        assert!(!dah.is_idle());
+        assert!(!dah.both());
+        assert!(!dah.dit_only());
+        assert!(dah.dah_only());
+    }
+
+    #[test]
+    fn test_gpio_state_both() {
+        let both = GpioState::BOTH;
+        assert!(both.dit());
+        assert!(both.dah());
+        assert!(!both.is_idle());
+        assert!(both.both());
+        assert!(!both.dit_only());
+        assert!(!both.dah_only());
+    }
+
+    #[test]
+    fn test_gpio_state_idle() {
+        let idle = GpioState::IDLE;
+        assert!(!idle.dit());
+        assert!(!idle.dah());
+        assert!(idle.is_idle());
+        assert!(!idle.both());
+        assert!(!idle.dit_only());
+        assert!(!idle.dah_only());
+    }
+
+    #[test]
+    fn test_flag_checking() {
+        let mut sample = StreamSample::zero();
+
+        sample.flags = FLAG_CONFIG_CHANGE;
+        assert!(sample.config_changed());
+        assert!(!sample.tx_started());
+        assert!(!sample.rx_started());
+
+        sample.flags = FLAG_TX_START | FLAG_GPIO_EDGE;
+        assert!(sample.tx_started());
+        assert!(!sample.config_changed());
+        assert!(!sample.rx_started());
+
+        sample.flags = FLAG_RX_START;
+        assert!(sample.rx_started());
+        assert!(!sample.config_changed());
+        assert!(!sample.tx_started());
     }
 }
