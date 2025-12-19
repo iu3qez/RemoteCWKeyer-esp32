@@ -10,12 +10,8 @@ readme = "README.md"
 
 [dependencies]
 # esp-idf-svc porta esp-idf-hal e esp-idf-sys come dipendenze transitive
-esp-idf-svc = { git = "https://github.com/esp-rs/esp-idf-svc.git", features = ["binstart"] }
-
-[patch.crates-io]
-# Forza uso delle versioni git per compatibilità ESP-IDF 5.5
-esp-idf-sys = { git = "https://github.com/esp-rs/esp-idf-sys.git" }
-esp-idf-hal = { git = "https://github.com/esp-rs/esp-idf-hal.git" }
+# Versione 0.51.0 compatibile con ESP-IDF v5.3
+esp-idf-svc = { version = "0.51.0", features = ["binstart"] }
 
 [build-dependencies]
 embuild = "0.32"

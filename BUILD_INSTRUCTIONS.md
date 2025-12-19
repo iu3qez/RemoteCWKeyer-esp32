@@ -6,11 +6,10 @@ This project supports two ESP32 targets:
 
 ## Prerequisites
 
-This project uses a DevContainer that includes all necessary tools:
-- Rust with ESP toolchains (Xtensa and RISC-V)
-- ESP-IDF v5.3
-- espflash and cargo-espflash
-- ldproxy
+This project uses a DevContainer based on the official esp-rs template that includes:
+- Rust with ESP toolchains (Xtensa for ESP32-S3, RISC-V for ESP32-P4)
+- espflash, cargo-espflash, and ldproxy
+- ESP-IDF v5.3 is downloaded automatically during the first build by `esp-idf-sys`
 
 ## Quick Start
 
@@ -23,10 +22,12 @@ This project uses a DevContainer that includes all necessary tools:
 
 ### 2. Build the Project
 
+**Important:** The first build will take 10-15 minutes because `esp-idf-sys` downloads and compiles ESP-IDF v5.3 (~500MB). Subsequent builds are incremental and much faster.
+
 #### For ESP32-S3 (Default Target)
 
 ```bash
-# Debug build
+# Debug build (first time: downloads ESP-IDF)
 cargo build
 
 # Release build
