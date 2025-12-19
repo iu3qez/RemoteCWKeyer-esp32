@@ -1,0 +1,450 @@
+# RustRemoteCWKeyer - Configuration Parameters Schema
+#
+# This file defines all configurable parameters for the keyer.
+# Code generation script (scripts/gen_config.py) reads this file and generates:
+#   - src/generated/config.rs (atomic config struct)
+#   - src/generated/config_meta.rs (GUI metadata)
+#   - src/generated/config_nvs.rs (NVS load/save)
+#
+# DO NOT edit generated files manually - edit this schema instead.
+#
+# IMPORTANT: ALL configuration parameters MUST be defined here.
+# Direct hardcoding of config values in source code is forbidden.
+
+version: 1
+
+parameters:
+  # ========================================
+  # Keyer Behavior
+  # ========================================
+  - name: wpm
+    type: u16
+    default: 20
+    range: [5, 60]
+    nvs_key: "wpm"
+    runtime_change: idle_only
+    category: keyer
+    priority: 1
+    gui:
+      label_short:
+        en: "WPM"
+        it: "PPM"
+      label_long:
+        en: "Words Per Minute"
+        it: "Parole Per Minuto"
+      description:
+        en: "Keying speed in words per minute (PARIS standard)"
+        it: "Velocità di manipolazione in parole per minuto (standard PARIS)"
+      widget: slider
+      widget_config:
+        step: 1
+        tick_interval: 5
+      advanced: false
+
+  - name: iambic_mode
+    type: enum
+    enum_values: [ModeA, ModeB]
+    default: ModeA
+    nvs_key: "mode"
+    runtime_change: idle_only
+    category: keyer
+    priority: 2
+    gui:
+      label_short:
+        en: "Mode"
+        it: "Modalità"
+      label_long:
+        en: "Iambic Mode"
+        it: "Modalità Iambica"
+      description:
+        en: "Mode A: release priority, Mode B: last contact priority"
+        it: "Modo A: priorità al rilascio, Modo B: priorità all'ultimo contatto"
+      widget: dropdown
+      widget_config:
+        options:
+          - value: ModeA
+            label:
+              en: "Mode A (Release Priority)"
+              it: "Modo A (Priorità Rilascio)"
+          - value: ModeB
+            label:
+              en: "Mode B (Last Contact)"
+              it: "Modo B (Ultimo Contatto)"
+      advanced: false
+
+  - name: memory_window_us
+    type: u32
+    default: 500
+    range: [0, 1000]
+    nvs_key: "mem_win"
+    runtime_change: idle_only
+    category: keyer
+    priority: 10
+    gui:
+      label_short:
+        en: "Memory"
+        it: "Memoria"
+      label_long:
+        en: "Memory Window (µs)"
+        it: "Finestra Memoria (µs)"
+      description:
+        en: "Iambic memory window duration in microseconds"
+        it: "Durata della finestra di memoria iambica in microsecondi"
+      widget: slider
+      widget_config:
+        step: 50
+        tick_interval: 250
+      advanced: true
+
+  - name: weight
+    type: u8
+    default: 50
+    range: [33, 67]
+    nvs_key: "weight"
+    runtime_change: idle_only
+    category: keyer
+    priority: 5
+    gui:
+      label_short:
+        en: "Weight"
+        it: "Peso"
+      label_long:
+        en: "Dit/Dah Weight"
+        it: "Peso Dit/Dah"
+      description:
+        en: "Timing weight (50 = 1:3 ratio, <50 lighter, >50 heavier)"
+        it: "Peso temporizzazione (50 = rapporto 1:3, <50 più leggero, >50 più pesante)"
+      widget: slider
+      widget_config:
+        step: 1
+        tick_interval: 5
+        center_mark: 50
+      advanced: false
+
+  # ========================================
+  # Audio
+  # ========================================
+  - name: sidetone_freq_hz
+    type: u16
+    default: 700
+    range: [400, 1200]
+    nvs_key: "st_freq"
+    runtime_change: immediate
+    category: audio
+    priority: 3
+    gui:
+      label_short:
+        en: "Tone"
+        it: "Tono"
+      label_long:
+        en: "Sidetone Frequency (Hz)"
+        it: "Frequenza Tono Laterale (Hz)"
+      description:
+        en: "Audio sidetone pitch in Hertz"
+        it: "Tonalità del tono laterale audio in Hertz"
+      widget: slider
+      widget_config:
+        step: 10
+        tick_interval: 100
+        common_values: [500, 600, 700, 800]
+      advanced: false
+
+  - name: sidetone_volume
+    type: u8
+    default: 80
+    range: [0, 100]
+    nvs_key: "st_vol"
+    runtime_change: immediate
+    category: audio
+    priority: 4
+    gui:
+      label_short:
+        en: "Volume"
+        it: "Volume"
+      label_long:
+        en: "Sidetone Volume (%)"
+        it: "Volume Tono Laterale (%)"
+      description:
+        en: "Audio output volume percentage"
+        it: "Percentuale volume uscita audio"
+      widget: slider
+      widget_config:
+        step: 5
+        tick_interval: 10
+      advanced: false
+
+  - name: fade_duration_ms
+    type: u8
+    default: 5
+    range: [4, 10]
+    nvs_key: "fade_ms"
+    runtime_change: reboot
+    category: audio
+    priority: 15
+    gui:
+      label_short:
+        en: "Fade"
+        it: "Dissolvenza"
+      label_long:
+        en: "Fade Duration (ms)"
+        it: "Durata Dissolvenza (ms)"
+      description:
+        en: "Audio envelope fade time to eliminate clicks"
+        it: "Tempo di dissolvenza dell'inviluppo audio per eliminare i click"
+      widget: spinbox
+      widget_config:
+        step: 1
+        suffix: " ms"
+      advanced: true
+
+  # ========================================
+  # Hardware (GPIO)
+  # ========================================
+  - name: gpio_dit
+    type: u8
+    default: 4
+    range: [0, 45]  # ESP32-S3 max GPIO
+    nvs_key: "gpio_dit"
+    runtime_change: reboot
+    category: hardware
+    priority: 20
+    gui:
+      label_short:
+        en: "DIT Pin"
+        it: "Pin DIT"
+      label_long:
+        en: "DIT Paddle GPIO"
+        it: "GPIO Paddle DIT"
+      description:
+        en: "GPIO pin number for DIT paddle input (internal pull-up)"
+        it: "Numero pin GPIO per ingresso paddle DIT (pull-up interno)"
+      widget: spinbox
+      widget_config:
+        step: 1
+        prefix: "GPIO "
+      advanced: true
+
+  - name: gpio_dah
+    type: u8
+    default: 5
+    range: [0, 45]
+    nvs_key: "gpio_dah"
+    runtime_change: reboot
+    category: hardware
+    priority: 21
+    gui:
+      label_short:
+        en: "DAH Pin"
+        it: "Pin DAH"
+      label_long:
+        en: "DAH Paddle GPIO"
+        it: "GPIO Paddle DAH"
+      description:
+        en: "GPIO pin number for DAH paddle input (internal pull-up)"
+        it: "Numero pin GPIO per ingresso paddle DAH (pull-up interno)"
+      widget: spinbox
+      widget_config:
+        step: 1
+        prefix: "GPIO "
+      advanced: true
+
+  - name: gpio_tx
+    type: u8
+    default: 6
+    range: [0, 45]
+    nvs_key: "gpio_tx"
+    runtime_change: reboot
+    category: hardware
+    priority: 22
+    gui:
+      label_short:
+        en: "TX Pin"
+        it: "Pin TX"
+      label_long:
+        en: "TX Output GPIO"
+        it: "GPIO Uscita TX"
+      description:
+        en: "GPIO pin number for transmitter keying output"
+        it: "Numero pin GPIO per uscita chiave trasmettitore"
+      widget: spinbox
+      widget_config:
+        step: 1
+        prefix: "GPIO "
+      advanced: true
+
+  # ========================================
+  # Timing
+  # ========================================
+  - name: ptt_tail_ms
+    type: u32
+    default: 100
+    range: [50, 500]
+    nvs_key: "ptt_tail"
+    runtime_change: idle_only
+    category: timing
+    priority: 6
+    gui:
+      label_short:
+        en: "PTT Tail"
+        it: "Coda PTT"
+      label_long:
+        en: "PTT Tail Timeout (ms)"
+        it: "Timeout Coda PTT (ms)"
+      description:
+        en: "Time after last TX event before dropping PTT and returning to RX"
+        it: "Tempo dopo l'ultimo evento TX prima di rilasciare PTT e tornare in RX"
+      widget: slider
+      widget_config:
+        step: 10
+        tick_interval: 50
+      advanced: false
+
+  - name: tick_rate_hz
+    type: u32
+    default: 10000
+    range: [1000, 10000]
+    nvs_key: "tick_hz"
+    runtime_change: reboot
+    category: timing
+    priority: 25
+    gui:
+      label_short:
+        en: "Tick Rate"
+        it: "Frequenza Tick"
+      label_long:
+        en: "RT Loop Tick Rate (Hz)"
+        it: "Frequenza Loop RT (Hz)"
+      description:
+        en: "Real-time loop polling frequency (higher = lower latency, more CPU)"
+        it: "Frequenza polling del loop real-time (più alta = latenza minore, più CPU)"
+      widget: dropdown
+      widget_config:
+        options:
+          - value: 1000
+            label:
+              en: "1 kHz (Low CPU)"
+              it: "1 kHz (CPU Basso)"
+          - value: 2000
+            label:
+              en: "2 kHz (Balanced)"
+              it: "2 kHz (Bilanciato)"
+          - value: 5000
+            label:
+              en: "5 kHz (High Performance)"
+              it: "5 kHz (Alta Prestazione)"
+          - value: 10000
+            label:
+              en: "10 kHz (Maximum Performance)"
+              it: "10 kHz (Prestazione Massima)"
+      advanced: true
+
+  # ========================================
+  # System
+  # ========================================
+  - name: debug_logging
+    type: bool
+    default: false
+    nvs_key: "debug_log"
+    runtime_change: immediate
+    category: system
+    priority: 30
+    gui:
+      label_short:
+        en: "Debug"
+        it: "Debug"
+      label_long:
+        en: "Debug Logging"
+        it: "Logging Debug"
+      description:
+        en: "Enable verbose debug logging (impacts performance)"
+        it: "Abilita logging debug verboso (impatta le prestazioni)"
+      widget: toggle
+      widget_config:
+        on_label:
+          en: "Enabled"
+          it: "Abilitato"
+        off_label:
+          en: "Disabled"
+          it: "Disabilitato"
+      advanced: true
+
+  - name: led_brightness
+    type: u8
+    default: 50
+    range: [0, 100]
+    nvs_key: "led_bright"
+    runtime_change: immediate
+    category: system
+    priority: 7
+    gui:
+      label_short:
+        en: "LED"
+        it: "LED"
+      label_long:
+        en: "LED Brightness (%)"
+        it: "Luminosità LED (%)"
+      description:
+        en: "Status LED brightness percentage"
+        it: "Percentuale luminosità LED di stato"
+      widget: slider
+      widget_config:
+        step: 10
+        tick_interval: 25
+      advanced: false
+
+# ========================================
+# Widget Types Reference
+# ========================================
+#
+# slider:
+#   - Continuous range selection
+#   - config: step, tick_interval, center_mark (optional), common_values (optional)
+#   - Best for: WPM, frequency, volume, timing values
+#
+# spinbox:
+#   - Numeric input with +/- buttons
+#   - config: step, prefix (optional), suffix (optional)
+#   - Best for: GPIO pins, precise values
+#
+# dropdown:
+#   - Discrete choice selection
+#   - config: options (array of {value, label})
+#   - Best for: Enums, predefined choices
+#
+# toggle:
+#   - Boolean on/off switch
+#   - config: on_label, off_label
+#   - Best for: Feature enable/disable
+#
+# textbox:
+#   - Free-form text input
+#   - config: max_length, validation_regex (optional)
+#   - Best for: Strings, WiFi SSID/password
+#
+# ========================================
+# Runtime Change Modes
+# ========================================
+#
+# immediate:
+#   - Applied instantly when changed
+#   - No timing constraints
+#   - Examples: volume, LED brightness
+#
+# idle_only:
+#   - Applied only when paddles idle (keyer not transmitting)
+#   - Preserves CW timing integrity
+#   - Examples: WPM, mode, weight
+#
+# reboot:
+#   - Requires reboot/restart to apply
+#   - Used for structural changes
+#   - Examples: GPIO assignments, tick rate
+#
+# ========================================
+# Supported Languages
+# ========================================
+#
+# - en: English (default)
+# - it: Italiano
+#
+# All GUI strings (label_short, label_long, description) must provide both languages.

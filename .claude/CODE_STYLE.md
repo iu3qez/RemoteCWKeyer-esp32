@@ -121,6 +121,47 @@ Within a `.rs` file:
 
 ---
 
+---
+
+## Configuration Parameters
+
+### MANDATORY: All parameters in `parameters.yaml`
+
+**RULE**: Every configuration parameter MUST be defined in `parameters.yaml`.
+
+**Forbidden:**
+```rust
+// ❌ WRONG - hardcoded config value
+const WPM: u16 = 20;
+const SIDETONE_FREQ: u16 = 700;
+```
+
+**Required:**
+```rust
+// ✅ CORRECT - read from generated config
+let wpm = CONFIG.wpm.load(Ordering::Relaxed);
+let freq = CONFIG.sidetone_freq_hz.load(Ordering::Relaxed);
+```
+
+**Why:**
+- Single source of truth for all configuration
+- Automatic GUI generation
+- NVS persistence
+- Multi-language support
+- Type safety and validation
+
+**Process to add new parameter:**
+1. Add entry to `parameters.yaml` with all metadata
+2. Run code generation: `python3 scripts/gen_config.py`
+3. Use generated struct in code: `CONFIG.your_param`
+
+**Never:**
+- Hardcode magic numbers for configurable values
+- Add parameters directly in Rust code
+- Bypass the schema
+
+---
+
 ## Compliance
 
 Code reviews must verify:
@@ -129,5 +170,7 @@ Code reviews must verify:
 - [ ] Complex logic has explanatory comments
 - [ ] Public API has doc comments (`///`)
 - [ ] RT-safety explicitly documented where relevant
+- [ ] All configuration parameters defined in `parameters.yaml`
+- [ ] No hardcoded config values in source code
 
 **Non-compliant code shall not be merged.**
