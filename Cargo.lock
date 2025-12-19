@@ -372,15 +372,15 @@ checksum = "dc2d050bdc5c21e0862a89256ed8029ae6c290a93aecefc73084b3002cdebb01"
 
 [[package]]
 name = "embassy-sync"
-version = "0.7.2"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73974a3edbd0bd286759b3d483540f0ebef705919a5f56f4fc7709066f71689b"
+checksum = "8d2c8cdff05a7a51ba0087489ea44b0b1d97a296ca6b1d6d1a33ea7423d34049"
 dependencies = [
  "cfg-if",
  "critical-section",
  "embedded-io-async",
- "futures-core",
  "futures-sink",
+ "futures-util",
  "heapless",
 ]
 
@@ -461,20 +461,6 @@ dependencies = [
 
 [[package]]
 name = "embuild"
-version = "0.32.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6e3e470e31fd4cae065d37f7cad56d42861ba1f9a35aa277694dee3d6b357c4"
-dependencies = [
- "anyhow",
- "bitflags 1.3.2",
- "filetime",
- "log",
- "shlex",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "embuild"
 version = "0.33.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e188ad2bbe82afa841ea4a29880651e53ab86815db036b2cb9f8de3ac32dad75"
@@ -547,7 +533,8 @@ dependencies = [
 [[package]]
 name = "esp-idf-hal"
 version = "0.45.2"
-source = "git+https://github.com/esp-rs/esp-idf-hal.git#39d5e39beb2b8624fd0d2fd45e2669453d903060"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "775ce25171dc4f615146a4a27ed3a64c6fd99ced77d7112062f2b19bf933f5db"
 dependencies = [
  "atomic-waker",
  "embassy-sync",
@@ -558,23 +545,25 @@ dependencies = [
  "embedded-hal-nb",
  "embedded-io",
  "embedded-io-async",
- "embuild 0.33.1",
+ "embuild",
  "enumset",
  "esp-idf-sys",
  "heapless",
  "log",
  "nb 1.1.0",
+ "num_enum",
 ]
 
 [[package]]
 name = "esp-idf-svc"
 version = "0.51.0"
-source = "git+https://github.com/esp-rs/esp-idf-svc.git#d33fd0ca7e6ab3d09fdedf5a2f471667e1bb249d"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2bc07aaba257d28d54a96af005ca67d0b38876d8837f5d54a3e0547e100b219c"
 dependencies = [
  "embassy-futures",
  "embedded-hal-async",
  "embedded-svc",
- "embuild 0.33.1",
+ "embuild",
  "enumset",
  "esp-idf-hal",
  "futures-io",
@@ -587,14 +576,15 @@ dependencies = [
 [[package]]
 name = "esp-idf-sys"
 version = "0.36.1"
-source = "git+https://github.com/esp-rs/esp-idf-sys.git#0d95720e21d5807708426b751b362ff74683792c"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb77a3d02b579a60a811ed9be22b78c5e794bc492d833ee7fc44d3a0155885e1"
 dependencies = [
  "anyhow",
  "build-time",
  "cargo_metadata",
  "cmake",
  "const_format",
- "embuild 0.33.1",
+ "embuild",
  "envy",
  "libc",
  "regex",
@@ -664,6 +654,24 @@ name = "futures-sink"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e575fab7d1e0dcb8d0c7bcf9a63ee213816ab51902e6d244a95819acacf1d4f7"
+
+[[package]]
+name = "futures-task"
+version = "0.3.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f90f7dce0722e95104fcb095585910c0977252f286e354b5e3bd38902cd99988"
+
+[[package]]
+name = "futures-util"
+version = "0.3.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fa08315bb612088cc391249efdc3bc77536f16c91f6cf495e6fbe85b20a4a81"
+dependencies = [
+ "futures-core",
+ "futures-task",
+ "pin-project-lite",
+ "pin-utils",
+]
 
 [[package]]
 name = "getrandom"
@@ -969,6 +977,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 
 [[package]]
+name = "pin-project-lite"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b3cff922bd51709b605d9ead9aa71031d81447142d828eb4a6eba76fe619f9b"
+
+[[package]]
+name = "pin-utils"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
+
+[[package]]
 name = "prettyplease"
 version = "0.2.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1089,7 +1109,7 @@ dependencies = [
 name = "rust-remote-cw-keyer"
 version = "0.1.0"
 dependencies = [
- "embuild 0.32.0",
+ "embuild",
  "esp-idf-svc",
 ]
 

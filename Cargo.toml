@@ -14,7 +14,7 @@ readme = "README.md"
 esp-idf-svc = { version = "0.51.0", features = ["binstart"] }
 
 [build-dependencies]
-embuild = "0.32"
+embuild = "0.33"
 
 [profile.release]
 opt-level = "s"         # Optimize for size

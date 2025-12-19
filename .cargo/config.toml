@@ -18,7 +18,7 @@ rustflags = ["--cfg", "espidf_time64"]
 MCU = "esp32s3"
 # ESP-IDF is downloaded and managed by esp-idf-sys at build time
 # Specify version to download
-ESP_IDF_VERSION = { value = "v5.3", force = true }
+ESP_IDF_VERSION = "v5.3.3"
 #
 # To build for ESP32-P4 instead, use:
 # cargo build --target riscv32imafc-esp-espidf

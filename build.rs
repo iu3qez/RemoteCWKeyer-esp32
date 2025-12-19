@@ -3,9 +3,11 @@
 // Runs code generation from parameters.yaml before compilation.
 
 use std::process::Command;
-use std::path::Path;
 
 fn main() {
+    // ESP-IDF environment setup (MUST be first!)
+    embuild::espidf::sysenv::output();
+
     // Run Python code generator
     let status = Command::new("python3")
         .arg("scripts/gen_config.py")
@@ -21,6 +23,4 @@ fn main() {
 
     // Rebuild if codegen script changes
     println!("cargo:rerun-if-changed=scripts/gen_config.py");
-
-    // Note: ESP-IDF build configuration is handled by esp-idf-sys
 }
