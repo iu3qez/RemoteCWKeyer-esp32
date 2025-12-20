@@ -412,7 +412,7 @@ def generate_config_console_rs(params: List[Dict], output_dir: Path):
 // Console command parameter registry for set/show commands.
 
 use core::sync::atomic::Ordering;
-use super::config::CONFIG;
+use crate::config::CONFIG;
 
 /// Parameter value union for get/set operations
 #[derive(Debug, Clone, Copy)]
@@ -540,7 +540,7 @@ pub fn find_param(name: &str) -> Option<&'static ParamDescriptor> {
 }
 
 /// Find parameters matching pattern (prefix match on name or category)
-pub fn find_params_matching(pattern: &str) -> impl Iterator<Item = &'static ParamDescriptor> {
+pub fn find_params_matching(pattern: &str) -> impl Iterator<Item = &'static ParamDescriptor> + use<'_> {
     let pattern = pattern.trim_end_matches('*');
     PARAMS.iter().filter(move |p| {
         p.name.starts_with(pattern) || p.category.starts_with(pattern)
@@ -548,7 +548,7 @@ pub fn find_params_matching(pattern: &str) -> impl Iterator<Item = &'static Para
 }
 
 /// Get all parameter names for tab completion
-pub fn param_names() -> impl Iterator<Item = &'static str> {
+pub fn param_names() -> impl Iterator<Item = &'static str> + Clone {
     PARAMS.iter().map(|p| p.name)
 }
 """
