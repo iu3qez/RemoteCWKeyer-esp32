@@ -14,6 +14,7 @@
 #![cfg_attr(not(test), no_std)]
 
 pub mod config;
+pub mod console;
 pub mod sample;
 pub mod stream;
 pub mod consumer;
