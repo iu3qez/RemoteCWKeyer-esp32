@@ -342,6 +342,7 @@ Implement non-blocking logging per ARCHITECTURE.md Rule 11.
 - [ ] GPIO HAL not implemented (hal/gpio.rs is empty)
 - [ ] Audio HAL not implemented (hal/audio.rs is empty)
 - [ ] Remote key support deferred (future personality)
+- [ ] Log level filtering: requires adding AtomicU8 to LogStream and filtering in rt_log! macro (console `debug <level>` command placeholder)
 
 ---
 

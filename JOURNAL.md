@@ -177,6 +177,47 @@ L'output di embuild deve essere emesso PRIMA di qualsiasi altra operazione per g
 
 ---
 
+## 2025-12-20: Console Commands Implementation
+
+### Implementato
+
+Console seriale UART per configurazione e diagnostica:
+- Parser comandi con tokenizzazione
+- History ring buffer (4 entry, 64 byte ciascuna)
+- Tab completion con cycling
+- Line buffer con escape sequences (frecce, backspace, Ctrl+C/U)
+- Comandi: help, set, show, debug, save, reboot, factory-reset, flash, stats
+- Registry parametri generato da parameters.yaml
+
+### Limitazione Nota: Log Level Filtering
+
+Il comando `debug <level>` è un placeholder. Il sistema di logging custom (`rt_log!` macro, `LogStream`) **non supporta ancora il filtraggio per livello**.
+
+**Per implementare il filtraggio:**
+1. Aggiungere `AtomicU8` globale per il log level corrente in `log_globals.rs`
+2. Modificare le macro `rt_log!`, `rt_info!`, etc. per controllare il livello prima di pushare
+3. Implementare parsing dei livelli in `cmd_debug()`: none, error, warn, info, debug, trace
+
+**Esempio di modifica necessaria in `logging.rs`:**
+```rust
+// In log_globals.rs
+pub static LOG_LEVEL: AtomicU8 = AtomicU8::new(LogLevel::Info as u8);
+
+// In rt_log! macro
+#[macro_export]
+macro_rules! rt_log {
+    ($level:expr, $stream:expr, $timestamp:expr, $($arg:tt)*) => {{
+        if ($level as u8) <= $crate::log_globals::LOG_LEVEL.load(Ordering::Relaxed) {
+            // ... push to stream
+        }
+    }};
+}
+```
+
+Questo è un task separato perché richiede modifiche al sistema di logging core.
+
+---
+
 ## Checklist: Sintomi di Build System Rotto
 
 - [ ] Errore "Cannot locate argument '--ldproxy-linker'"
