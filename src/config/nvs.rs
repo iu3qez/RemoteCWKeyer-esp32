@@ -15,12 +15,19 @@
 //! 3. Add new fields to `load_v2_presets()` and `save_v2_presets()`
 //! 4. Update migration router in `migrate_presets()`
 
-use crate::generated::config::IAMBIC_PRESETS;
+use crate::config::IAMBIC_PRESETS;
 use core::cmp::Ordering;
 use core::sync::atomic::Ordering as AtomicOrdering;
 
 #[cfg(target_os = "espidf")]
 use esp_idf_svc::nvs::*;
+#[cfg(target_os = "espidf")]
+use esp_idf_svc::sys::EspError;
+
+#[cfg(target_os = "espidf")]
+extern crate alloc;
+#[cfg(target_os = "espidf")]
+use alloc::format;
 
 /// Current NVS schema version for iambic presets
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;
@@ -181,7 +188,7 @@ pub fn save_presets_to_nvs() -> Result<(), NvsError> {
 // ========================================
 
 #[cfg(target_os = "espidf")]
-fn load_v1_presets(storage: &EspNvs) -> Result<(), NvsError> {
+fn load_v1_presets(storage: &EspNvs<NvsDefault>) -> Result<(), NvsError> {
     // Load active index
     if let Some(active) = storage.get_u32(ACTIVE_INDEX_KEY)? {
         IAMBIC_PRESETS.activate(active);
@@ -228,7 +235,7 @@ fn load_v1_presets(storage: &EspNvs) -> Result<(), NvsError> {
 }
 
 #[cfg(target_os = "espidf")]
-fn save_v1_presets(storage: &mut EspNvs) -> Result<(), NvsError> {
+fn save_v1_presets(storage: &mut EspNvs<NvsDefault>) -> Result<(), NvsError> {
     for i in 0..10 {
         let preset = &IAMBIC_PRESETS.presets[i];
 
@@ -263,7 +270,7 @@ fn save_v1_presets(storage: &mut EspNvs) -> Result<(), NvsError> {
 
 #[cfg(target_os = "espidf")]
 fn migrate_presets(
-    storage: &mut EspNvs,
+    storage: &mut EspNvs<NvsDefault>,
     from_version: u32,
     to_version: u32,
 ) -> Result<(), NvsError> {

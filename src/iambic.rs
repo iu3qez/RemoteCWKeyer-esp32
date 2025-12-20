@@ -11,7 +11,7 @@
 use crate::sample::{GpioState, StreamSample};
 
 #[cfg(not(test))]
-use crate::generated::config::{IambicPreset, IambicMode as PresetIambicMode, MemoryMode};
+use crate::config::{IambicPreset, IambicMode as PresetIambicMode, MemoryMode};
 
 /// Iambic keyer mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
