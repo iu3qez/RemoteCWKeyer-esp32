@@ -177,17 +177,34 @@ impl Console {
     }
 
     fn handle_up(&mut self, out: &mut dyn Write) {
+        // Copy to local buffer to avoid borrow conflict (no heap allocation)
+        let mut buf = [0u8; 64];
+        let len;
         if let Some(prev) = self.history.get_prev() {
-            self.replace_line(prev, out);
+            len = prev.len().min(64);
+            buf[..len].copy_from_slice(&prev.as_bytes()[..len]);
+        } else {
+            return;
+        }
+        if let Ok(s) = core::str::from_utf8(&buf[..len]) {
+            self.replace_line(s, out);
         }
     }
 
     fn handle_down(&mut self, out: &mut dyn Write) {
+        // Copy to local buffer to avoid borrow conflict (no heap allocation)
+        let mut buf = [0u8; 64];
+        let len;
         if let Some(next) = self.history.get_next() {
-            self.replace_line(next, out);
+            len = next.len().min(64);
+            buf[..len].copy_from_slice(&next.as_bytes()[..len]);
         } else {
             // Clear to empty line
             self.replace_line("", out);
+            return;
+        }
+        if let Ok(s) = core::str::from_utf8(&buf[..len]) {
+            self.replace_line(s, out);
         }
     }
 

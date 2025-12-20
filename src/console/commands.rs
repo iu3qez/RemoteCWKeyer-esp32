@@ -39,7 +39,7 @@ pub fn execute(cmd: &ParsedCommand<'_>, out: &mut dyn Write) -> Result<(), Conso
 }
 
 /// Get all command names for completion
-pub fn command_names() -> impl Iterator<Item = &'static str> {
+pub fn command_names() -> impl Iterator<Item = &'static str> + Clone {
     COMMANDS.iter().map(|c| c.name)
 }
 
@@ -281,7 +281,7 @@ fn cmd_reboot(cmd: &ParsedCommand<'_>, _out: &mut dyn Write) -> Result<(), Conso
 
     #[cfg(all(not(test), target_arch = "xtensa"))]
     unsafe {
-        esp_idf_sys::esp_restart();
+        esp_idf_svc::sys::esp_restart();
     }
 
     Ok(())
@@ -299,13 +299,13 @@ fn cmd_factory_reset(cmd: &ParsedCommand<'_>, out: &mut dyn Write) -> Result<(),
         // Erase the default NVS partition
         // This de-initializes NVS if initialized, then erases all contents
         // See: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/storage/nvs_flash.html
-        let err = esp_idf_sys::nvs_flash_erase();
-        if err != esp_idf_sys::ESP_OK {
+        let err = esp_idf_svc::sys::nvs_flash_erase();
+        if err != esp_idf_svc::sys::ESP_OK {
             // Log error but continue with restart anyway
             // NVS will be re-initialized on next boot
         }
 
-        esp_idf_sys::esp_restart();
+        esp_idf_svc::sys::esp_restart();
     }
 
     Ok(())
@@ -329,7 +329,7 @@ fn cmd_flash(_cmd: &ParsedCommand<'_>, out: &mut dyn Write) -> Result<(), Consol
         const RTC_CNTL_FORCE_DOWNLOAD_BOOT: u32 = 1;
 
         core::ptr::write_volatile(RTC_CNTL_OPTION1_REG as *mut u32, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
-        esp_idf_sys::esp_restart();
+        esp_idf_svc::sys::esp_restart();
     }
 
     Ok(())
@@ -349,8 +349,8 @@ fn cmd_stats(cmd: &ParsedCommand<'_>, out: &mut dyn Write) -> Result<(), Console
 fn cmd_stats_overview(out: &mut dyn Write) -> Result<(), ConsoleError> {
     #[cfg(all(not(test), target_arch = "xtensa"))]
     {
-        let heap_free = unsafe { esp_idf_sys::esp_get_free_heap_size() };
-        let uptime_us = unsafe { esp_idf_sys::esp_timer_get_time() };
+        let heap_free = unsafe { esp_idf_svc::sys::esp_get_free_heap_size() };
+        let uptime_us = unsafe { esp_idf_svc::sys::esp_timer_get_time() };
         let uptime_s = uptime_us / 1_000_000;
 
         let _ = writeln!(out, "uptime: {}s", uptime_s);
@@ -388,8 +388,8 @@ fn cmd_stats_tasks(out: &mut dyn Write) -> Result<(), ConsoleError> {
 fn cmd_stats_heap(out: &mut dyn Write) -> Result<(), ConsoleError> {
     #[cfg(all(not(test), target_arch = "xtensa"))]
     {
-        let free = unsafe { esp_idf_sys::esp_get_free_heap_size() };
-        let min = unsafe { esp_idf_sys::esp_get_minimum_free_heap_size() };
+        let free = unsafe { esp_idf_svc::sys::esp_get_free_heap_size() };
+        let min = unsafe { esp_idf_svc::sys::esp_get_minimum_free_heap_size() };
 
         let _ = writeln!(out, "heap free: {} bytes", free);
         let _ = writeln!(out, "heap min:  {} bytes", min);
