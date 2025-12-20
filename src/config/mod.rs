@@ -21,8 +21,11 @@ mod generated_meta;
 #[path = "../generated/config_nvs.rs"]
 mod generated_nvs;
 
+// NVS persistence for iambic presets
+pub mod nvs;
+
 // Re-export public API
-pub use generated_config::{KeyerConfig, CONFIG};
+pub use generated_config::{KeyerConfig, CONFIG, IAMBIC_PRESETS, IambicPreset, IambicMode, MemoryMode, SqueezeMode};
 pub use generated_meta::{
     ParamMeta, WidgetType, RuntimeChangeMode,
     PARAM_METADATA,
