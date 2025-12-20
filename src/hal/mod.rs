@@ -5,3 +5,6 @@
 
 pub mod gpio;
 pub mod audio;
+pub mod es8311;
+
+pub use es8311::{Es8311, Es8311Config, Es8311Error, ES8311_ADDR};
