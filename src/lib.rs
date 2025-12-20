@@ -23,6 +23,7 @@ pub mod logging;
 pub mod fault;
 pub mod log_globals;
 pub mod uart_logger;
+pub mod audio;
 
 pub use config::CONFIG;
 pub use sample::{StreamSample, GpioState};
