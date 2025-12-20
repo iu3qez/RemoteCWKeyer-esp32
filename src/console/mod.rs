@@ -6,9 +6,11 @@
 pub mod completion;
 pub mod error;
 pub mod history;
+pub mod line_buffer;
 pub mod parser;
 
 pub use completion::Completer;
 pub use error::ConsoleError;
 pub use history::History;
+pub use line_buffer::LineBuffer;
 pub use parser::{parse_line, ParsedCommand};
