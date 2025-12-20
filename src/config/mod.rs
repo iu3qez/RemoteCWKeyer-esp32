@@ -21,6 +21,9 @@ mod generated_meta;
 #[path = "../generated/config_nvs.rs"]
 mod generated_nvs;
 
+#[path = "../generated/config_console.rs"]
+mod generated_console;
+
 // NVS persistence for iambic presets
 pub mod nvs;
 
@@ -37,4 +40,9 @@ pub use generated_nvs::{
     load_param, save_param,
     NvsError, nvs_keys,
     NVS_NAMESPACE,
+};
+pub use generated_console::{
+    ParamValue, ParamType, ConsoleError as ParamError,
+    ParamDescriptor, PARAMS, CATEGORIES,
+    find_param, find_params_matching, param_names,
 };
