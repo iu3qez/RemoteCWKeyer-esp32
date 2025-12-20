@@ -54,6 +54,9 @@ def main():
     print("Generating config_nvs.rs...")
     generate_config_nvs_rs(params, output_dir)
 
+    print("Generating config_console.rs...")
+    generate_config_console_rs(params, output_dir)
+
     print(f"✓ Code generation complete: {output_dir}")
 
 def generate_config_rs(params: List[Dict], output_dir: Path, presets_schema: Dict = None):
@@ -396,6 +399,191 @@ def get_field_comment(param: Dict) -> str:
     if 'range' in param:
         range_str = f" (range: {param['range'][0]}-{param['range'][1]})"
     return f"{label}{range_str}"
+
+
+def generate_config_console_rs(params: List[Dict], output_dir: Path):
+    """Generate config_console.rs - Console parameter registry"""
+
+    # Extract unique categories
+    categories = sorted(set(p['category'] for p in params))
+
+    code = """// Auto-generated from parameters.yaml - DO NOT EDIT MANUALLY
+//
+// Console command parameter registry for set/show commands.
+
+use core::sync::atomic::Ordering;
+use super::config::CONFIG;
+
+/// Parameter value union for get/set operations
+#[derive(Debug, Clone, Copy)]
+pub enum ParamValue {
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    Bool(bool),
+}
+
+impl ParamValue {
+    pub fn as_u8(&self) -> Option<u8> {
+        match self { ParamValue::U8(v) => Some(*v), _ => None }
+    }
+    pub fn as_u16(&self) -> Option<u16> {
+        match self { ParamValue::U16(v) => Some(*v), _ => None }
+    }
+    pub fn as_u32(&self) -> Option<u32> {
+        match self { ParamValue::U32(v) => Some(*v), _ => None }
+    }
+    pub fn as_bool(&self) -> Option<bool> {
+        match self { ParamValue::Bool(v) => Some(*v), _ => None }
+    }
+}
+
+/// Parameter type with validation info
+#[derive(Debug, Clone, Copy)]
+pub enum ParamType {
+    U8 { min: u8, max: u8 },
+    U16 { min: u16, max: u16 },
+    U32 { min: u32, max: u32 },
+    Bool,
+    Enum { max: u8 },
+}
+
+/// Console error codes
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConsoleError {
+    E01UnknownCommand,
+    E02InvalidValue,
+    E03MissingArg,
+    E04OutOfRange,
+    E05RequiresConfirm,
+    E06NvsError,
+}
+
+impl ConsoleError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            ConsoleError::E01UnknownCommand => "E01",
+            ConsoleError::E02InvalidValue => "E02",
+            ConsoleError::E03MissingArg => "E03",
+            ConsoleError::E04OutOfRange => "E04",
+            ConsoleError::E05RequiresConfirm => "E05",
+            ConsoleError::E06NvsError => "E06",
+        }
+    }
+
+    pub fn message(&self) -> &'static str {
+        match self {
+            ConsoleError::E01UnknownCommand => "unknown command",
+            ConsoleError::E02InvalidValue => "invalid value",
+            ConsoleError::E03MissingArg => "missing argument",
+            ConsoleError::E04OutOfRange => "out of range",
+            ConsoleError::E05RequiresConfirm => "requires 'confirm'",
+            ConsoleError::E06NvsError => "NVS error",
+        }
+    }
+}
+
+/// Single parameter descriptor
+pub struct ParamDescriptor {
+    pub name: &'static str,
+    pub category: &'static str,
+    pub param_type: ParamType,
+    pub get_fn: fn() -> ParamValue,
+    pub set_fn: fn(ParamValue) -> Result<(), ConsoleError>,
+}
+
+"""
+
+    # Generate parameter descriptors
+    code += "/// All parameters for console access\n"
+    code += "pub static PARAMS: &[ParamDescriptor] = &[\n"
+
+    for p in params:
+        name = p['name']
+        category = p['category']
+        ptype = p['type']
+
+        # Determine ParamType
+        if ptype == 'bool':
+            param_type = "ParamType::Bool"
+        elif ptype == 'enum':
+            max_val = len(p['enum_values']) - 1
+            param_type = f"ParamType::Enum {{ max: {max_val} }}"
+        else:
+            min_val, max_val = p['range']
+            param_type = f"ParamType::{ptype.upper()} {{ min: {min_val}, max: {max_val} }}"
+
+        # Determine atomic type for get/set
+        if ptype == 'u8' or ptype == 'enum':
+            atomic_load = f"CONFIG.{name}.load(Ordering::Relaxed)"
+            get_variant = "U8"
+            set_variant = "as_u8"
+        elif ptype == 'u16':
+            atomic_load = f"CONFIG.{name}.load(Ordering::Relaxed)"
+            get_variant = "U16"
+            set_variant = "as_u16"
+        elif ptype == 'u32':
+            atomic_load = f"CONFIG.{name}.load(Ordering::Relaxed)"
+            get_variant = "U32"
+            set_variant = "as_u32"
+        elif ptype == 'bool':
+            atomic_load = f"CONFIG.{name}.load(Ordering::Relaxed)"
+            get_variant = "Bool"
+            set_variant = "as_bool"
+        else:
+            atomic_load = f"CONFIG.{name}.load(Ordering::Relaxed)"
+            get_variant = "U32"
+            set_variant = "as_u32"
+
+        code += f"""    ParamDescriptor {{
+        name: "{name}",
+        category: "{category}",
+        param_type: {param_type},
+        get_fn: || ParamValue::{get_variant}({atomic_load}),
+        set_fn: |v| {{
+            if let Some(val) = v.{set_variant}() {{
+                CONFIG.{name}.store(val, Ordering::Relaxed);
+                CONFIG.bump_generation();
+                Ok(())
+            }} else {{
+                Err(ConsoleError::E02InvalidValue)
+            }}
+        }},
+    }},
+"""
+
+    code += "];\n\n"
+
+    # Generate categories array
+    code += "/// All parameter categories\n"
+    code += "pub static CATEGORIES: &[&str] = &[\n"
+    for cat in categories:
+        code += f'    "{cat}",\n'
+    code += "];\n\n"
+
+    # Helper functions
+    code += """/// Find parameter by name
+pub fn find_param(name: &str) -> Option<&'static ParamDescriptor> {
+    PARAMS.iter().find(|p| p.name == name)
+}
+
+/// Find parameters matching pattern (prefix match on name or category)
+pub fn find_params_matching(pattern: &str) -> impl Iterator<Item = &'static ParamDescriptor> {
+    let pattern = pattern.trim_end_matches('*');
+    PARAMS.iter().filter(move |p| {
+        p.name.starts_with(pattern) || p.category.starts_with(pattern)
+    })
+}
+
+/// Get all parameter names for tab completion
+pub fn param_names() -> impl Iterator<Item = &'static str> {
+    PARAMS.iter().map(|p| p.name)
+}
+"""
+
+    with open(output_dir / "config_console.rs", "w") as f:
+        f.write(code)
+
 
 if __name__ == '__main__':
     main()
