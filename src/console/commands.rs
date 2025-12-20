@@ -267,15 +267,26 @@ fn cmd_factory_reset(cmd: &ParsedCommand<'_>, _out: &mut dyn Write) -> Result<()
 }
 
 fn cmd_flash(_cmd: &ParsedCommand<'_>, out: &mut dyn Write) -> Result<(), ConsoleError> {
+    let _ = writeln!(out, "Entering download mode...");
+
     #[cfg(all(not(test), target_arch = "xtensa"))]
     unsafe {
-        // Enter ROM bootloader for esptool flashing
+        // ESP32-S3 supports forcing download boot via RTC register
+        // REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT)
+        //
+        // RTC_CNTL_OPTION1_REG = 0x6000_8128 (for S3)
+        // RTC_CNTL_FORCE_DOWNLOAD_BOOT = BIT(0)
+        //
+        // Note: May have issues with USB/TinyUSB on S3.
+        // See: https://docs.espressif.com/projects/esptool/en/latest/esp32s3/advanced-topics/boot-mode-selection.html
+
+        const RTC_CNTL_OPTION1_REG: u32 = 0x6000_8128;
+        const RTC_CNTL_FORCE_DOWNLOAD_BOOT: u32 = 1;
+
+        core::ptr::write_volatile(RTC_CNTL_OPTION1_REG as *mut u32, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
         esp_idf_sys::esp_restart();
-        // Note: For true bootloader mode, need to set strapping pins
-        // This is a simplified version that just restarts
     }
 
-    let _ = writeln!(out, "flash: restarting...");
     Ok(())
 }
 
