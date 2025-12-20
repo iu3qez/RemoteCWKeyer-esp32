@@ -7,5 +7,7 @@
 //! - ES8311 codec via I2S @ 8 kHz
 
 pub mod lut;
+pub mod sidetone;
 
 pub use lut::{SINE_LUT, LUT_SIZE};
+pub use sidetone::{SidetoneGen, FadeState};
