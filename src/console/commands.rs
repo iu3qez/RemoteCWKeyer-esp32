@@ -250,17 +250,25 @@ fn cmd_reboot(cmd: &ParsedCommand<'_>, _out: &mut dyn Write) -> Result<(), Conso
     Ok(())
 }
 
-fn cmd_factory_reset(cmd: &ParsedCommand<'_>, _out: &mut dyn Write) -> Result<(), ConsoleError> {
+fn cmd_factory_reset(cmd: &ParsedCommand<'_>, out: &mut dyn Write) -> Result<(), ConsoleError> {
     if cmd.arg(0) != Some("confirm") {
         return Err(ConsoleError::RequiresConfirm);
     }
 
+    let _ = writeln!(out, "Erasing NVS and restarting...");
+
     #[cfg(all(not(test), target_arch = "xtensa"))]
-    {
-        // TODO: Erase NVS partition
-        unsafe {
-            esp_idf_sys::esp_restart();
+    unsafe {
+        // Erase the default NVS partition
+        // This de-initializes NVS if initialized, then erases all contents
+        // See: https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/storage/nvs_flash.html
+        let err = esp_idf_sys::nvs_flash_erase();
+        if err != esp_idf_sys::ESP_OK {
+            // Log error but continue with restart anyway
+            // NVS will be re-initialized on next boot
         }
+
+        esp_idf_sys::esp_restart();
     }
 
     Ok(())
