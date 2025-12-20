@@ -215,9 +215,46 @@ impl core::fmt::Display for FormatBuffer {
     }
 }
 
-fn cmd_debug(_cmd: &ParsedCommand<'_>, out: &mut dyn Write) -> Result<(), ConsoleError> {
-    // TODO: Implement log level control
-    let _ = writeln!(out, "debug: not yet implemented");
+fn cmd_debug(cmd: &ParsedCommand<'_>, out: &mut dyn Write) -> Result<(), ConsoleError> {
+    match cmd.arg(0) {
+        Some("info") => cmd_debug_info(out),
+        Some(_level) => {
+            // TODO: Log level filtering requires adding AtomicU8 to LogStream
+            // and filtering in rt_log! macro. For now, just acknowledge.
+            let _ = writeln!(out, "log level control not yet implemented");
+            let _ = writeln!(out, "use 'debug info' to view log stream stats");
+            Ok(())
+        }
+        None => {
+            let _ = writeln!(out, "usage: debug info | debug <level>");
+            let _ = writeln!(out, "  debug info     - show log stream statistics");
+            let _ = writeln!(out, "  debug <level>  - set log level (not yet implemented)");
+            let _ = writeln!(out, "levels: none, error, warn, info, debug, trace");
+            Ok(())
+        }
+    }
+}
+
+fn cmd_debug_info(out: &mut dyn Write) -> Result<(), ConsoleError> {
+    #[cfg(not(test))]
+    {
+        use crate::log_globals::{RT_LOG_STREAM, BG_LOG_STREAM};
+
+        let rt_pending = RT_LOG_STREAM.pending();
+        let rt_dropped = RT_LOG_STREAM.dropped();
+        let bg_pending = BG_LOG_STREAM.pending();
+        let bg_dropped = BG_LOG_STREAM.dropped();
+
+        let _ = writeln!(out, "RT Log:  {}/256 pending, {} dropped", rt_pending, rt_dropped);
+        let _ = writeln!(out, "BG Log:  {}/256 pending, {} dropped", bg_pending, bg_dropped);
+    }
+
+    #[cfg(test)]
+    {
+        let _ = writeln!(out, "RT Log:  0/256 pending, 0 dropped");
+        let _ = writeln!(out, "BG Log:  0/256 pending, 0 dropped");
+    }
+
     Ok(())
 }
 
