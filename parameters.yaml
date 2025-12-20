@@ -19,8 +19,8 @@ parameters:
   # ========================================
   - name: wpm
     type: u16
-    default: 20
-    range: [5, 60]
+    default: 25
+    range: [5, 100]
     nvs_key: "wpm"
     runtime_change: idle_only
     category: keyer
@@ -126,8 +126,8 @@ parameters:
   # ========================================
   - name: sidetone_freq_hz
     type: u16
-    default: 700
-    range: [400, 1200]
+    default: 600
+    range: [400, 800]
     nvs_key: "st_freq"
     runtime_change: immediate
     category: audio
@@ -151,8 +151,8 @@ parameters:
 
   - name: sidetone_volume
     type: u8
-    default: 80
-    range: [0, 100]
+    default: 70
+    range: [1, 100]
     nvs_key: "st_vol"
     runtime_change: immediate
     category: audio
@@ -176,7 +176,7 @@ parameters:
   - name: fade_duration_ms
     type: u8
     default: 5
-    range: [4, 10]
+    range: [1, 10]
     nvs_key: "fade_ms"
     runtime_change: reboot
     category: audio
@@ -391,6 +391,220 @@ parameters:
         step: 10
         tick_interval: 25
       advanced: false
+
+# ========================================
+# Iambic Preset System
+# ========================================
+#
+# NVS Schema Version History:
+#
+# Version 1 (current):
+#   - Initial implementation
+#   - Fields: speed_wpm, iambic_mode, memory_mode, squeeze_mode,
+#            mem_block_start_pct, mem_block_end_pct
+#
+# Version 2 (future example):
+#   - Add sidetone_freq per preset
+#   - Migration: v1 → v2 adds sidetone_freq = 700Hz default
+#
+# IMPORTANT: When adding fields, increment schema_version and implement
+#           migration function in config_nvs.rs
+
+iambic_presets:
+  schema_version: 1  # Current NVS schema version
+
+  # Number of preset slots (compile-time constant)
+  count: 10
+
+  # Currently active preset index
+  active_index:
+    type: u32
+    default: 0
+    range: [0, 9]
+    nvs_key: "preset_idx"
+    runtime_change: idle_only
+    gui:
+      label_short:
+        en: "Preset"
+        it: "Preset"
+      label_long:
+        en: "Active Preset"
+        it: "Preset Attivo"
+      description:
+        en: "Currently selected preset (0-9)"
+        it: "Preset attualmente selezionato (0-9)"
+      widget: dropdown
+      advanced: false
+
+  # Template for preset structure (replicated 10x by codegen)
+  preset_template:
+    name:
+      type: string
+      max_length: 32
+      default: ""
+      gui:
+        label_short:
+          en: "Name"
+          it: "Nome"
+        label_long:
+          en: "Preset Name"
+          it: "Nome Preset"
+        description:
+          en: "User-defined preset name (empty = unused slot)"
+          it: "Nome preset definito dall'utente (vuoto = slot inutilizzato)"
+        widget: textbox
+        widget_config:
+          max_length: 32
+        advanced: false
+
+    speed_wpm:
+      type: u32
+      default: 25
+      range: [5, 100]
+      gui:
+        label_short:
+          en: "WPM"
+          it: "PPM"
+        label_long:
+          en: "Keying Speed (WPM)"
+          it: "Velocità Manipolazione (PPM)"
+        description:
+          en: "Words per minute (PARIS standard: 50 dit units)"
+          it: "Parole per minuto (standard PARIS: 50 unità dit)"
+        widget: slider
+        widget_config:
+          step: 1
+          tick_interval: 5
+        advanced: false
+
+    iambic_mode:
+      type: enum
+      enum_values: [MODE_A, MODE_B]
+      default: MODE_B
+      gui:
+        label_short:
+          en: "Mode"
+          it: "Modalità"
+        label_long:
+          en: "Iambic Mode"
+          it: "Modalità Iambica"
+        description:
+          en: "Mode A: no squeeze, Mode B: squeeze keying"
+          it: "Modo A: senza squeeze, Modo B: con squeeze"
+        widget: dropdown
+        widget_config:
+          options:
+            - value: MODE_A
+              label:
+                en: "Mode A (no squeeze)"
+                it: "Modo A (senza squeeze)"
+            - value: MODE_B
+              label:
+                en: "Mode B (squeeze)"
+                it: "Modo B (con squeeze)"
+        advanced: false
+
+    memory_mode:
+      type: enum
+      enum_values: [NONE, DOT_ONLY, DAH_ONLY, DOT_AND_DAH]
+      default: DOT_AND_DAH
+      gui:
+        label_short:
+          en: "Memory"
+          it: "Memoria"
+        label_long:
+          en: "Memory Mode"
+          it: "Modalità Memoria"
+        description:
+          en: "Which paddles are remembered during element transmission"
+          it: "Quali paddle sono memorizzati durante la trasmissione dell'elemento"
+        widget: dropdown
+        widget_config:
+          options:
+            - value: NONE
+              label:
+                en: "No memory"
+                it: "Nessuna memoria"
+            - value: DOT_ONLY
+              label:
+                en: "Remember dot only"
+                it: "Solo memoria dot"
+            - value: DAH_ONLY
+              label:
+                en: "Remember dah only"
+                it: "Solo memoria dah"
+            - value: DOT_AND_DAH
+              label:
+                en: "Remember both"
+                it: "Memoria entrambi"
+        advanced: false
+
+    squeeze_mode:
+      type: enum
+      enum_values: [LATCH_OFF, LATCH_ON]
+      default: LATCH_ON
+      gui:
+        label_short:
+          en: "Squeeze"
+          it: "Squeeze"
+        label_long:
+          en: "Squeeze Timing"
+          it: "Temporizzazione Squeeze"
+        description:
+          en: "When to sample paddle state for squeeze detection"
+          it: "Quando campionare lo stato dei paddle per rilevare lo squeeze"
+        widget: dropdown
+        widget_config:
+          options:
+            - value: LATCH_OFF
+              label:
+                en: "Live (immediate response)"
+                it: "Live (risposta immediata)"
+            - value: LATCH_ON
+              label:
+                en: "Snapshot (latch at start)"
+                it: "Snapshot (latch all'inizio)"
+        advanced: true
+
+    mem_block_start_pct:
+      type: f32
+      default: 60.0
+      range: [0.0, 100.0]
+      gui:
+        label_short:
+          en: "Mem Start"
+          it: "Inizio Mem"
+        label_long:
+          en: "Memory Window Start (%)"
+          it: "Inizio Finestra Memoria (%)"
+        description:
+          en: "Memory window start - inputs before this are ignored (U%)"
+          it: "Inizio finestra memoria - input prima sono ignorati (U%)"
+        widget: slider
+        widget_config:
+          step: 1.0
+          tick_interval: 10.0
+        advanced: true
+
+    mem_block_end_pct:
+      type: f32
+      default: 99.0
+      range: [0.0, 100.0]
+      gui:
+        label_short:
+          en: "Mem End"
+          it: "Fine Mem"
+        label_long:
+          en: "Memory Window End (%)"
+          it: "Fine Finestra Memoria (%)"
+        description:
+          en: "Memory window end - inputs after this are ignored (D%)"
+          it: "Fine finestra memoria - input dopo sono ignorati (D%)"
+        widget: slider
+        widget_config:
+          step: 1.0
+          tick_interval: 10.0
+        advanced: true
 
 # ========================================
 # Widget Types Reference

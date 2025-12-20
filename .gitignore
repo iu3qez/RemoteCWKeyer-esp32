@@ -26,3 +26,4 @@ target
 src/generated/*.rs
 .devcontainer/Dockerfile.old
 .cargo/config.toml.old
+scripts/__pycache__/

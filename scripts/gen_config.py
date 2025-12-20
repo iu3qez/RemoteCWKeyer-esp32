@@ -17,6 +17,7 @@ import yaml
 import sys
 from pathlib import Path
 from typing import Dict, List, Any
+from gen_preset_config import generate_preset_code
 
 def main():
     """Main entry point"""
@@ -39,8 +40,13 @@ def main():
     params = schema['parameters']
     print(f"Found {len(params)} parameters")
 
+    # Check for iambic presets
+    presets_schema = schema.get('iambic_presets')
+    if presets_schema:
+        print(f"Found iambic_presets with {presets_schema['count']} slots")
+
     print("Generating config.rs...")
-    generate_config_rs(params, output_dir)
+    generate_config_rs(params, output_dir, presets_schema)
 
     print("Generating config_meta.rs...")
     generate_config_meta_rs(params, output_dir)
@@ -50,7 +56,7 @@ def main():
 
     print(f"✓ Code generation complete: {output_dir}")
 
-def generate_config_rs(params: List[Dict], output_dir: Path):
+def generate_config_rs(params: List[Dict], output_dir: Path, presets_schema: Dict = None):
     """Generate config.rs - Atomic configuration struct"""
 
     code = """// Auto-generated from parameters.yaml - DO NOT EDIT MANUALLY
@@ -115,6 +121,10 @@ impl KeyerConfig {
 /// Static global configuration instance
 pub static CONFIG: KeyerConfig = KeyerConfig::new();
 """
+
+    # Add iambic presets if schema provided
+    if presets_schema:
+        code += generate_preset_code(presets_schema)
 
     with open(output_dir / "config.rs", "w") as f:
         f.write(code)
