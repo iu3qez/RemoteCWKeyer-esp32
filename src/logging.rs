@@ -280,6 +280,52 @@ macro_rules! rt_error {
     };
 }
 
+/// RT-safe debug log.
+#[macro_export]
+macro_rules! rt_debug {
+    ($stream:expr, $timestamp:expr, $($arg:tt)*) => {
+        $crate::rt_log!($crate::logging::LogLevel::Debug, $stream, $timestamp, $($arg)*)
+    };
+}
+
+/// RT-safe trace log (maximum verbosity).
+#[macro_export]
+macro_rules! rt_trace {
+    ($stream:expr, $timestamp:expr, $($arg:tt)*) => {
+        $crate::rt_log!($crate::logging::LogLevel::Trace, $stream, $timestamp, $($arg)*)
+    };
+}
+
+/// Get appropriate log stream for current core.
+///
+/// - Core 0 → RT_LOG_STREAM (RT thread)
+/// - Core 1 → BG_LOG_STREAM (best-effort threads)
+///
+/// This helper allows automatic stream selection in multi-core environments.
+/// Cost: ~10ns for xTaskGetCurrentTaskHandle() + xTaskGetCoreID() call.
+#[cfg(not(test))]
+#[inline]
+pub fn current_log_stream() -> &'static LogStream {
+    // SAFETY: xTaskGetCoreID is always safe to call
+    unsafe {
+        let task = esp_idf_svc::sys::xTaskGetCurrentTaskHandle();
+        if esp_idf_svc::sys::xTaskGetCoreID(task) == 0 {
+            &crate::RT_LOG_STREAM
+        } else {
+            &crate::BG_LOG_STREAM
+        }
+    }
+}
+
+/// Test version always returns a dummy stream
+#[cfg(test)]
+#[inline]
+pub fn current_log_stream() -> &'static LogStream {
+    // For tests, use a static dummy stream
+    static TEST_LOG_STREAM: LogStream = LogStream::new();
+    &TEST_LOG_STREAM
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -332,5 +378,75 @@ mod tests {
         assert!(LogLevel::Warn < LogLevel::Info);
         assert!(LogLevel::Info < LogLevel::Debug);
         assert!(LogLevel::Debug < LogLevel::Trace);
+    }
+
+    #[test]
+    fn test_spmc_multiple_producers() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let stream = Arc::new(LogStream::<64>::new());
+        let mut handles = vec![];
+
+        // Spawn 4 producer threads
+        for i in 0..4 {
+            let stream = Arc::clone(&stream);
+            let handle = thread::spawn(move || {
+                for j in 0..10 {
+                    let msg = format!("Thread {} msg {}", i, j);
+                    stream.push(j as i64, LogLevel::Info, msg.as_bytes());
+                }
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all producers
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // Should have 40 messages (4 threads × 10 messages)
+        let mut count = 0;
+        while stream.drain().is_some() {
+            count += 1;
+        }
+        assert_eq!(count, 40, "All messages should be present");
+    }
+
+    #[test]
+    fn test_spmc_concurrent_stress() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let stream = Arc::new(LogStream::<256>::new());
+        let mut handles = vec![];
+
+        // Spawn 8 threads, each pushing 100 messages
+        for i in 0..8 {
+            let stream = Arc::clone(&stream);
+            let handle = thread::spawn(move || {
+                for j in 0..100 {
+                    let msg = format!("T{}-{}", i, j);
+                    let _ = stream.push((i * 100 + j) as i64, LogLevel::Info, msg.as_bytes());
+                }
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all producers
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // Count total messages received
+        let mut count = 0;
+        while stream.drain().is_some() {
+            count += 1;
+        }
+
+        // Should have most messages (some may be dropped if buffer overflow)
+        // 8 threads × 100 = 800 total, buffer is 256
+        assert!(count > 0, "Should have received some messages");
+        assert!(count <= 800, "Should not exceed total messages sent");
     }
 }

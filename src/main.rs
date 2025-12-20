@@ -18,7 +18,7 @@ use rust_remote_cw_keyer::{
     consumer::HardRtConsumer,
     iambic::{IambicProcessor, IambicConfig},
     sample::{GpioState, StreamSample},
-    logging::LogStream,
+    RT_LOG_STREAM,
 };
 
 // Wrapper to make UnsafeCell Sync for static buffers.
@@ -51,13 +51,6 @@ static STREAM_BUFFER: [SyncCell<StreamSample>; STREAM_BUFFER_SIZE] = {
 // Note: KeyingStream must be initialized at runtime with the buffer reference
 static mut KEYING_STREAM: Option<KeyingStream> = None;
 static FAULT_STATE: FaultState = FaultState::new();
-
-// Dual log streams (ARCHITECTURE.md §11.1.4: single producer per core)
-/// RT log stream for Core 0 (RT thread only)
-pub static RT_LOG_STREAM: LogStream = LogStream::new();
-
-/// Background log stream for Core 1 (best-effort threads)
-pub static BG_LOG_STREAM: LogStream = LogStream::new();
 
 /// Initialize the keying stream (call once at startup)
 fn init_keying_stream() -> &'static KeyingStream {
@@ -145,7 +138,7 @@ fn rt_task() {
                 set_audio(false);
                 set_tx(false);
                 // RT-safe log
-                rust_remote_cw_keyer::rt_error!(LOG_STREAM, now_us, "FAULT: {:?}", fault);
+                rust_remote_cw_keyer::rt_error!(&RT_LOG_STREAM, now_us, "FAULT: {:?}", fault);
             }
         }
 

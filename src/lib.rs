@@ -20,6 +20,8 @@ pub mod consumer;
 pub mod iambic;
 pub mod logging;
 pub mod fault;
+pub mod log_globals;
+pub mod uart_logger;
 
 pub use config::CONFIG;
 pub use sample::{StreamSample, GpioState};
@@ -27,3 +29,4 @@ pub use stream::{KeyingStream, StreamConsumer};
 pub use consumer::{HardRtConsumer, BestEffortConsumer};
 pub use fault::{FaultState, FaultCode};
 pub use iambic::IambicProcessor;
+pub use log_globals::{RT_LOG_STREAM, BG_LOG_STREAM};

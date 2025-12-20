@@ -10,6 +10,9 @@
 
 use crate::sample::{GpioState, StreamSample};
 
+#[cfg(not(test))]
+use crate::generated::config::{IambicPreset, IambicMode as PresetIambicMode, MemoryMode};
+
 /// Iambic keyer mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IambicMode {
@@ -85,6 +88,23 @@ impl IambicConfig {
         Self {
             wpm,
             ..Default::default()
+        }
+    }
+
+    /// Create config from iambic preset (non-test builds only)
+    #[cfg(not(test))]
+    pub fn from_preset(preset: &IambicPreset) -> Self {
+        let preset_mode = preset.get_iambic_mode();
+        let memory_mode = preset.get_memory_mode();
+
+        Self {
+            wpm: preset.get_speed_wpm(),
+            mode: match preset_mode {
+                PresetIambicMode::ModeA => IambicMode::A,
+                PresetIambicMode::ModeB => IambicMode::B,
+            },
+            dit_memory: matches!(memory_mode, MemoryMode::DotOnly | MemoryMode::DotAndDah),
+            dah_memory: matches!(memory_mode, MemoryMode::DahOnly | MemoryMode::DotAndDah),
         }
     }
 
