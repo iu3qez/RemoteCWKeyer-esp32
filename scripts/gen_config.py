@@ -448,39 +448,11 @@ pub enum ParamType {
     Enum { max: u8 },
 }
 
-/// Console error codes
+/// Parameter set error (used by generated set_fn)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConsoleError {
-    E01UnknownCommand,
-    E02InvalidValue,
-    E03MissingArg,
-    E04OutOfRange,
-    E05RequiresConfirm,
-    E06NvsError,
-}
-
-impl ConsoleError {
-    pub fn code(&self) -> &'static str {
-        match self {
-            ConsoleError::E01UnknownCommand => "E01",
-            ConsoleError::E02InvalidValue => "E02",
-            ConsoleError::E03MissingArg => "E03",
-            ConsoleError::E04OutOfRange => "E04",
-            ConsoleError::E05RequiresConfirm => "E05",
-            ConsoleError::E06NvsError => "E06",
-        }
-    }
-
-    pub fn message(&self) -> &'static str {
-        match self {
-            ConsoleError::E01UnknownCommand => "unknown command",
-            ConsoleError::E02InvalidValue => "invalid value",
-            ConsoleError::E03MissingArg => "missing argument",
-            ConsoleError::E04OutOfRange => "out of range",
-            ConsoleError::E05RequiresConfirm => "requires 'confirm'",
-            ConsoleError::E06NvsError => "NVS error",
-        }
-    }
+pub enum ParamSetError {
+    /// Invalid value type for this parameter
+    InvalidValue,
 }
 
 /// Single parameter descriptor
@@ -489,7 +461,7 @@ pub struct ParamDescriptor {
     pub category: &'static str,
     pub param_type: ParamType,
     pub get_fn: fn() -> ParamValue,
-    pub set_fn: fn(ParamValue) -> Result<(), ConsoleError>,
+    pub set_fn: fn(ParamValue) -> Result<(), ParamSetError>,
 }
 
 """
@@ -546,7 +518,7 @@ pub struct ParamDescriptor {
                 CONFIG.bump_generation();
                 Ok(())
             }} else {{
-                Err(ConsoleError::E02InvalidValue)
+                Err(ParamSetError::InvalidValue)
             }}
         }},
     }},

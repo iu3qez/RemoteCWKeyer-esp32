@@ -6,8 +6,8 @@ use super::{
     parse_line, execute, command_names, ConsoleError,
 };
 
-/// Version string (set by build.rs)
-pub const VERSION: &str = concat!("RustKeyer v", env!("CARGO_PKG_VERSION"));
+/// Version string (set by build.rs, includes git hash)
+pub const VERSION: &str = env!("VERSION_STRING");
 
 /// Console state machine
 pub struct Console {
