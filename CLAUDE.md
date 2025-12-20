@@ -246,6 +246,33 @@ When committing changes that touch the build system or critical configuration:
 - Explain why changes comply with [ARCHITECTURE.md](ARCHITECTURE.md)
 - Include test results for timing-critical changes
 
+## RT-Safe Logging
+
+The project uses a custom non-blocking logging system for the RT path.
+
+### Quick Reference
+
+```rust
+// Get timestamp
+let now = unsafe { esp_idf_sys::esp_timer_get_time() };
+
+// Log at different levels
+rt_error!(&RT_LOG_STREAM, now, "FAULT: {:?}", code);   // Critical errors
+rt_warn!(&RT_LOG_STREAM, now, "Lag: {} samples", n);    // Warnings
+rt_info!(&RT_LOG_STREAM, now, "Key down @ {}", time);   // Normal events
+rt_debug!(&RT_LOG_STREAM, now, "State: {:?}", state);   // Debug info
+rt_trace!(&RT_LOG_STREAM, now, "GPIO: {:08b}", bits);   // Verbose trace
+```
+
+### Rules
+
+- **NEVER** use `println!`, `ESP_LOGx`, or `log::` in RT path
+- **ALWAYS** use `rt_log!()` macros instead
+- Messages > 120 chars are truncated
+- Dropped messages are reported automatically
+
+See [docs/developer-guide/logging.md](docs/developer-guide/logging.md) for complete guide.
+
 ## Code Review Checklist
 
 Every change must verify (from [ARCHITECTURE.md](ARCHITECTURE.md)):
