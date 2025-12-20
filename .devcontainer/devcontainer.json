@@ -10,7 +10,9 @@
 	},
 	"runArgs": [
 		"--mount",
-		"type=bind,source=/run/udev,target=/run/udev,readonly"
+		"type=bind,source=/run/udev,target=/run/udev,readonly",
+		"--device-cgroup-rule=c 188:* rmw",
+		"--privileged"
 	],
 	"customizations": {
 		"vscode": {
@@ -53,5 +55,6 @@
 		"source=rust-remote-cw-keyer-target-cache,target=/workspaces/RustRemoteCWKeyer/target,type=volume"
 	],
 	"postCreateCommand": "sudo chown -R vscode:vscode /workspaces/RustRemoteCWKeyer/.embuild /workspaces/RustRemoteCWKeyer/target || true",
+	"postStartCommand": "sudo usermod -a -G dialout vscode 2>/dev/null || true",
 	"remoteUser": "vscode"
 }
