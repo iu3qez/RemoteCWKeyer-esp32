@@ -8,6 +8,8 @@
 
 pub mod lut;
 pub mod sidetone;
+pub mod buffer;
 
 pub use lut::{SINE_LUT, LUT_SIZE};
 pub use sidetone::{SidetoneGen, FadeState};
+pub use buffer::AudioRingBuffer;
