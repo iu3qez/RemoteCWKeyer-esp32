@@ -2,26 +2,29 @@
 # Default target for ESP32-S3
 target = "xtensa-esp32s3-espidf"
 
-# ESP32-S3 (Xtensa architecture)
+# ESP32-S3 (Xtensa architecture) - DEFAULT
 [target.xtensa-esp32s3-espidf]
 linker = "ldproxy"
 runner = "espflash flash --monitor"
-rustflags = ["--cfg", "espidf_time64"]
+
+[target.xtensa-esp32s3-espidf.env]
+MCU = "esp32s3"
 
 # ESP32-P4 (RISC-V architecture)
 [target.riscv32imafc-esp-espidf]
 linker = "ldproxy"
 runner = "espflash flash --monitor"
-rustflags = ["--cfg", "espidf_time64"]
+
+[target.riscv32imafc-esp-espidf.env]
+MCU = "esp32p4"
 
 [env]
-MCU = "esp32s3"
-# ESP-IDF is downloaded and managed by esp-idf-sys at build time
-# Specify version to download
+# ESP-IDF version (applies to all targets)
 ESP_IDF_VERSION = "v5.3.3"
 #
-# To build for ESP32-P4 instead, use:
-# cargo build --target riscv32imafc-esp-espidf
+# Build commands:
+#   ESP32-S3 (default): cargo build --release
+#   ESP32-P4:           cargo build --target riscv32imafc-esp-espidf --release
 
 [unstable]
 build-std = ["std", "panic_abort"]

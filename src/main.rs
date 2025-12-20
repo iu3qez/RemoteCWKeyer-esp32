@@ -74,8 +74,16 @@ fn main() {
     // Initialize ESP-IDF
     esp_idf_sys::link_patches();
 
+    // Initialize logger so we can see output
+    esp_idf_svc::log::EspLogger::initialize_default();
+
+    log::info!("========================================");
+    log::info!("RustRemoteCWKeyer - Starting up!");
+    log::info!("========================================");
+
     // Initialize keying stream
     let _stream = init_keying_stream();
+    log::info!("Keying stream initialized");
 
     // TODO: Initialize hardware
     // - GPIO for paddle input
@@ -94,11 +102,18 @@ fn main() {
     // - Decoder consumer
     // - UART log drain
 
+    log::info!("Entering main loop...");
+
     // Placeholder: simple loop
+    let mut counter = 0u32;
     loop {
         // Main thread can handle console or go idle
         unsafe {
-            esp_idf_sys::vTaskDelay(1000);
+            esp_idf_sys::vTaskDelay(100); // 1 secondo
+        }
+        counter = counter.wrapping_add(1);
+        if counter % 10 == 0 {
+            log::info!("Heartbeat: {} seconds", counter / 10);
         }
     }
 }

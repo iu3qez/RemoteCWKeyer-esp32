@@ -28,3 +28,4 @@ src/generated/*.rs
 .cargo/config.toml.old
 scripts/__pycache__/
 .claude/skills/
+sdkconfig.defaults.generated

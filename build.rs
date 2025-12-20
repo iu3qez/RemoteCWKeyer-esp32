@@ -8,6 +8,9 @@ fn main() {
     // ESP-IDF environment setup (MUST be first!)
     embuild::espidf::sysenv::output();
 
+    // Track partition file changes
+    println!("cargo:rerun-if-changed=partitions.csv");
+
     // Get git version info
     let version = env!("CARGO_PKG_VERSION");
     let git_hash = Command::new("git")

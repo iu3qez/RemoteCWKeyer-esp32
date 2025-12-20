@@ -1,0 +1,23 @@
+# ESP32-S3 Partition Table - 16MB Flash with OTA Support
+# RustRemoteCWKeyer - Production Configuration
+#
+# Layout:
+# - Factory partition (2MB) for initial/recovery firmware
+# - Dual OTA partitions (3.4MB each) for remote firmware updates
+# - Large SPIFFS partition (6.8MB) for logs, waveforms, user data
+# - Expanded NVS (96KB) for configuration storage
+# - Core dump partition (64KB) for crash debugging
+#
+# Physical Flash: 16MB (16777216 bytes)
+# Bootloader + partition table: ~36KB
+# Available for partitions: ~16348KB
+#
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   96K,
+otadata,    data, ota,      ,         8K,
+phy_init,   data, phy,      ,         4K,
+coredump,   data, coredump, ,         64K,
+factory,    app,  factory,  ,         2M,
+ota_0,      app,  ota_0,    ,         3500K,
+ota_1,      app,  ota_1,    ,         3500K,
+spiffs,     data, spiffs,   ,         7000K,

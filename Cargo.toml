@@ -12,6 +12,7 @@ readme = "README.md"
 # esp-idf-svc porta esp-idf-hal e esp-idf-sys come dipendenze transitive
 # Versione 0.51.0 compatibile con ESP-IDF v5.3
 esp-idf-svc = { version = "0.51.0", features = ["binstart"] }
+log = "0.4"
 
 [build-dependencies]
 embuild = "0.33"
