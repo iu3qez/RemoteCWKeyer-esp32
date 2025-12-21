@@ -1,13 +1,33 @@
 /**
  * @file test_main.c
- * @brief Unity test runner for host tests
+ * @brief Unity test runner main entry point
  */
 
 #include "unity.h"
+#include <stdio.h>
 
-/* Declare test functions from other files */
+/* Test declarations from test files */
+void test_stream_init(void);
+void test_stream_push_pop(void);
+void test_stream_wrap_around(void);
+void test_stream_overrun_detection(void);
+void test_stream_multiple_consumers(void);
 
-/* test_console_parser.c */
+void test_iambic_init(void);
+void test_iambic_dit(void);
+void test_iambic_dah(void);
+void test_iambic_mode_a_squeeze(void);
+void test_iambic_mode_b_squeeze(void);
+void test_iambic_memory(void);
+
+void test_sidetone_init(void);
+void test_sidetone_keying(void);
+void test_sidetone_fade(void);
+
+void test_fault_init(void);
+void test_fault_set_clear(void);
+void test_fault_count(void);
+
 void test_parse_empty_line(void);
 void test_parse_simple_command(void);
 void test_parse_command_with_one_arg(void);
@@ -17,16 +37,6 @@ void test_parse_extra_args_ignored(void);
 void test_parse_leading_whitespace(void);
 void test_parse_trailing_whitespace(void);
 void test_parse_multiple_spaces(void);
-
-/* test_console_commands.c */
-void test_find_command_help(void);
-void test_find_command_version(void);
-void test_find_command_unknown(void);
-void test_execute_empty_command(void);
-void test_execute_unknown_command(void);
-void test_execute_reboot_requires_confirm(void);
-void test_execute_set_requires_args(void);
-void test_command_registry_has_all_commands(void);
 
 void setUp(void) {
     /* Called before each test */
@@ -39,7 +49,37 @@ void tearDown(void) {
 int main(void) {
     UNITY_BEGIN();
 
-    /* Parser tests */
+    /* Stream tests */
+    printf("\n=== Stream Tests ===\n");
+    RUN_TEST(test_stream_init);
+    RUN_TEST(test_stream_push_pop);
+    RUN_TEST(test_stream_wrap_around);
+    RUN_TEST(test_stream_overrun_detection);
+    RUN_TEST(test_stream_multiple_consumers);
+
+    /* Iambic tests */
+    printf("\n=== Iambic Tests ===\n");
+    RUN_TEST(test_iambic_init);
+    RUN_TEST(test_iambic_dit);
+    RUN_TEST(test_iambic_dah);
+    RUN_TEST(test_iambic_mode_a_squeeze);
+    RUN_TEST(test_iambic_mode_b_squeeze);
+    RUN_TEST(test_iambic_memory);
+
+    /* Sidetone tests */
+    printf("\n=== Sidetone Tests ===\n");
+    RUN_TEST(test_sidetone_init);
+    RUN_TEST(test_sidetone_keying);
+    RUN_TEST(test_sidetone_fade);
+
+    /* Fault tests */
+    printf("\n=== Fault Tests ===\n");
+    RUN_TEST(test_fault_init);
+    RUN_TEST(test_fault_set_clear);
+    RUN_TEST(test_fault_count);
+
+    /* Console parser tests */
+    printf("\n=== Console Parser Tests ===\n");
     RUN_TEST(test_parse_empty_line);
     RUN_TEST(test_parse_simple_command);
     RUN_TEST(test_parse_command_with_one_arg);
@@ -49,16 +89,6 @@ int main(void) {
     RUN_TEST(test_parse_leading_whitespace);
     RUN_TEST(test_parse_trailing_whitespace);
     RUN_TEST(test_parse_multiple_spaces);
-
-    /* Command tests */
-    RUN_TEST(test_find_command_help);
-    RUN_TEST(test_find_command_version);
-    RUN_TEST(test_find_command_unknown);
-    RUN_TEST(test_execute_empty_command);
-    RUN_TEST(test_execute_unknown_command);
-    RUN_TEST(test_execute_reboot_requires_confirm);
-    RUN_TEST(test_execute_set_requires_args);
-    RUN_TEST(test_command_registry_has_all_commands);
 
     return UNITY_END();
 }

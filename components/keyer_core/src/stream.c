@@ -65,7 +65,7 @@ bool stream_push(keying_stream_t *stream, stream_sample_t sample) {
     if (sample_has_change_from(&sample, &stream->last_sample)) {
         /* State changed: flush accumulated idle ticks, then write sample */
 
-        uint32_t idle = atomic_exchange_explicit(&stream->idle_ticks, 0, memory_order_relaxed);
+        uint32_t idle = (uint32_t)atomic_exchange_explicit(&stream->idle_ticks, 0, memory_order_relaxed);
         if (idle > 0) {
             if (!stream_write_slot(stream, sample_silence(idle))) {
                 return false;
@@ -96,7 +96,7 @@ bool stream_push_raw(keying_stream_t *stream, stream_sample_t sample) {
 void stream_flush(keying_stream_t *stream) {
     assert(stream != NULL);
 
-    uint32_t idle = atomic_exchange_explicit(&stream->idle_ticks, 0, memory_order_relaxed);
+    uint32_t idle = (uint32_t)atomic_exchange_explicit(&stream->idle_ticks, 0, memory_order_relaxed);
     if (idle > 0) {
         stream_write_slot(stream, sample_silence(idle));
     }
