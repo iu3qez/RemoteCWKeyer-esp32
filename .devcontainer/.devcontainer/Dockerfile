@@ -10,7 +10,8 @@ RUN apt-get update -y && apt-get install udev curl -y
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
 	&& apt-get install -y vim \
-	&& apt-get install -y bash-completion 
+	&& apt-get install -y bash-completion \
+	&& npm install -g @anthropic-ai/claude-code 
 # Install Python packages for parameter code generation (Feature 4)
 # - jsonschema: Validate parameters.yaml against JSON Schema
 # - pyyaml: Already included in ESP-IDF, but listed here for clarity
