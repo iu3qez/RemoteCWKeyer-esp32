@@ -6,16 +6,19 @@ RustRemoteCWKeyer uses a **RT-safe logging system** that never blocks the real-t
 
 ## Quick Start
 
-```rust
+```c
+#include "rt_log.h"
+#include "esp_timer.h"
+
 // Get timestamp
-let now_us = unsafe { esp_idf_sys::esp_timer_get_time() };
+int64_t now_us = esp_timer_get_time();
 
 // Log at different levels
-rt_error!(&RT_LOG_STREAM, now_us, "FAULT: {:?}", code);
-rt_warn!(&RT_LOG_STREAM, now_us, "Lag {} samples", lag);
-rt_info!(&RT_LOG_STREAM, now_us, "Key down @ {}", time);
-rt_debug!(&RT_LOG_STREAM, now_us, "State: {:?}", state);
-rt_trace!(&RT_LOG_STREAM, now_us, "GPIO: {:08b}", bits);
+RT_ERROR(&g_rt_log_stream, now_us, "FAULT: %s", fault_code_str(code));
+RT_WARN(&g_rt_log_stream, now_us, "Lag %u samples", lag);
+RT_INFO(&g_rt_log_stream, now_us, "Key down @ %lld", time);
+RT_DEBUG(&g_rt_log_stream, now_us, "State: %d", state);
+RT_TRACE(&g_rt_log_stream, now_us, "GPIO: 0x%02x", bits);
 ```
 
 ## Rules
@@ -24,41 +27,42 @@ rt_trace!(&RT_LOG_STREAM, now_us, "GPIO: {:08b}", bits);
 
 These functions **block** for milliseconds - never use in real-time code:
 
-```rust
-ESP_LOGI!(TAG, "...");      // ESP-IDF log: UART mutex + blocking TX
-println!("...");            // Rust print: locks stdout
-log::info!("...");          // Standard log: may block
+```c
+ESP_LOGI(TAG, "...");       // ESP-IDF log: UART mutex + blocking TX
 printf("...");              // C printf: blocks
+puts("...");                // C puts: blocks
+fprintf(stderr, "...");     // C fprintf: blocks
 ```
 
 ### ✅ ALLOWED in RT Path
 
 RT-safe macros complete in ~100-200ns, never block:
 
-```rust
-rt_info!(&stream, timestamp, "Key down @ {}", time);
-rt_warn!(&stream, timestamp, "Lag {} samples", lag);
-rt_error!(&stream, timestamp, "FAULT: {:?}", fault);
-rt_debug!(&stream, timestamp, "State: {:?}", state);
-rt_trace!(&stream, timestamp, "GPIO: {:08b}", bits);
+```c
+int64_t now_us = esp_timer_get_time();
+RT_INFO(&g_rt_log_stream, now_us, "Key down @ %lld", time);
+RT_WARN(&g_rt_log_stream, now_us, "Lag %u samples", lag);
+RT_ERROR(&g_rt_log_stream, now_us, "FAULT: %s", fault_code_str(code));
+RT_DEBUG(&g_rt_log_stream, now_us, "State: %d", state);
+RT_TRACE(&g_rt_log_stream, now_us, "GPIO: 0x%02x", bits);
 ```
 
 ## Log Levels
 
 | Level | Macro | Use Case |
 |-------|-------|----------|
-| **Error** | `rt_error!()` | FAULT conditions, critical errors |
-| **Warn** | `rt_warn!()` | Lag warnings, dropped samples |
-| **Info** | `rt_info!()` | Normal events (key up/down, config) |
-| **Debug** | `rt_debug!()` | Detailed debugging (state transitions) |
-| **Trace** | `rt_trace!()` | Verbose tracing (every sample, GPIO) |
+| **Error** | `RT_ERROR()` | FAULT conditions, critical errors |
+| **Warn** | `RT_WARN()` | Lag warnings, dropped samples |
+| **Info** | `RT_INFO()` | Normal events (key up/down, config) |
+| **Debug** | `RT_DEBUG()` | Detailed debugging (state transitions) |
+| **Trace** | `RT_TRACE()` | Verbose tracing (every sample, GPIO) |
 
 ## Architecture
 
 ```text
 ┌────────────────────────────────────────┐
 │  RT Thread (Core 0)                    │
-│  rt_info!(...) ────▶ RT_LOG_STREAM    │
+│  RT_INFO(...) ────▶ g_rt_log_stream   │
 │                      (256 entries)      │
 └──────────────────────┬─────────────────┘
                        │
@@ -66,7 +70,7 @@ rt_trace!(&stream, timestamp, "GPIO: {:08b}", bits);
                        │
 ┌──────────────────────▼─────────────────┐
 │  Best-Effort Threads (Core 1)          │
-│  rt_warn!(...) ────▶ BG_LOG_STREAM    │
+│  RT_WARN(...) ────▶ g_bg_log_stream   │
 │                      (256 entries)      │
 └──────────────────────┬─────────────────┘
                        │
@@ -83,10 +87,10 @@ rt_trace!(&stream, timestamp, "GPIO: {:08b}", bits);
 
 ## Guarantees
 
-- **Latency**: < 200 nanoseconds per `rt_log!()` call
+- **Latency**: < 200 nanoseconds per `RT_INFO()` call
 - **Never blocks**: If buffer full → message dropped, counter incremented
 - **No allocation**: Static buffers, zero heap usage
-- **Lock-free**: Atomic operations only
+- **Lock-free**: C11 `stdatomic.h` operations only
 
 ## Dropped Messages
 
@@ -100,28 +104,30 @@ When log buffer fills up:
 
 ### Basic Logging
 
-```rust
-use rust_remote_cw_keyer::{RT_LOG_STREAM, rt_info, rt_error};
+```c
+#include "rt_log.h"
+#include "esp_timer.h"
 
-fn my_rt_function() {
-    let now = unsafe { esp_idf_sys::esp_timer_get_time() };
+void my_rt_function(void) {
+    int64_t now = esp_timer_get_time();
 
-    rt_info!(&RT_LOG_STREAM, now, "Starting keyer, WPM={}", 25);
+    RT_INFO(&g_rt_log_stream, now, "Starting keyer, WPM=%u", 25);
 
     // ... RT processing ...
 
-    if error {
-        rt_error!(&RT_LOG_STREAM, now, "FAULT detected: {:?}", fault_code);
+    if (error) {
+        RT_ERROR(&g_rt_log_stream, now, "FAULT detected: %s",
+                 fault_code_str(fault_code));
     }
 }
 ```
 
 ### Formatting
 
-Supports all Rust format specifiers:
+Supports all printf format specifiers:
 
-```rust
-rt_debug!(&RT_LOG_STREAM, now, "State: {:?}, GPIO: {:08b}, Time: {}",
+```c
+RT_DEBUG(&g_rt_log_stream, now, "State: %d, GPIO: 0x%02x, Time: %lld",
     state, gpio_bits, elapsed_us);
 ```
 
@@ -130,14 +136,14 @@ rt_debug!(&RT_LOG_STREAM, now, "State: {:?}, GPIO: {:08b}, Time: {}",
 ## Performance
 
 Typical benchmarks:
-- `rt_info!()` push: ~150ns
-- `rt_error!()` push: ~180ns
+- `RT_INFO()` push: ~150ns
+- `RT_ERROR()` push: ~180ns
 - UART drain: 1-2ms per message (background, non-critical)
 
 ## FAQ
 
 **Q: Which stream should I use?**
-A: Core 0 (RT thread) → `RT_LOG_STREAM`, Core 1 (background) → `BG_LOG_STREAM`
+A: Core 0 (RT thread) → `g_rt_log_stream`, Core 1 (background) → `g_bg_log_stream`
 
 **Q: What happens if buffer fills?**
 A: Message dropped, counter incremented. See periodic report on UART.

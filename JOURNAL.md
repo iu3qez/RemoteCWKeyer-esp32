@@ -234,3 +234,107 @@ Questo è un task separato perché richiede modifiche al sistema di logging core
 
 - [ ] ldproxy panic anche con configurazione corretta
   → Reinstallare ldproxy da binari precompilati GitHub
+
+---
+
+## 2025-12-21: Migrazione a Pure C (ESP-IDF)
+
+### Motivazione
+
+Il progetto è stato migrato da Rust (esp-rs) a pure C (ESP-IDF nativo) per:
+- Eliminare la complessità del build system Rust/ESP-IDF
+- Semplificare il debugging e la manutenzione
+- Usare direttamente le API ESP-IDF senza wrapper
+
+### Struttura Progetto
+
+```
+RustRemoteCWKeyer/
+├── CMakeLists.txt          # ESP-IDF project root
+├── sdkconfig.defaults      # ESP-IDF configuration
+├── partitions.csv          # 16MB flash layout
+├── parameters.yaml         # Parametri configurazione (source of truth)
+├── components/
+│   ├── keyer_core/         # Stream, sample, consumer, fault
+│   ├── keyer_iambic/       # Iambic FSM (Mode A/B)
+│   ├── keyer_audio/        # Sidetone, buffer, PTT
+│   ├── keyer_logging/      # RT-safe logging
+│   ├── keyer_console/      # Serial console
+│   ├── keyer_config/       # Generated config (da parameters.yaml)
+│   └── keyer_hal/          # GPIO, I2S, ES8311
+├── main/
+│   ├── main.c              # Entry point
+│   ├── rt_task.c           # Core 0 RT task
+│   └── bg_task.c           # Core 1 background task
+└── scripts/
+    └── gen_config_c.py     # Generatore config C da parameters.yaml
+```
+
+### Build Commands
+
+```bash
+# Build
+idf.py build
+
+# Flash and monitor
+idf.py flash monitor
+
+# Clean build
+idf.py fullclean && idf.py build
+```
+
+### Code Generator
+
+`scripts/gen_config_c.py` genera da `parameters.yaml`:
+- `components/keyer_config/include/config.h` - Struct atomica con macro accessor
+- `components/keyer_config/include/config_nvs.h` - Chiavi NVS
+- `components/keyer_config/include/config_meta.h` - Metadata GUI
+- `components/keyer_config/include/config_console.h` - Registry console
+- `components/keyer_config/src/config.c` - Inizializzazione defaults
+
+**⚠️ NON modificare i file generati** - modifica `parameters.yaml` invece.
+
+### Principi Architetturali Preservati
+
+1. **Stream-only communication** - `keying_stream_t` SPMC lock-free
+2. **Hard RT path** - Core 0, no malloc, no mutex, no blocking I/O
+3. **FAULT semantics** - Corrupted timing → silence
+4. **Atomic config** - C11 `stdatomic.h` per accesso lock-free
+5. **RT-safe logging** - `RT_*()` macro non-blocking
+
+### Differenze da Rust
+
+| Aspetto | Rust | C |
+|---------|------|---|
+| Atomics | `std::sync::atomic` | C11 `stdatomic.h` |
+| Logging | `rt_log!` macro | `RT_INFO()` macro |
+| Config | `AtomicConfig` struct | `keyer_config_t` con atomic |
+| Build | `cargo build` | `idf.py build` |
+| ESP-IDF | v5.3.3 via embuild | v5.5.1 nativo |
+
+### Formato Specifiers su Xtensa
+
+Su ESP32 (Xtensa), `uint32_t` è `unsigned long`, quindi:
+- Usare `PRIu32` da `<inttypes.h>` invece di `%u`
+- Esempio: `"count=%" PRIu32` invece di `"count=%u"`
+
+### File Critici
+
+1. **parameters.yaml** - Source of truth per configurazione
+2. **scripts/gen_config_c.py** - Generatore codice
+3. **CMakeLists.txt** (root) - Entry point progetto
+4. **sdkconfig.defaults** - Configurazione ESP-IDF
+5. **components/*/CMakeLists.txt** - Build componenti
+
+### Test
+
+```bash
+# Host tests (Unity)
+cd keyer_c/test_host
+cmake -B build && cmake --build build
+./build/test_runner
+```
+
+### Vecchio Codice Rust
+
+Il codice Rust originale è stato spostato in `old/` per riferimento.

@@ -44,13 +44,14 @@ Violations are not technical debt. They are defects.
 
 ### 1.2 Stream Structure
 
-```rust
-struct StreamSample {
-    gpio: GpioState,      // Physical paddle state
-    local_key: bool,      // Iambic/manual keyer output
-    remote_key: bool,     // Remote CW received
-    flags: u8,            // Edge flags, silence marker
-}
+```c
+typedef struct __attribute__((packed)) {
+    gpio_state_t gpio;       // Physical paddle state
+    uint8_t      local_key;  // Iambic/manual keyer output (1=key down)
+    uint8_t      audio_level;// Audio output level
+    uint8_t      flags;      // Edge flags, silence marker
+    uint16_t     config_gen; // Config generation / silence ticks
+} stream_sample_t;           // 6 bytes packed
 ```
 
 **RULE 1.2.1**: All three channels (GPIO, local, remote) are captured in every sample.
@@ -115,25 +116,27 @@ Stream ──────▶ Consumer
 
 **RULE 3.1.1**: The only synchronization primitive is atomic operations on stream indices.
 
-**RULE 3.1.2**: `write_idx.fetch_add(1, Ordering::AcqRel)` is the only write synchronization.
+**RULE 3.1.2**: `atomic_fetch_add_explicit(&write_idx, 1, memory_order_acq_rel)` is the only write synchronization.
 
-**RULE 3.1.3**: `write_idx.load(Ordering::Acquire)` is the only read synchronization.
+**RULE 3.1.3**: `atomic_load_explicit(&write_idx, memory_order_acquire)` is the only read synchronization.
 
 **RULE 3.1.4**: No operation shall block waiting for another operation.
 
 ### 3.2 Memory Ordering
 
-```rust
-// Producer: AcqRel (both acquire and release semantics)
-let idx = write_idx.fetch_add(1, Ordering::AcqRel);
+```c
+#include <stdatomic.h>
 
-// Consumer: Acquire (sees all writes before this index)
-let head = write_idx.load(Ordering::Acquire);
+// Producer: acq_rel (both acquire and release semantics)
+size_t idx = atomic_fetch_add_explicit(&write_idx, 1, memory_order_acq_rel);
+
+// Consumer: acquire (sees all writes before this index)
+size_t head = atomic_load_explicit(&write_idx, memory_order_acquire);
 ```
 
-**RULE 3.2.1**: Producers use `Ordering::AcqRel` for read-modify-write operations.
+**RULE 3.2.1**: Producers use `memory_order_acq_rel` for read-modify-write operations.
 
-**RULE 3.2.2**: Consumers use `Ordering::Acquire` for read operations.
+**RULE 3.2.2**: Consumers use `memory_order_acquire` for read operations.
 
 **RULE 3.2.3**: Relaxed ordering is permitted only for statistics counters.
 
@@ -363,15 +366,15 @@ GPIO Poll ──▶ Iambic FSM ──▶ Stream Push ──▶ Audio/TX Consumer
 
 ## 10. Language and Platform
 
-### 10.1 Rust
+### 10.1 C (ESP-IDF)
 
-**RULE 10.1.1**: Implementation language is Rust.
+**RULE 10.1.1**: Implementation language is C (C11 standard).
 
-**RULE 10.1.2**: `unsafe` is permitted only in stream internals.
+**RULE 10.1.2**: All synchronization uses C11 `stdatomic.h` primitives.
 
-**RULE 10.1.3**: `unsafe` blocks must have `// SAFETY:` comments.
+**RULE 10.1.3**: No dynamic allocation in RT path (`malloc`, `free` forbidden).
 
-**RULE 10.1.4**: Borrow checker enforces consumer isolation.
+**RULE 10.1.4**: Strict compiler warnings (`-Wall -Wextra -Werror`) enforced.
 
 ### 10.2 Target Platform
 
@@ -394,7 +397,7 @@ GPIO Poll ──▶ Iambic FSM ──▶ Stream Push ──▶ Audio/TX Consumer
 │   RT Thread              LogStream            UART Thread   │
 │   ──────────             ─────────            ───────────   │
 │                                                             │
-│   rt_log!() ──────────▶ [L0][L1][L2] ──────▶ UART TX       │
+│   RT_INFO() ──────────▶ [L0][L1][L2] ──────▶ UART TX       │
 │   ~100ns                  lock-free           blocking ok   │
 │   non-blocking            ring buffer         Core 1        │
 │                                                             │
@@ -403,9 +406,9 @@ GPIO Poll ──▶ Iambic FSM ──▶ Stream Push ──▶ Audio/TX Consumer
 
 **RULE 11.1.1**: The RT path shall NEVER call blocking log functions.
 
-**RULE 11.1.2**: `ESP_LOGx`, `println!`, `print!` are FORBIDDEN in RT path.
+**RULE 11.1.2**: `ESP_LOGx`, `printf`, `puts` are FORBIDDEN in RT path.
 
-**RULE 11.1.3**: RT path uses `rt_log!()` macro which pushes to LogStream.
+**RULE 11.1.3**: RT path uses `RT_INFO()`, `RT_WARN()`, `RT_ERROR()` macros which push to LogStream.
 
 **RULE 11.1.4**: LogStream is lock-free SPSC (single producer per core, single consumer).
 
@@ -423,39 +426,40 @@ GPIO Poll ──▶ Iambic FSM ──▶ Stream Push ──▶ Audio/TX Consumer
 
 ### 11.3 Forbidden vs Allowed
 
-```rust
+```c
 // ═══════════════════════════════════════════════════════════
 // FORBIDDEN in RT path — blocks for milliseconds
 // ═══════════════════════════════════════════════════════════
-ESP_LOGI!(TAG, "...");      // ESP-IDF log: UART mutex + TX
-println!("...");            // Rust print: locks stdout
-log::info!("...");          // Standard log: may block
+ESP_LOGI(TAG, "...");       // ESP-IDF log: UART mutex + TX
 printf("...");              // C printf: blocks
+puts("...");                // C puts: blocks
+fprintf(stderr, "...");     // C fprintf: blocks
 
 // ═══════════════════════════════════════════════════════════
 // ALLOWED in RT path — non-blocking push, ~100-200ns
 // ═══════════════════════════════════════════════════════════
-rt_info!("Key {} @ {}", key_down, timestamp);
-rt_warn!("Lag {} samples", lag);
-rt_error!("FAULT: {:?}", fault_code);
+int64_t now_us = esp_timer_get_time();
+RT_INFO(&g_rt_log_stream, now_us, "Key %d @ %lld", key_down, timestamp);
+RT_WARN(&g_rt_log_stream, now_us, "Lag %u samples", lag);
+RT_ERROR(&g_rt_log_stream, now_us, "FAULT: %s", fault_code_str(code));
 ```
 
 ### 11.4 LogStream Structure
 
-```rust
-pub struct LogEntry {
-    timestamp_us: i64,      // Capture time
-    level: u8,              // INFO/WARN/ERROR
-    len: u8,                // Message length
-    msg: [u8; 128],         // Pre-formatted message
-}
+```c
+typedef struct {
+    int64_t timestamp_us;       // Capture time
+    log_level_t level;          // INFO/WARN/ERROR
+    uint8_t len;                // Message length
+    char msg[LOG_MAX_MSG_LEN];  // Pre-formatted message (120 bytes)
+} log_entry_t;
 
-pub struct LogStream {
-    entries: [LogEntry; 256],   // Ring buffer
-    write_idx: AtomicU32,       // Producer index
-    read_idx: AtomicU32,        // Consumer index (UART thread)
-    dropped: AtomicU32,         // Dropped message counter
-}
+typedef struct {
+    log_entry_t entries[LOG_BUFFER_SIZE];  // Ring buffer (256 entries)
+    atomic_uint write_idx;                  // Producer index
+    atomic_uint read_idx;                   // Consumer index (UART thread)
+    atomic_uint dropped;                    // Dropped message counter
+} log_stream_t;
 ```
 
 **RULE 11.4.1**: LogEntry is fixed size (no allocation).
@@ -468,7 +472,7 @@ pub struct LogStream {
 
 | Operation | Max Time | Notes |
 |-----------|----------|-------|
-| `rt_log!()` push | 200ns | Format + atomic store |
+| `RT_INFO()` push | 200ns | Format + atomic store |
 | Ring full check | 10ns | Two atomic loads |
 | Message drop | 5ns | Increment counter |
 | UART drain | 1ms/msg | Background, Core 1 |
@@ -485,7 +489,7 @@ pub struct LogStream {
 | Shared mutable state | Race conditions |
 | Channels/queues between components | Hidden communication paths |
 | Heap allocation in RT path | Non-deterministic timing |
-| Blocking logs in RT path (`ESP_LOGx`, `println!`) | Blocks for milliseconds |
+| Blocking logs in RT path (`ESP_LOGx`, `printf`) | Blocks for milliseconds |
 | Mocking in tests | Indicates design flaw |
 
 ---
@@ -500,7 +504,7 @@ pub struct LogStream {
 | FAULT on deadline miss | Correctness over availability |
 | Static allocation | Deterministic memory |
 | Stream-based testing | Reproducible, no hardware needed |
-| RT-safe logging (`rt_log!()`) | Non-blocking diagnostics |
+| RT-safe logging (`RT_INFO()`) | Non-blocking diagnostics |
 
 ---
 
@@ -513,7 +517,7 @@ Every code review must verify:
 3. Does this change maintain Hard RT latency budget?
 4. Does this change have stream-based tests?
 5. Does this change preserve FAULT semantics?
-6. Does this change use only `rt_log!()` in RT path (no blocking logs)?
+6. Does this change use only `RT_*()` macros in RT path (no blocking logs)?
 
 Non-compliant code shall not be merged.
 
@@ -572,15 +576,18 @@ In case of conflict, higher-ranked principles take precedence.
 ```
 RustRemoteCWKeyer/
 ├── ARCHITECTURE.md          # This document (immutable)
-├── src/
-│   ├── stream.rs            # KeyingStream (core)
-│   ├── sample.rs            # StreamSample types
-│   ├── consumer.rs          # HardRt + BestEffort consumers
-│   ├── iambic.rs            # Iambic FSM (pure logic)
-│   ├── hal/                 # Hardware abstraction
-│   └── main.rs              # Entry point
-├── tests/
-│   ├── captures/            # Recorded GPIO streams
-│   └── golden/              # Expected output streams
-└── Cargo.toml
+├── keyer_c/                 # C implementation (ESP-IDF)
+│   ├── components/
+│   │   ├── keyer_core/      # stream, sample, consumer, fault
+│   │   ├── keyer_iambic/    # Iambic FSM (pure logic)
+│   │   ├── keyer_audio/     # Sidetone, buffer, PTT
+│   │   ├── keyer_logging/   # RT-safe logging
+│   │   ├── keyer_console/   # Serial console
+│   │   ├── keyer_config/    # Generated config
+│   │   └── keyer_hal/       # Hardware abstraction
+│   ├── main/                # Entry point, RT/BG tasks
+│   ├── test_host/           # Unity tests (host)
+│   └── CMakeLists.txt       # ESP-IDF project
+├── parameters.yaml          # Configuration source of truth
+└── docs/                    # Design documents
 ```
