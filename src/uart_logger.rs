@@ -1,15 +1,16 @@
-//! UART log consumer thread.
+//! UART log output on GPIO6.
 //!
-//! Drains RT_LOG_STREAM and BG_LOG_STREAM, writes to UART.
-//! Runs on Core 1 at low priority.
+//! Provides system logging via UART TX on GPIO6.
+//! Requires external USB-UART adapter (CH340, CP2102, etc).
 //!
-//! # Architecture
+//! # Hardware Setup
 //!
 //! ```text
-//! RT_LOG_STREAM (Core 0) ─┐
-//!                         ├─▶ UART Consumer ─▶ Serial Output
-//! BG_LOG_STREAM (Core 1) ─┘    (Core 1)
+//! ESP32-S3 GPIO6 (TX) ──────▶ USB-UART RX
+//!                              └─▶ PC Serial Monitor
 //! ```
+//!
+//! **WARNING**: GPIO6 conflicts with Octal PSRAM. Only use on Quad flash boards!
 
 use crate::logging::LogEntry;
 
@@ -22,6 +23,13 @@ use crate::{RT_LOG_STREAM, BG_LOG_STREAM};
 #[cfg(test)]
 use crate::logging::LogLevel;
 
+#[cfg(not(test))]
+use esp_idf_svc::hal::gpio;
+#[cfg(not(test))]
+use esp_idf_svc::hal::uart::{self, UartTxDriver};
+#[cfg(not(test))]
+use esp_idf_svc::hal::peripheral::Peripheral;
+
 /// UART configuration for logging.
 pub struct UartLoggerConfig {
     pub baud_rate: u32,
@@ -32,7 +40,7 @@ impl Default for UartLoggerConfig {
     fn default() -> Self {
         Self {
             baud_rate: 115200,
-            tx_pin: 43,  // Default per ESP32-S3
+            tx_pin: 6,  // GPIO6 - UART TX (Quad flash, GPIO6 free for UART)
         }
     }
 }
@@ -73,55 +81,85 @@ fn format_log_entry(entry: &LogEntry, buf: &mut [u8]) -> usize {
     writer.pos
 }
 
+/// Initialize UART1 TX-only on GPIO6 for logging output.
+///
+/// Returns a UartTxDriver configured for TX-only operation.
+#[cfg(not(test))]
+pub fn init_uart_logger<'d>(
+    uart: impl Peripheral<P = esp_idf_svc::hal::uart::UART1> + 'd,
+    tx_pin: impl Peripheral<P = impl gpio::OutputPin> + 'd,
+    config: &UartLoggerConfig,
+) -> Result<UartTxDriver<'d>, esp_idf_svc::sys::EspError> {
+    let uart_config = uart::config::Config::default()
+        .baudrate(esp_idf_svc::hal::units::Hertz(config.baud_rate));
+
+    UartTxDriver::new(
+        uart,
+        tx_pin,
+        Option::<gpio::AnyIOPin>::None,  // CTS
+        Option::<gpio::AnyIOPin>::None,  // RTS
+        &uart_config,
+    )
+}
+
+/// Write a log entry to UART.
+#[cfg(not(test))]
+pub fn write_log_to_uart(uart: &mut UartTxDriver<'_>, entry: &LogEntry) {
+    let mut format_buf = [0u8; 256];
+    let len = format_log_entry(entry, &mut format_buf);
+    let _ = uart.write(&format_buf[..len]);
+}
+
 /// UART log consumer task (runs on Core 1).
 ///
-/// # Implementation Notes
-///
-/// This is a placeholder implementation. Full UART integration requires:
-/// - esp_idf_hal::uart::UartDriver for actual UART communication
-/// - Proper initialization and error handling
-/// - Core affinity setting via vTaskCoreAffinitySet
-///
-/// For now, this provides the framework and logic.
+/// Drains RT_LOG_STREAM and BG_LOG_STREAM, writes to UART.
 #[cfg(not(test))]
-pub fn uart_logger_task(_config: UartLoggerConfig) -> ! {
-    // TODO: Initialize UART with esp-idf-hal
-    // let peripherals = unsafe { esp_idf_hal::peripherals::Peripherals::take() };
-    // let uart = UartDriver::new(peripherals.uart0, ...);
-
+pub fn uart_logger_task(uart: &mut UartTxDriver<'_>) -> ! {
     let mut format_buf = [0u8; 256];
     let mut last_dropped_report = 0i64;
 
     loop {
         let mut work_done = false;
 
-        // Priorità 1: Drena RT stream (Core 0 - alta priorità)
+        // Priority 1: Drain RT stream (Core 0 - high priority logs)
         while let Some(entry) = RT_LOG_STREAM.drain() {
             let len = format_log_entry(&entry, &mut format_buf);
-            // TODO: uart.write(&format_buf[..len])
-            // For now: just format to verify logic
-            let _ = len;
+            let _ = uart.write(&format_buf[..len]);
             work_done = true;
         }
 
-        // Priorità 2: Drena background stream (Core 1 - bassa priorità)
+        // Priority 2: Drain background stream (Core 1 - low priority logs)
         while let Some(entry) = BG_LOG_STREAM.drain() {
             let len = format_log_entry(&entry, &mut format_buf);
-            // TODO: uart.write(&format_buf[..len])
-            let _ = len;
+            let _ = uart.write(&format_buf[..len]);
             work_done = true;
         }
 
-        // Report dropped messages ogni 10 secondi
+        // Report dropped messages every 10 seconds
         let now = unsafe { esp_idf_svc::sys::esp_timer_get_time() };
         if now - last_dropped_report > 10_000_000 {
             let rt_dropped = RT_LOG_STREAM.dropped();
             let bg_dropped = BG_LOG_STREAM.dropped();
 
             if rt_dropped > 0 || bg_dropped > 0 {
-                // TODO: Format and write dropped message report
-                // let msg = format!("[WARNING] Dropped logs - RT: {}, BG: {}\n", ...);
-                // uart.write(msg.as_bytes());
+                use core::fmt::Write;
+                let mut msg = [0u8; 64];
+                let len = {
+                    struct MsgWriter<'a> { buf: &'a mut [u8], pos: usize }
+                    impl<'a> Write for MsgWriter<'a> {
+                        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+                            let bytes = s.as_bytes();
+                            let to_write = bytes.len().min(self.buf.len() - self.pos);
+                            self.buf[self.pos..self.pos + to_write].copy_from_slice(&bytes[..to_write]);
+                            self.pos += to_write;
+                            Ok(())
+                        }
+                    }
+                    let mut w = MsgWriter { buf: &mut msg, pos: 0 };
+                    let _ = write!(w, "[WARN] Dropped: RT={}, BG={}\n", rt_dropped, bg_dropped);
+                    w.pos
+                };
+                let _ = uart.write(&msg[..len]);
 
                 RT_LOG_STREAM.reset_dropped();
                 BG_LOG_STREAM.reset_dropped();
@@ -130,9 +168,8 @@ pub fn uart_logger_task(_config: UartLoggerConfig) -> ! {
             last_dropped_report = now;
         }
 
-        // Se non c'è lavoro, aspetta prima di controllare di nuovo
+        // If no work, wait before checking again
         if !work_done {
-            // TODO: Use proper delay (FreeRtos::delay_ms(10))
             unsafe {
                 esp_idf_svc::sys::vTaskDelay(10);
             }

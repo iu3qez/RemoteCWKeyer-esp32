@@ -6,10 +6,19 @@ use std::process::Command;
 
 fn main() {
     // ESP-IDF environment setup (MUST be first!)
+    // Pass sdkconfig.defaults path to embuild
     embuild::espidf::sysenv::output();
+
+    // Tell cargo to use our custom sdkconfig.defaults
+    // embuild will merge this with ESP-IDF defaults
+    println!("cargo:rustc-env=ESP_IDF_SDKCONFIG_DEFAULTS=sdkconfig.defaults");
+
+    // Track sdkconfig changes for rebuild
+    println!("cargo:rerun-if-changed=sdkconfig.defaults");
 
     // Track partition file changes
     println!("cargo:rerun-if-changed=partitions.csv");
+
 
     // Get git version info
     let version = env!("CARGO_PKG_VERSION");

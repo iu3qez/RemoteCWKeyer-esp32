@@ -10,6 +10,7 @@
 #![no_main]
 
 use esp_idf_svc::sys as esp_idf_sys;
+use esp_idf_svc::hal::peripherals::Peripherals;
 
 use core::cell::UnsafeCell;
 use rust_remote_cw_keyer::{
@@ -18,6 +19,7 @@ use rust_remote_cw_keyer::{
     consumer::HardRtConsumer,
     iambic::{IambicProcessor, IambicConfig},
     sample::{GpioState, StreamSample},
+    uart_logger::{init_uart_logger, UartLoggerConfig},
     RT_LOG_STREAM,
 };
 
@@ -80,6 +82,25 @@ fn main() {
     log::info!("========================================");
     log::info!("RustRemoteCWKeyer - Starting up!");
     log::info!("========================================");
+
+    // Take peripherals
+    let peripherals = Peripherals::take().expect("Failed to take peripherals");
+
+    // Initialize UART logger on GPIO6 (115200 baud, TX only)
+    let uart_config = UartLoggerConfig::default();
+    let mut uart = init_uart_logger(
+        peripherals.uart1,
+        peripherals.pins.gpio6,
+        &uart_config,
+    ).expect("Failed to initialize UART logger");
+
+    // Write startup message to UART
+    let _ = uart.write(b"\r\n\r\n========================================\r\n");
+    let _ = uart.write(b"RustRemoteCWKeyer - UART Log Output\r\n");
+    let _ = uart.write(b"GPIO6 @ 115200 baud\r\n");
+    let _ = uart.write(b"========================================\r\n\r\n");
+
+    log::info!("UART logger initialized on GPIO6");
 
     // Initialize keying stream
     let _stream = init_keying_stream();
