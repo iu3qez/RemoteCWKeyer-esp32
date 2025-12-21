@@ -5,6 +5,7 @@
 
 #include "ptt.h"
 #include <assert.h>
+#include <stddef.h>
 
 void ptt_init(ptt_controller_t *ptt, uint32_t tail_ms) {
     assert(ptt != NULL);

@@ -66,6 +66,7 @@ set(AUDIO_SOURCES
 set(CONSOLE_SOURCES
     ${COMPONENT_DIR}/keyer_console/src/console.c
     ${COMPONENT_DIR}/keyer_console/src/parser.c
+    ${COMPONENT_DIR}/keyer_console/src/commands.c
 )
 
 # Test sources

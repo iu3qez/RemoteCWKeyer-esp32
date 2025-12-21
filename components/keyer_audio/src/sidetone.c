@@ -8,6 +8,7 @@
 
 #include "sidetone.h"
 #include <assert.h>
+#include <stddef.h>
 
 /* Phase accumulator uses upper 8 bits for LUT index */
 #define PHASE_SHIFT 24
