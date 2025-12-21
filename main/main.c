@@ -25,7 +25,6 @@ static const char *TAG = "main";
 /* External task functions */
 extern void rt_task(void *arg);
 extern void bg_task(void *arg);
-extern void uart_logger_task(void *arg);
 
 /* Stream buffer in PSRAM */
 #define STREAM_BUFFER_SIZE 4096
@@ -58,6 +57,9 @@ void app_main(void) {
     /* Initialize log streams */
     log_stream_init(&g_rt_log_stream);
     log_stream_init(&g_bg_log_stream);
+
+    /* Initialize UART logger (GPIO6 TX) */
+    uart_logger_init();
 
     /* Initialize HAL */
     hal_gpio_config_t gpio_cfg = HAL_GPIO_CONFIG_DEFAULT;

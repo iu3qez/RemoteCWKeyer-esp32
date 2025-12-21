@@ -149,6 +149,28 @@ void log_stream_reset_dropped(log_stream_t *stream);
 const char *log_level_str(log_level_t level);
 
 /* ============================================================================
+ * UART Logger
+ * ============================================================================ */
+
+/**
+ * @brief Initialize UART logger (UART1 on GPIO6)
+ *
+ * Configures UART1 at 115200 baud for log output.
+ * Must be called before starting uart_logger_task.
+ */
+void uart_logger_init(void);
+
+/**
+ * @brief UART logger task
+ *
+ * Drains RT and BG log streams to UART.
+ * Runs on Core 1, priority normal.
+ *
+ * @param arg Unused
+ */
+void uart_logger_task(void *arg);
+
+/* ============================================================================
  * RT-Safe Logging Macros
  * ============================================================================ */
 
