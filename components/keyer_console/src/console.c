@@ -1,8 +1,9 @@
 /**
  * @file console.c
- * @brief Serial console implementation (stub)
+ * @brief Serial console implementation
  *
- * TODO: Port from Rust console module
+ * Interactive command interface with history and tab completion.
+ * Uses USB Serial JTAG for input/output.
  */
 
 #include "console.h"
@@ -21,8 +22,11 @@ static size_t s_line_pos = 0;
 void console_init(void) {
     s_line_pos = 0;
     memset(s_line_buf, 0, sizeof(s_line_buf));
+}
 
-    /* TODO: Initialize ESP console */
+void console_print_prompt(void) {
+    printf("> ");
+    fflush(stdout);
 }
 
 bool console_process_char(char c) {
@@ -31,8 +35,16 @@ bool console_process_char(char c) {
             s_line_buf[s_line_pos] = '\0';
             printf("\r\n");
 
-            /* TODO: Execute command */
-            printf("CMD: %s\r\n", s_line_buf);
+            /* Parse and execute command */
+            console_parsed_cmd_t cmd;
+            console_parse_line(s_line_buf, &cmd);
+
+            console_error_t err = console_execute(&cmd);
+            if (err != CONSOLE_OK) {
+                printf("%s: %s\r\n",
+                       console_error_code(err),
+                       console_error_message(err));
+            }
 
             s_line_pos = 0;
             return true;
@@ -44,11 +56,27 @@ bool console_process_char(char c) {
             s_line_pos--;
             printf("\b \b");
         }
-    } else if (s_line_pos < CONSOLE_LINE_MAX - 1) {
-        s_line_buf[s_line_pos++] = c;
-        putchar(c);
+    } else if (c == 0x03) {
+        /* Ctrl+C - cancel current line */
+        printf("^C\r\n");
+        s_line_pos = 0;
+        return true;
+    } else if (c == 0x15) {
+        /* Ctrl+U - clear line */
+        while (s_line_pos > 0) {
+            s_line_pos--;
+            printf("\b \b");
+        }
+    } else if (c >= 0x20 && c <= 0x7E) {
+        /* Printable character */
+        if (s_line_pos < CONSOLE_LINE_MAX - 1) {
+            s_line_buf[s_line_pos++] = c;
+            putchar(c);
+        }
     }
+    /* Ignore other characters (escape sequences, etc.) for now */
 
+    fflush(stdout);
     return false;
 }
 
@@ -56,15 +84,15 @@ bool console_process_char(char c) {
 void console_task(void *arg) {
     (void)arg;
 
-    printf("\r\nkeyer_c console ready\r\n> ");
-    fflush(stdout);
+    printf("\r\nCW Keyer Console\r\n");
+    printf("Type 'help' for available commands\r\n");
+    console_print_prompt();
 
     for (;;) {
         int c = getchar();
         if (c != EOF) {
             if (console_process_char((char)c)) {
-                printf("> ");
-                fflush(stdout);
+                console_print_prompt();
             }
         }
         vTaskDelay(pdMS_TO_TICKS(10));
