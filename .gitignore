@@ -29,3 +29,6 @@ src/generated/*.rs
 scripts/__pycache__/
 .claude/skills/
 sdkconfig.defaults.generated
+build/
+keyer_c/
+old/

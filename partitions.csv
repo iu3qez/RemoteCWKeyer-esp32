@@ -1,5 +1,5 @@
 # ESP32-S3 Partition Table - 16MB Flash with OTA Support
-# RustRemoteCWKeyer - Production Configuration
+# keyer_c - Pure C CW Keyer
 #
 # Layout:
 # - Factory partition (2MB) for initial/recovery firmware

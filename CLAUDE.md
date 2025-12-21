@@ -4,120 +4,302 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-RustRemoteCWKeyer is a professional-grade CW (Morse code) keyer with remote operation capability, built in Rust for ESP32-S3/P4 platforms. The project implements hard real-time iambic keying with a lock-free architecture.
+This repository contains two implementations of the CW (Morse code) keyer:
+
+1. **Rust implementation** (root directory) - Original implementation using esp-rs
+2. **C implementation** ([keyer_c/](keyer_c/)) - Pure C implementation using ESP-IDF
+
+Both implementations follow the same architectural principles from [ARCHITECTURE.md](ARCHITECTURE.md).
 
 **CRITICAL**: Before making any code changes, read [ARCHITECTURE.md](ARCHITECTURE.md). It defines immutable design principles that MUST be followed. Non-compliant code will not be merged.
 
-## Build System (ESP32)
+---
 
-This project uses the esp-rs ecosystem with a **critical build system configuration** that can break if modified incorrectly.
+## C Implementation (keyer_c/)
+
+The pure C implementation uses ESP-IDF v5.x with strict coding standards for embedded real-time systems.
+
+### Directory Structure
+
+```
+keyer_c/
+├── CMakeLists.txt          # Top-level ESP-IDF project
+├── sdkconfig.defaults      # ESP-IDF configuration
+├── partitions.csv          # Flash partition table
+├── PVS-Studio.cfg          # Static analyzer config
+├── components/
+│   ├── keyer_core/         # Stream, sample, consumer, fault
+│   ├── keyer_iambic/       # Iambic FSM
+│   ├── keyer_audio/        # Sidetone, buffer, PTT
+│   ├── keyer_logging/      # RT-safe logging
+│   ├── keyer_console/      # Serial console
+│   ├── keyer_config/       # Generated config
+│   └── keyer_hal/          # GPIO, I2S, ES8311
+├── main/
+│   ├── main.c              # Entry point
+│   ├── rt_task.c           # Core 0 RT task
+│   └── bg_task.c           # Core 1 background task
+├── scripts/
+│   └── gen_config_c.py     # Config code generator
+└── test_host/              # Unity-based host tests
+```
 
 ### Building
 
 ```bash
-# Standard build for ESP32-S3 (default target)
-cargo build
+cd keyer_c
 
-# Release build
-cargo build --release
+# Configure (first time only)
+idf.py set-target esp32s3
 
-# Build for ESP32-P4 (RISC-V)
-cargo build --target riscv32imafc-esp-espidf
+# Build
+idf.py build
+
+# Flash and monitor
+idf.py flash monitor
+
+# Clean build
+idf.py fullclean
+idf.py build
 ```
 
-### Flashing
+### Code Generation
+
+Configuration is generated from [parameters.yaml](parameters.yaml):
 
 ```bash
-# Flash and monitor (default target)
-cargo run --release
+# Regenerate config (done automatically during build)
+python scripts/gen_config_c.py
 
-# Flash specific target
-espflash flash --monitor target/xtensa-esp32s3-espidf/release/keyer
+# Generated files in components/keyer_config/
+# - config.h      - Atomic config struct
+# - config.c      - Default values
+# - config_nvs.h  - NVS persistence
 ```
 
-### Testing
+---
+
+## ESP32 C Best Practices
+
+### Compiler Flags (MANDATORY)
+
+All code MUST compile cleanly with these flags:
+
+```cmake
+target_compile_options(${COMPONENT_LIB} PRIVATE
+    -Wall
+    -Wextra
+    -Werror
+    -Wno-unused-parameter
+    -Wconversion
+    -Wsign-conversion
+    -Wdouble-promotion
+    -Wformat=2
+    -Wformat-security
+    -Wnull-dereference
+    -Wstack-protector
+    -fstack-protector-strong
+    -Wstrict-overflow=2
+)
+```
+
+### Static Analysis (PVS-Studio)
+
+Run PVS-Studio before every commit:
 
 ```bash
-# Run all tests (no hardware needed - runs on host)
-cargo test
+# Generate compile_commands.json
+idf.py build
 
-# Run specific test
-cargo test test_iambic_mode_b
+# Run PVS-Studio
+pvs-studio-analyzer analyze -f keyer_c/build/compile_commands.json \
+    -o keyer_c/build/pvs-report.log \
+    -j4
 
-# Run with output
-cargo test -- --nocapture
+# Convert to readable format
+plog-converter -t fullhtml -o keyer_c/build/pvs-report keyer_c/build/pvs-report.log
 ```
 
-### Clean Build
+**Zero warnings policy**: All PVS-Studio warnings must be fixed or explicitly suppressed with justification.
 
-```bash
-# Clean after DevContainer rebuild or major changes
-cargo clean
-cargo build
+### Memory Management
+
+**NO DYNAMIC ALLOCATION IN RT PATH**
+
+```c
+// FORBIDDEN in RT path:
+malloc(), calloc(), realloc(), free()
+strdup(), asprintf()
+new, delete (C++)
+
+// REQUIRED: Static allocation only
+static uint8_t buffer[BUFFER_SIZE];
+static stream_sample_t samples[STREAM_CAPACITY];
 ```
 
-## Critical Build System Configuration
+**Heap usage allowed only**:
+- During initialization (before RT task starts)
+- In best-effort tasks on Core 1
+- Never in Core 0 RT task
 
-**⚠️ READ [JOURNAL.md](JOURNAL.md) BEFORE MODIFYING BUILD SYSTEM**
+### Atomic Operations (C11 stdatomic.h)
 
-The build system has several components that can break compilation if changed:
+```c
+#include <stdatomic.h>
 
-1. **[build.rs](build.rs)** - MUST call `embuild::espidf::sysenv::output()` as FIRST line in `main()`
-   - This emits critical cargo instructions for ldproxy linker configuration
-   - Without it: `"Cannot locate argument '--ldproxy-linker <linker>'"` error
-   - Also runs Python code generator for configuration
+// Correct usage
+atomic_store_explicit(&var, value, memory_order_release);
+value = atomic_load_explicit(&var, memory_order_acquire);
 
-2. **[Cargo.toml](Cargo.toml)** - Version compatibility
-   - `embuild = "0.33"` in `[build-dependencies]`
-   - `esp-idf-svc = "0.51.0"` compatible with ESP-IDF v5.3.x
-   - Do NOT change versions without checking compatibility
+// For counters/indices in single-producer scenarios
+atomic_store_explicit(&idx, new_idx, memory_order_relaxed);
+```
 
-3. **[.cargo/config.toml](.cargo/config.toml)** - Target configuration
-   - `ESP_IDF_VERSION = "v5.3.3"` - must be simple string format
-   - Multi-target support for ESP32-S3 (Xtensa) and ESP32-P4 (RISC-V)
+**Memory ordering guide**:
+- `memory_order_relaxed` - Single producer/consumer, no synchronization needed
+- `memory_order_acquire` - Consumer reading shared data
+- `memory_order_release` - Producer writing shared data
+- `memory_order_seq_cst` - Avoid unless absolutely necessary (performance cost)
 
-4. **DevContainer** - Volume mounts for caching
-   - `.embuild/` volume: ~500MB ESP-IDF installation
-   - `target/` volume: compiled artifacts
-   - First build after container rebuild takes 10-15 minutes
+### Defensive Coding Patterns
 
-## Code Generation System
+```c
+// 1. Always validate pointers
+void func(const data_t *data) {
+    if (data == NULL) {
+        return;  // or set FAULT
+    }
+    // ...
+}
 
-Configuration parameters are NOT hardcoded - they're defined in [parameters.yaml](parameters.yaml) and code is auto-generated:
+// 2. Bounds checking
+if (index >= ARRAY_SIZE) {
+    fault_set(&g_fault_state, FAULT_INDEX_OUT_OF_BOUNDS, index);
+    return;
+}
 
-### Workflow
+// 3. Use const correctness
+void process(const stream_sample_t *sample);  // Won't modify sample
 
-1. Edit [parameters.yaml](parameters.yaml) to add/modify configuration parameters
-2. Build automatically runs [scripts/gen_config.py](scripts/gen_config.py)
-3. Generated files appear in `src/generated/`:
-   - `config.rs` - Atomic configuration struct with global `CONFIG` instance
-   - `config_meta.rs` - GUI metadata (labels, descriptions, widgets)
-   - `config_nvs.rs` - NVS persistence stubs
+// 4. Initialize all variables
+uint32_t count = 0;  // Never leave uninitialized
 
-**NEVER edit generated files directly** - changes will be overwritten on next build.
+// 5. Use static for file-local symbols
+static void internal_helper(void);  // Not visible outside file
 
-### Adding a New Parameter
+// 6. Use IRAM_ATTR for ISR and RT-critical functions
+static void IRAM_ATTR gpio_isr_handler(void *arg);
+```
 
-1. Add entry to [parameters.yaml](parameters.yaml) following the schema format
-2. Run `cargo build` to regenerate code
-3. Access in code via `CONFIG.your_parameter.load(Ordering::Relaxed)`
+### FreeRTOS Best Practices
 
-## Architecture Principles
+```c
+// 1. Pin RT task to Core 0
+xTaskCreatePinnedToCore(
+    rt_task,
+    "rt_task",
+    4096,
+    NULL,
+    configMAX_PRIORITIES - 1,  // Highest priority
+    NULL,
+    0  // Core 0
+);
 
-From [ARCHITECTURE.md](ARCHITECTURE.md) - **these are immutable**:
+// 2. Use vTaskDelayUntil for periodic tasks (not vTaskDelay)
+TickType_t last_wake = xTaskGetTickCount();
+for (;;) {
+    // Do work...
+    vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(1));
+}
+
+// 3. Never use mutexes in RT path
+// Use lock-free atomics instead
+
+// 4. Stack size: measure with uxTaskGetStackHighWaterMark()
+UBaseType_t stack_remaining = uxTaskGetStackHighWaterMark(NULL);
+```
+
+### RT-Safe Logging
+
+**NEVER use in RT path**:
+- `ESP_LOGx()` macros
+- `printf()`, `puts()`, `fprintf()`
+- Any blocking I/O
+
+**ALWAYS use RT-safe macros**:
+
+```c
+#include "rt_log.h"
+
+int64_t now_us = esp_timer_get_time();
+
+RT_ERROR(&g_rt_log_stream, now_us, "FAULT: %s", fault_code_str(code));
+RT_WARN(&g_rt_log_stream, now_us, "Lag: %u samples", lag);
+RT_INFO(&g_rt_log_stream, now_us, "Key down");
+RT_DEBUG(&g_rt_log_stream, now_us, "State: %d", state);
+```
+
+### Integer Types
+
+```c
+// Use exact-width types
+#include <stdint.h>
+uint8_t  byte;
+uint16_t half_word;
+uint32_t word;
+int64_t  timestamp_us;
+
+// Use size_t for sizes and indices
+size_t length = strlen(str);
+for (size_t i = 0; i < count; i++) { ... }
+
+// Use bool for flags
+#include <stdbool.h>
+bool is_active = false;
+```
+
+### Error Handling Pattern
+
+```c
+// Return esp_err_t for functions that can fail
+esp_err_t hal_gpio_init(const hal_gpio_config_t *config) {
+    if (config == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t ret = gpio_config(&io_conf);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    return ESP_OK;
+}
+
+// Check return values
+ESP_ERROR_CHECK(hal_gpio_init(&cfg));  // Abort on error (init only)
+
+// Or handle gracefully
+esp_err_t ret = some_function();
+if (ret != ESP_OK) {
+    RT_ERROR(&stream, now, "Failed: %s", esp_err_to_name(ret));
+    return ret;
+}
+```
+
+---
+
+## Architecture Principles (Immutable)
+
+From [ARCHITECTURE.md](ARCHITECTURE.md):
 
 ### The Stream is Truth
-
-All keying events flow through `KeyingStream` - the single source of truth. No other shared state exists.
 
 ```
 Producer → KeyingStream → Consumers
            (lock-free)
 ```
 
-- **Producers**: Push samples (GPIO polling, iambic FSM, remote CW receiver)
-- **Consumers**: Read samples at their own pace (audio/TX, remote forwarder, decoder)
-- **No communication** between components except through stream
+All keying events flow through `keying_stream_t`. No other shared state.
 
 ### Hard Real-Time Path
 
@@ -126,162 +308,129 @@ GPIO Poll → Iambic FSM → Stream Push → Audio/TX Consumer
            (Core 0, highest priority, ZERO context switches)
 ```
 
-**Latency ceiling: 100 microseconds** (absolute maximum, must minimize)
+**Latency ceiling: 100 microseconds**
 
 **Forbidden in RT path**:
-- Heap allocation
+- Heap allocation (`malloc`, `free`)
 - Blocking I/O
 - Mutexes/locks
-- `ESP_LOGx`, `println!`, `print!` (use `rt_log!()` macro instead)
-- Context switches (producer and Hard RT consumer co-located in same task)
-
-**Required**:
-- Static allocation only
-- Lock-free atomics for synchronization
-- RT-safe logging via `rt_log!()` macro (non-blocking, ~100-200ns)
-- FAULT on timing corruption (silence is better than wrong CW)
-
-### Threading Model
-
-- **Core 0**: RT task (GPIO, iambic, stream push, audio/TX consume)
-- **Core 1**: Best-effort tasks (remote, decoder, diagnostics, WiFi/BT stack)
+- `ESP_LOGx`, `printf`
+- Context switches
 
 ### FAULT Philosophy
 
 > Corrupted CW timing is worse than silence. If in doubt, FAULT and stop.
 
-Hard RT consumers have a maximum lag limit. Exceeding it triggers FAULT:
-- Audio off, TX off immediately
-- FAULT cause logged with timestamp
-- Stream history preserved for diagnostics
-
-## Key Components
-
-### Core Stream System
-
-- **[src/stream.rs](src/stream.rs)** - `KeyingStream` lock-free SPMC ring buffer
-- **[src/sample.rs](src/sample.rs)** - `StreamSample` type (GPIO, local_key, remote_key, flags)
-- **[src/consumer.rs](src/consumer.rs)** - `HardRtConsumer` and `BestEffortConsumer` traits
-- **[src/fault.rs](src/fault.rs)** - `FaultState` for RT-safe fault tracking
-- **[src/logging.rs](src/logging.rs)** - `LogStream` for RT-safe logging (`rt_log!()` macros)
-
-### Keying Logic
-
-- **[src/iambic.rs](src/iambic.rs)** - Iambic FSM (pure logic, no I/O or allocation)
-- Implements Mode A and Mode B with configurable memory window
-
-### Hardware Abstraction
-
-- **[src/hal/gpio.rs](src/hal/gpio.rs)** - Paddle input
-- **[src/hal/audio.rs](src/hal/audio.rs)** - I2S sidetone output
-
-### Configuration
-
-- **[src/config/mod.rs](src/config/mod.rs)** - Re-exports generated config
-- **[src/generated/](src/generated/)** - Auto-generated from [parameters.yaml](parameters.yaml)
-
-## Development Workflow
-
-### Typical Change Flow
-
-1. **Read [ARCHITECTURE.md](ARCHITECTURE.md)** to ensure compliance
-2. Make changes following immutable principles
-3. Run tests: `cargo test`
-4. Build for target: `cargo build --release`
-5. Flash and verify: `espflash flash --monitor`
-
-### When Modifying Configuration
-
-1. Edit [parameters.yaml](parameters.yaml)
-2. Build regenerates code automatically
-3. Test parameter access in relevant components
-
-### When Adding a Consumer
-
-1. Decide: Hard RT (MUST keep up, will FAULT) or Best Effort (skips if behind)
-2. Implement consumer trait in [src/consumer.rs](src/consumer.rs)
-3. Add to appropriate thread (Core 0 for Hard RT, Core 1 for Best Effort)
-4. Write stream-based tests (see Testing Principles below)
-
-### Testing Principles
-
-From [ARCHITECTURE.md](ARCHITECTURE.md) Section 7:
-
-- Components are tested by providing streams (fake, recorded, or synthesized)
-- No mocking needed (the stream is the only interface)
-- Tests run on host without hardware
-- Recorded hardware captures are test fixtures in `tests/captures/`
-- Expected outputs are golden files in `tests/golden/`
-
-**If you need a mock, the design is wrong.**
-
-## Common Pitfalls
-
-1. **Don't bypass the stream** - all communication goes through `KeyingStream`
-2. **Don't add mutexes/locks** - use atomic operations only
-3. **Don't use `ESP_LOGx` in RT path** - use `rt_log!()` macro instead
-4. **Don't allocate in RT path** - static allocation only
-5. **Don't modify build.rs without reading [JOURNAL.md](JOURNAL.md)** - critical ordering requirements
-6. **Don't edit generated files** - edit [parameters.yaml](parameters.yaml) instead
-7. **Don't add callbacks** - produces and consumers are isolated
-8. **Don't share state** - only the stream is shared
-
-## Target Platforms
-
-- **Primary**: ESP32-S3 (Xtensa architecture) - default target
-- **Secondary**: ESP32-P4 (RISC-V architecture) - use `--target riscv32imafc-esp-espidf`
-- **Testing**: Host (x86/ARM) - core logic compiles and tests on host
-
-## External Documentation
-
-- **ESP-RS Book**: https://esp-rs.github.io/book/
-- **embuild**: https://github.com/esp-rs/embuild
-- **esp-idf-svc**: https://github.com/esp-rs/esp-idf-svc
-- **ESP-IDF**: https://docs.espressif.com/projects/esp-idf/
-
-## Commit Guidelines
-
-When committing changes that touch the build system or critical configuration:
-- Reference [JOURNAL.md](JOURNAL.md) in commit message if modifying build system
-- Explain why changes comply with [ARCHITECTURE.md](ARCHITECTURE.md)
-- Include test results for timing-critical changes
-
-## RT-Safe Logging
-
-The project uses a custom non-blocking logging system for the RT path.
-
-### Quick Reference
-
-```rust
-// Get timestamp
-let now = unsafe { esp_idf_sys::esp_timer_get_time() };
-
-// Log at different levels
-rt_error!(&RT_LOG_STREAM, now, "FAULT: {:?}", code);   // Critical errors
-rt_warn!(&RT_LOG_STREAM, now, "Lag: {} samples", n);    // Warnings
-rt_info!(&RT_LOG_STREAM, now, "Key down @ {}", time);   // Normal events
-rt_debug!(&RT_LOG_STREAM, now, "State: {:?}", state);   // Debug info
-rt_trace!(&RT_LOG_STREAM, now, "GPIO: {:08b}", bits);   // Verbose trace
+```c
+if (lag > MAX_LAG_SAMPLES) {
+    fault_set(&g_fault_state, FAULT_CONSUMER_LAG, lag);
+    hal_gpio_set_tx(false);  // TX off immediately
+    return HARD_RT_FAULT;
+}
 ```
 
-### Rules
+### Threading Model
 
-- **NEVER** use `println!`, `ESP_LOGx`, or `log::` in RT path
-- **ALWAYS** use `rt_log!()` macros instead
-- Messages > 120 chars are truncated
-- Dropped messages are reported automatically
+| Core | Task | Priority | Purpose |
+|------|------|----------|---------|
+| 0 | rt_task | MAX-1 | GPIO, Iambic, Stream, Audio/TX |
+| 1 | bg_task | IDLE+2 | Remote, decoder, diagnostics |
+| 1 | uart_log | IDLE+1 | Log drain to UART |
+| 1 | console | IDLE+1 | Serial console |
 
-See [docs/developer-guide/logging.md](docs/developer-guide/logging.md) for complete guide.
+---
+
+## Key Components (C Implementation)
+
+### keyer_core
+
+- **[stream.h](keyer_c/components/keyer_core/include/stream.h)** - Lock-free SPMC ring buffer
+- **[sample.h](keyer_c/components/keyer_core/include/sample.h)** - 6-byte packed sample struct
+- **[consumer.h](keyer_c/components/keyer_core/include/consumer.h)** - Hard RT and best-effort consumers
+- **[fault.h](keyer_c/components/keyer_core/include/fault.h)** - Atomic fault state
+
+### keyer_iambic
+
+- **[iambic.h](keyer_c/components/keyer_iambic/include/iambic.h)** - Iambic FSM (Mode A/B)
+
+### keyer_audio
+
+- **[sidetone.h](keyer_c/components/keyer_audio/include/sidetone.h)** - Phase accumulator sidetone
+- **[audio_buffer.h](keyer_c/components/keyer_audio/include/audio_buffer.h)** - Lock-free audio ring buffer
+- **[ptt.h](keyer_c/components/keyer_audio/include/ptt.h)** - PTT controller with tail timeout
+
+### keyer_logging
+
+- **[rt_log.h](keyer_c/components/keyer_logging/include/rt_log.h)** - RT-safe logging macros
+
+### keyer_hal
+
+- **[hal_gpio.h](keyer_c/components/keyer_hal/include/hal_gpio.h)** - Paddle input, TX output
+- **[hal_audio.h](keyer_c/components/keyer_hal/include/hal_audio.h)** - I2S audio output
+- **[hal_es8311.h](keyer_c/components/keyer_hal/include/hal_es8311.h)** - ES8311 codec driver
+
+---
 
 ## Code Review Checklist
 
-Every change must verify (from [ARCHITECTURE.md](ARCHITECTURE.md)):
+Every change must verify:
 
-1. Does this change communicate through the stream only?
-2. Does this change avoid forbidden patterns?
-3. Does this change maintain Hard RT latency budget?
-4. Does this change have stream-based tests?
-5. Does this change preserve FAULT semantics?
-6. Does this change use only `rt_log!()` in RT path (no blocking logs)?
+1. **Stream-only communication** - No shared state except `keying_stream_t`
+2. **No forbidden patterns** - No malloc, mutex, blocking I/O in RT path
+3. **RT latency budget** - Operations complete within 100µs
+4. **Static allocation** - All buffers statically allocated
+5. **FAULT semantics** - Timing violations trigger FAULT
+6. **RT-safe logging** - Only `RT_*()` macros in RT path
+7. **Compiler warnings** - Zero warnings with strict flags
+8. **PVS-Studio clean** - No static analysis warnings
 
 Non-compliant code shall not be merged.
+
+---
+
+## Testing
+
+### Host Tests (Unity)
+
+```bash
+cd keyer_c/test_host
+
+# Build and run all tests
+cmake -B build
+cmake --build build
+./build/test_runner
+
+# Run with sanitizers
+cmake -B build -DCMAKE_C_FLAGS="-fsanitize=address,undefined"
+cmake --build build
+./build/test_runner
+```
+
+### Testing Principles
+
+- Components tested by providing streams (fake, recorded, synthesized)
+- No mocking needed (stream is the only interface)
+- Tests run on host without hardware
+- **If you need a mock, the design is wrong**
+
+---
+
+## Common Pitfalls
+
+1. **Don't bypass the stream** - All communication through `keying_stream_t`
+2. **Don't add mutexes** - Use `stdatomic.h` only
+3. **Don't use ESP_LOGx in RT path** - Use `RT_*()` macros
+4. **Don't allocate in RT path** - Static allocation only
+5. **Don't edit generated files** - Edit `parameters.yaml` instead
+6. **Don't add callbacks** - Producers and consumers are isolated
+7. **Don't share state** - Only the stream is shared
+8. **Don't ignore compiler warnings** - Fix all warnings
+
+---
+
+## External Documentation
+
+- **ESP-IDF**: https://docs.espressif.com/projects/esp-idf/
+- **ESP-IDF API Reference**: https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/api-reference/
+- **FreeRTOS**: https://www.freertos.org/Documentation/RTOS_book.html
+- **PVS-Studio**: https://pvs-studio.com/en/docs/

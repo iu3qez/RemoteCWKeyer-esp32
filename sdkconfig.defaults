@@ -1,19 +1,15 @@
-# RustRemoteCWKeyer sdkconfig.defaults
-# Based on proven configuration from similar CW keyer project
+# keyer_c - ESP32 CW Keyer in Pure C
+# sdkconfig.defaults
 
 # Target
 CONFIG_IDF_TARGET="esp32s3"
 
 # Flash Configuration
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
-# Auto-reset after flash for easier debugging
-# CONFIG_ESPTOOLPY_AFTER_NORESET=y
 
 # Custom Partition Table (OTA + SPIFFS + Coredump)
-# Note: Absolute path required because embuild's PROJECT_DIR doesn't work for custom partitions
-# If building outside DevContainer, update this path
 CONFIG_PARTITION_TABLE_CUSTOM=y
-CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="/workspaces/RustRemoteCWKeyer/partitions.csv"
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
 # CPU Speed - 240MHz for maximum performance
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
@@ -36,7 +32,6 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 #
 # Port 2: UART on GPIO6 (TX only) - System logs
 #   - Requires external USB-UART adapter (CH340, CP2102, etc)
-#   - See uart_logger.rs for implementation
 #   - WARNING: GPIO6 only safe on Quad Flash boards!
 #
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
