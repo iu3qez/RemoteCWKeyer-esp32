@@ -454,6 +454,7 @@ static const console_cmd_t s_commands[] = {
     { "log",           "Set log level",                cmd_log },
     { "debug",         "Set ESP-IDF log levels",       cmd_debug },
     { "uf2",           "Enter UF2 bootloader",         cmd_uf2 },
+    { "flash",         "Enter bootloader mode",        cmd_uf2 },
     { "factory-reset", "Erase NVS and reboot",         cmd_factory_reset },
 };
 
