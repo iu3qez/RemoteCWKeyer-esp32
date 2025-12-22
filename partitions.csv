@@ -1,16 +1,18 @@
-# ESP32-S3 Partition Table - 16MB Flash with OTA Support
-# keyer_c - Pure C CW Keyer
+# ESP32-S3 Partition Table - 16MB Flash with OTA Support + UF2 Bootloader
+# RemoteKeyerIU3QEZ - Production Configuration
 #
-# Layout:
-# - Factory partition (2MB) for initial/recovery firmware
+# Layout optimized for:
+# - UF2 bootloader (2MB factory partition) for USB firmware updates
 # - Dual OTA partitions (3.4MB each) for remote firmware updates
 # - Large SPIFFS partition (6.8MB) for logs, waveforms, user data
-# - Expanded NVS (96KB) for configuration storage
+# - Expanded NVS (96KB) for extensive configuration storage
 # - Core dump partition (64KB) for crash debugging
 #
 # Physical Flash: 16MB (16777216 bytes)
 # Bootloader + partition table: ~36KB
 # Available for partitions: ~16348KB
+# Utilization: ~15.85MB (99.1%)
+# Free Space per OTA partition: 3.4MB (2.4x current 1.4MB app size)
 #
 # Name,     Type, SubType,  Offset,   Size,     Flags
 nvs,        data, nvs,      0x9000,   96K,

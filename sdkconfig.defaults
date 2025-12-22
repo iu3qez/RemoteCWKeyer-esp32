@@ -1,67 +1,46 @@
-# keyer_c - ESP32 CW Keyer in Pure C
-# sdkconfig.defaults
-
-# Target
+# This file was generated using idf.py save-defconfig. It can be edited manually.
+# Espressif IoT Development Framework (ESP-IDF) 5.4.3 Project Minimal Configuration
+#
 CONFIG_IDF_TARGET="esp32s3"
-
-# Flash Configuration
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
-
-# Custom Partition Table (OTA + SPIFFS + Coredump)
+CONFIG_ESPTOOLPY_AFTER_NORESET=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
-CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
-
-# CPU Speed - 240MHz for maximum performance
-CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
-
-# FreeRTOS Configuration - CRITICAL for RT timing
-# 1000Hz tick = 1ms resolution for precise CW timing
-CONFIG_FREERTOS_HZ=1000
-CONFIG_FREERTOS_USE_TRACE_FACILITY=y
-CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
-CONFIG_FREERTOS_RUN_TIME_STATS_USING_ESP_TIMER=y
-
-# Main task stack size
-CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
-
-# Console Configuration - Dual Serial Architecture
-#
-# Port 1: USB Serial JTAG (built-in) - Interactive console
-#   - Appears as /dev/ttyACMx on Linux, COMx on Windows
-#   - Used for interactive commands and responses
-#
-# Port 2: UART on GPIO6 (TX only) - System logs
-#   - Requires external USB-UART adapter (CH340, CP2102, etc)
-#   - WARNING: GPIO6 only safe on Quad Flash boards!
-#
-CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
-CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
-
-# Line endings - CRLF for proper terminal display
-CONFIG_NEWLIB_STDOUT_LINE_ENDING_CRLF=y
-
-# ISR safety for I2C/I2S (audio sidetone)
 CONFIG_I2C_ISR_IRAM_SAFE=y
 CONFIG_I2S_ISR_IRAM_SAFE=y
-
-# Panic behavior - print and halt for debugging
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
 CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT=y
-
-# Core dump to flash for crash debugging
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+CONFIG_ESP_WIFI_NVS_ENABLED=n
+# Increased main task stack size for TextKeyer and complex subsystems
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
-CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
-CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
-CONFIG_ESP_COREDUMP_MAX_TASKS_NUM=64
+CONFIG_LWIP_SO_RCVBUF=y
+CONFIG_LWIP_NETIF_STATUS_CALLBACK=y
+CONFIG_TINYUSB_DEBUG_LEVEL=0
+CONFIG_TINYUSB_CDC_ENABLED=y
+CONFIG_TINYUSB_CDC_COUNT=2
 
-# PSRAM Configuration (if board has it)
-CONFIG_SPIRAM=y
-CONFIG_SPIRAM_MODE_OCT=y
-CONFIG_SPIRAM_SPEED_80M=y
-CONFIG_SPIRAM_USE_CAPS_ALLOC=y
-CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=32
-CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=32768
+CONFIG_TINYUSB_DEBUG_LEVEL=0
+# Increased buffer sizes for serial console interface:
+# RX: 1024 bytes - handles longer input lines and command history
+CONFIG_TINYUSB_CDC_RX_BUFSIZE=1024
+CONFIG_TINYUSB_CDC_TX_BUFSIZE=4096
+# Disable auto-reset after flash when using USB (requires physical reset button press)
+# This prevents ESP32-S3 from staying stuck in download mode after flash.
+# After flashing, press the RESET button on the board to start the application.
+CONFIG_ESPTOOLPY_AFTER_NORESET=y
+# Disable USB Serial JTAG to prevent USB enumeration conflicts
+# System logs will be captured by esp_log_set_vprintf hook and redirected to CDC0
+# User console remains on TinyUSB CDC (USB OTG)
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=n
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 
-# WiFi Configuration (for remote operation)
+# Line ending configuration - Use CRLF for proper terminal display
+# ESP_LOG* macros will output \r\n instead of just \n, preventing "staircase effect"
+CONFIG_NEWLIB_STDOUT_LINE_ENDING_CRLF=y
+
+# WiFi Configuration (Task 5.4.0.8)
 CONFIG_ESP_WIFI_ENABLED=y
 CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=10
 CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=32
@@ -69,6 +48,7 @@ CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=32
 CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=y
 CONFIG_ESP_WIFI_AMPDU_RX_ENABLED=y
 CONFIG_ESP_WIFI_NVS_ENABLED=n
+# Disable WiFi NVS storage - we manage WiFi config via custom Storage class
 
 # TCP/IP Stack
 CONFIG_LWIP_MAX_SOCKETS=10
@@ -77,10 +57,44 @@ CONFIG_LWIP_SO_RCVBUF=y
 CONFIG_LWIP_NETIF_LOOPBACK=y
 CONFIG_LWIP_NETIF_STATUS_CALLBACK=y
 
-# HTTP Server (for web interface)
+# HTTP Server Configuration
+# Modern browsers send long headers (User-Agent, Accept-*, etc.); 512 default causes 431 errors
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
 CONFIG_HTTPD_MAX_URI_LEN=512
 CONFIG_HTTPD_ERR_RESP_NO_DELAY=y
+CONFIG_HTTPD_PURGE_BUF_LEN=32
 
-# mDNS (for keyer.local discovery)
+# mDNS (optional, for keyer.local discovery)
 CONFIG_MDNS_MAX_INTERFACES=3
+
+# PSRAM Configuration - Enable external PSRAM for large buffers
+# ESP32-S3 supports up to 8MB Octal PSRAM @ 80MHz
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+# Use PSRAM for heap allocations via heap_caps_malloc(MALLOC_CAP_SPIRAM)
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+# Keep small allocations (<= 32 bytes) in internal RAM for performance
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=32
+# Reserve internal RAM for DMA operations (I2S, SPI, etc.)
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=32768
+
+# Core Dump Configuration - Save crash dumps to flash for debugging
+# Enable core dump to flash partition (64KB partition added in partitions.csv)
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+# Use ELF format for full debugging information (registers, stack, memory)
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+# CRC32 checksum to verify dump integrity
+CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
+# Maximum number of tasks to save in dump (default 64)
+CONFIG_ESP_COREDUMP_MAX_TASKS_NUM=64
+
+# Main loop profiling - DISABLED by default (causes 400-1200ms blocking every 5s)
+# Enable on-demand with: scripts/build/toggle_profiling.sh enable
+CONFIG_ENABLE_MAIN_LOOP_PROFILING=n
+# FreeRTOS tick rate - CRITICAL for 1ms main loop timing (see application_controller.cpp:37)
+CONFIG_FREERTOS_HZ=1000
+# FreeRTOS runtime statistics - required for /api/system/stats CPU monitoring
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+CONFIG_FREERTOS_RUN_TIME_STATS_USING_ESP_TIMER=y
