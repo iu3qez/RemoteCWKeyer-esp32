@@ -211,6 +211,33 @@ void uart_logger_task(void *arg);
 #define RT_TRACE(stream, ts, fmt, ...) \
     RT_LOG(stream, LOG_LEVEL_TRACE, ts, fmt, ##__VA_ARGS__)
 
+/* ============================================================================
+ * Diagnostic Logging Macros (conditionally enabled at runtime)
+ * ============================================================================ */
+
+/**
+ * @brief Diagnostic log macro (internal)
+ *
+ * Only logs if g_rt_diag_enabled is true. Single atomic load (~1 cycle).
+ */
+#define RT_DIAG_LOG(stream, level, ts, fmt, ...) do { \
+    if (atomic_load_explicit(&g_rt_diag_enabled, memory_order_relaxed)) { \
+        RT_LOG(stream, level, ts, fmt, ##__VA_ARGS__); \
+    } \
+} while(0)
+
+/** Diagnostic info (key down/up events) */
+#define RT_DIAG_INFO(stream, ts, fmt, ...) \
+    RT_DIAG_LOG(stream, LOG_LEVEL_INFO, ts, fmt, ##__VA_ARGS__)
+
+/** Diagnostic debug (timing details, audio state) */
+#define RT_DIAG_DEBUG(stream, ts, fmt, ...) \
+    RT_DIAG_LOG(stream, LOG_LEVEL_DEBUG, ts, fmt, ##__VA_ARGS__)
+
+/** Diagnostic warning (timing drift) */
+#define RT_DIAG_WARN(stream, ts, fmt, ...) \
+    RT_DIAG_LOG(stream, LOG_LEVEL_WARN, ts, fmt, ##__VA_ARGS__)
+
 #ifdef __cplusplus
 }
 #endif
