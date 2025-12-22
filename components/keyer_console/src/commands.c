@@ -15,6 +15,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs.h"
@@ -368,6 +369,74 @@ static console_error_t cmd_factory_reset(const console_parsed_cmd_t *cmd) {
     return CONSOLE_OK;
 }
 
+/**
+ * @brief debug - Set ESP-IDF log levels
+ *
+ * Supports:
+ * - debug none           - disable all logging
+ * - debug * verbose      - all verbose
+ * - debug wifi warn      - set wifi tag to warn
+ * - debug info           - show RT log buffer status (stub)
+ */
+static console_error_t cmd_debug(const console_parsed_cmd_t *cmd) {
+#ifdef CONFIG_IDF_TARGET
+    if (cmd->argc == 0) {
+        /* Show current RT log status */
+        printf("RT Log: (use 'debug info' for details)\r\n");
+        return CONSOLE_OK;
+    }
+
+    const char *arg1 = cmd->args[0];
+
+    /* debug info - show RT log buffer status */
+    if (strcmp(arg1, "info") == 0) {
+        printf("RT Log: buffer status\r\n");
+        printf("(RT log stats not yet implemented)\r\n");
+        return CONSOLE_OK;
+    }
+
+    /* debug none - disable all logging */
+    if (strcmp(arg1, "none") == 0) {
+        esp_log_level_set("*", ESP_LOG_NONE);
+        printf("All logging disabled\r\n");
+        return CONSOLE_OK;
+    }
+
+    /* debug <tag> <level> */
+    if (cmd->argc < 2) {
+        return CONSOLE_ERR_MISSING_ARG;
+    }
+
+    const char *tag = arg1;
+    const char *level_str = cmd->args[1];
+    esp_log_level_t level;
+
+    if (strcmp(level_str, "none") == 0) {
+        level = ESP_LOG_NONE;
+    } else if (strcmp(level_str, "error") == 0) {
+        level = ESP_LOG_ERROR;
+    } else if (strcmp(level_str, "warn") == 0) {
+        level = ESP_LOG_WARN;
+    } else if (strcmp(level_str, "info") == 0) {
+        level = ESP_LOG_INFO;
+    } else if (strcmp(level_str, "debug") == 0) {
+        level = ESP_LOG_DEBUG;
+    } else if (strcmp(level_str, "verbose") == 0) {
+        level = ESP_LOG_VERBOSE;
+    } else {
+        return CONSOLE_ERR_INVALID_VALUE;
+    }
+
+    esp_log_level_set(tag, level);
+    printf("Log %s = %s\r\n", tag, level_str);
+    return CONSOLE_OK;
+#else
+    (void)cmd;
+    printf("debug not available on host\r\n");
+    return CONSOLE_OK;
+#endif
+}
+
 /* ============================================================================
  * Command registry
  * ============================================================================ */
@@ -383,6 +452,7 @@ static const console_cmd_t s_commands[] = {
     { "save",          "Persist to NVS",               cmd_save },
     { "reboot",        "Restart system",               cmd_reboot },
     { "log",           "Set log level",                cmd_log },
+    { "debug",         "Set ESP-IDF log levels",       cmd_debug },
     { "uf2",           "Enter UF2 bootloader",         cmd_uf2 },
     { "factory-reset", "Erase NVS and reboot",         cmd_factory_reset },
 };
