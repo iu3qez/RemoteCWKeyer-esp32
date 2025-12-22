@@ -65,12 +65,13 @@ void test_complete_command_help(void);
 void test_complete_param_after_set(void);
 void test_complete_param_after_show(void);
 void test_complete_no_match(void);
-void test_complete_cycling(void);
-void test_complete_wrap_around(void);
+void test_complete_multiple_matches(void);
 void test_complete_reset(void);
 void test_complete_empty_line(void);
 void test_complete_buffer_limit(void);
-void test_complete_debug_cycling(void);
+void test_complete_debug_shows_all(void);
+void test_complete_debug_with_prefix(void);
+void test_complete_diag(void);
 
 void test_diag_disabled_by_default(void);
 void test_diag_enable_disable(void);
@@ -164,12 +165,13 @@ int main(void) {
     RUN_TEST(test_complete_param_after_set);
     RUN_TEST(test_complete_param_after_show);
     RUN_TEST(test_complete_no_match);
-    RUN_TEST(test_complete_cycling);
-    RUN_TEST(test_complete_wrap_around);
+    RUN_TEST(test_complete_multiple_matches);
     RUN_TEST(test_complete_reset);
     RUN_TEST(test_complete_empty_line);
     RUN_TEST(test_complete_buffer_limit);
-    RUN_TEST(test_complete_debug_cycling);
+    RUN_TEST(test_complete_debug_shows_all);
+    RUN_TEST(test_complete_debug_with_prefix);
+    RUN_TEST(test_complete_diag);
 
     /* RT Diagnostic tests */
     printf("\n=== RT Diagnostic Tests ===\n");

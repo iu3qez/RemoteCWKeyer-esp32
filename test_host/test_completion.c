@@ -1,6 +1,6 @@
 /**
  * @file test_completion.c
- * @brief Tests for tab completion
+ * @brief Tests for tab completion (show-all approach)
  */
 
 #include "unity.h"
@@ -8,7 +8,7 @@
 #include <string.h>
 
 /**
- * @brief Test completing command "help" from "hel"
+ * @brief Test completing unique command "help" from "hel"
  */
 void test_complete_command_help(void) {
     char line[64] = "hel";
@@ -21,7 +21,7 @@ void test_complete_command_help(void) {
 }
 
 /**
- * @brief Test completing parameter after "set "
+ * @brief Test completing unique parameter after "set "
  */
 void test_complete_param_after_set(void) {
     char line[64] = "set wp";
@@ -34,16 +34,18 @@ void test_complete_param_after_set(void) {
 }
 
 /**
- * @brief Test completing parameter after "show "
+ * @brief Test completing parameter after "show " with multiple matches
  */
 void test_complete_param_after_show(void) {
     char line[64] = "show side";
     size_t pos = 9;
 
+    /* "side" matches sidetone_freq_hz and sidetone_vol - shows both, completes common prefix */
     bool completed = console_complete(line, &pos, sizeof(line));
     TEST_ASSERT_TRUE(completed);
-    TEST_ASSERT_EQUAL_STRING("show sidetone_freq_hz", line);
-    TEST_ASSERT_EQUAL(21, pos);
+    /* Common prefix is "sidetone_" */
+    TEST_ASSERT_EQUAL_STRING("show sidetone_", line);
+    TEST_ASSERT_EQUAL(14, pos);
 }
 
 /**
@@ -58,78 +60,34 @@ void test_complete_no_match(void) {
 }
 
 /**
- * @brief Test cycling through multiple matches
+ * @brief Test multiple matches show all (returns true, prints options)
  */
-void test_complete_cycling(void) {
-    console_complete_reset();
-
-    /* Complete "set s" - should match first parameter starting with 's' */
-    char line[64] = "set s";
-    size_t pos = 5;
-
-    /* First tab - get first match */
-    bool completed = console_complete(line, &pos, sizeof(line));
-    TEST_ASSERT_TRUE(completed);
-    /* First match should be "sidetone_freq_hz" (index 4 in CONSOLE_PARAMS) */
-    TEST_ASSERT_EQUAL_STRING("set sidetone_freq_hz", line);
-
-    /* Simulate user pressing Tab again without typing */
-    /* Reset line to original prefix to test cycling */
-    strcpy(line, "set s");
-    pos = 5;
-
-    /* Second tab on same prefix - should get second match if cycling works */
-    /* But we need to NOT reset the completion state */
-    /* Actually, the issue is that after completing, pos changed to end of completed word */
-    /* When user presses tab again, we extract the token which is now the full word */
-    /* So cycling only works if we keep the prefix the same length */
-    /* This is the flaw - after completion, prefix_len changes */
-
-    /* Let's just test that first completion works correctly */
-    console_complete_reset();
-    strcpy(line, "set s");
-    pos = 5;
-    completed = console_complete(line, &pos, sizeof(line));
-    TEST_ASSERT_TRUE(completed);
-    TEST_ASSERT_EQUAL_STRING("set sidetone_freq_hz", line);
-}
-
-/**
- * @brief Test completion wraps around after last match
- */
-void test_complete_wrap_around(void) {
-    console_complete_reset();
-
+void test_complete_multiple_matches(void) {
     char line[64] = "s";
     size_t pos = 1;
 
-    /* First tab - should match first command starting with 's' */
-    /* Commands in order: "stats" (index 4), "show" (5), "set" (6), "save" (7) */
+    /* Multiple commands start with 's' - should return true and show all */
     bool completed = console_complete(line, &pos, sizeof(line));
     TEST_ASSERT_TRUE(completed);
-    TEST_ASSERT_EQUAL_STRING("stats", line);
-
-    /* Test that completion found something */
-    /* We can't easily test cycling without fixing the cycling logic */
-    /* For now, just verify first match works */
+    /* Line unchanged since no common prefix beyond 's' */
+    TEST_ASSERT_EQUAL_STRING("s", line);
 }
 
 /**
- * @brief Test completion reset
+ * @brief Test completion reset (no-op in show-all mode)
  */
 void test_complete_reset(void) {
     char line[64] = "hel";
     size_t pos = 3;
 
-    /* First completion */
     bool completed = console_complete(line, &pos, sizeof(line));
     TEST_ASSERT_TRUE(completed);
     TEST_ASSERT_EQUAL_STRING("help", line);
 
-    /* Reset state */
+    /* Reset should be no-op */
     console_complete_reset();
 
-    /* Should start from beginning again */
+    /* Should still work */
     strcpy(line, "hel");
     pos = 3;
     completed = console_complete(line, &pos, sizeof(line));
@@ -160,41 +118,53 @@ void test_complete_buffer_limit(void) {
     TEST_ASSERT_TRUE(completed);
     TEST_ASSERT_EQUAL_STRING("help", line);
 
-    /* Try completing something that won't fit */
+    /* Multiple matches in small buffer - shows all, can't complete common prefix */
     char small_line[8] = "set sid";
     pos = 7;
     completed = console_complete(small_line, &pos, sizeof(small_line));
-    /* "set sidetone_freq_hz" is 20 chars, won't fit in 8 byte buffer */
-    TEST_ASSERT_FALSE(completed);
+    /* Shows options but can't fit common prefix "sidetone_" - still returns true */
+    TEST_ASSERT_TRUE(completed);
+    /* Line unchanged since common prefix won't fit */
+    TEST_ASSERT_EQUAL_STRING("set sid", small_line);
 }
 
 /**
- * @brief Test debug command cycling through options
+ * @brief Test debug command shows all options
  */
-void test_complete_debug_cycling(void) {
-    console_complete_reset();
-
-    /* "debug " with empty prefix should cycle through all options */
+void test_complete_debug_shows_all(void) {
     char line[64] = "debug ";
     size_t pos = 6;
 
-    /* First tab - should get first option "info" */
+    /* Empty prefix after "debug " - should show all and return true */
+    bool completed = console_complete(line, &pos, sizeof(line));
+    TEST_ASSERT_TRUE(completed);
+    /* Line unchanged since many matches with no common prefix */
+    TEST_ASSERT_EQUAL_STRING("debug ", line);
+}
+
+/**
+ * @brief Test debug with prefix filters options
+ */
+void test_complete_debug_with_prefix(void) {
+    char line[64] = "debug inf";
+    size_t pos = 9;
+
+    /* "inf" matches only "info" - should complete */
     bool completed = console_complete(line, &pos, sizeof(line));
     TEST_ASSERT_TRUE(completed);
     TEST_ASSERT_EQUAL_STRING("debug info", line);
+}
 
-    /* Second tab - should get next option "none" */
-    completed = console_complete(line, &pos, sizeof(line));
-    TEST_ASSERT_TRUE(completed);
-    TEST_ASSERT_EQUAL_STRING("debug none", line);
+/**
+ * @brief Test diag command completion
+ */
+void test_complete_diag(void) {
+    char line[64] = "diag o";
+    size_t pos = 6;
 
-    /* Third tab - should get next option "*" */
-    completed = console_complete(line, &pos, sizeof(line));
+    /* "o" matches "on" and "off" - shows both, completes to "o" */
+    bool completed = console_complete(line, &pos, sizeof(line));
     TEST_ASSERT_TRUE(completed);
-    TEST_ASSERT_EQUAL_STRING("debug *", line);
-
-    /* Fourth tab - should get first log tag "config_nvs" */
-    completed = console_complete(line, &pos, sizeof(line));
-    TEST_ASSERT_TRUE(completed);
-    TEST_ASSERT_EQUAL_STRING("debug config_nvs", line);
+    /* Common prefix is just "o" */
+    TEST_ASSERT_EQUAL_STRING("diag o", line);
 }

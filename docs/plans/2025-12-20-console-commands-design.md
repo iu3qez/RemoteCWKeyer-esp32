@@ -251,15 +251,11 @@ Escape sequences: `\x1b[A` (up), `\x1b[B` (down).
 
 ## Tab Completion
 
-Primo match alfabetico, tab successivi ciclano tra le opzioni.
+Approccio "show-all": tab mostra tutte le opzioni in riga (stile bash).
 
-```rust
-struct TabState {
-    prefix_len: usize,
-    match_idx: usize,
-    cycling: bool,
-}
-```
+Comportamento:
+- **Match singolo** → completa direttamente
+- **Match multipli** → stampa tutte le opzioni su una riga, completa prefisso comune
 
 Completamento su:
 1. **Comandi** - dopo primo token parziale
@@ -274,10 +270,16 @@ Lo script `scripts/gen_log_tags.py` estrae i tag `static const char *TAG = "..."
 
 ```
 > debug <tab>
-info → none → * → config_nvs → main → usb_cdc → ... → error → warn → debug → verbose
+info none * config_nvs esp_netif esp_tls ... error warn debug verbose
+> debug _
 ```
 
-Reset cycling quando utente digita altro carattere.
+Esempio con prefisso comune:
+```
+> show side<tab>
+sidetone_freq_hz sidetone_vol
+> show sidetone_
+```
 
 ## Struttura File
 

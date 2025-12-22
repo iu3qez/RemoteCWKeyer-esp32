@@ -1,115 +1,134 @@
 /**
  * @file completion.c
  * @brief Tab completion for commands and parameters
+ *
+ * Shows all matching completions on one line instead of cycling.
  */
 
 #include "console.h"
 #include "config_console.h"
 #include "log_tags.h"
+#include <stdio.h>
 #include <string.h>
 #include <stddef.h>
 
-/** Completion state for cycling through matches */
-static size_t s_last_match_idx = 0;
-static size_t s_original_prefix_len = 0;
-static size_t s_original_token_start = 0;
-static char s_original_prefix[64] = {0};
-static char s_line_context[64] = {0};  /* Line content before token_start */
-static bool s_cycling = false;
+#ifdef CONFIG_IDF_TARGET
+#include "usb_console.h"
+/* Use USB console printf for console output */
+#define printf usb_console_printf
+#endif
+
+/** Maximum completions to show */
+#define MAX_COMPLETIONS 32
 
 /**
- * @brief Find matching command starting from index
- * @param prefix Prefix to match
- * @param len Length of prefix
- * @param start_idx Pointer to start index (updated to next index after match)
- * @return Matching command name or NULL
+ * @brief Completion context type
  */
-static const char *find_matching_command(const char *prefix, size_t len, size_t *start_idx) {
-    size_t count;
-    const console_cmd_t *cmds = console_get_commands(&count);
+typedef enum {
+    COMPLETE_COMMAND,
+    COMPLETE_PARAM,
+    COMPLETE_DIAG,
+    COMPLETE_DEBUG
+} complete_type_t;
 
-    for (size_t i = *start_idx; i < count; i++) {
+/**
+ * @brief Get all matching commands
+ */
+static size_t get_matching_commands(const char *prefix, size_t len,
+                                    const char **matches, size_t max_matches) {
+    size_t count = 0;
+    size_t cmd_count;
+    const console_cmd_t *cmds = console_get_commands(&cmd_count);
+
+    for (size_t i = 0; i < cmd_count && count < max_matches; i++) {
         if (strncmp(cmds[i].name, prefix, len) == 0) {
-            *start_idx = i + 1;
-            return cmds[i].name;
+            matches[count++] = cmds[i].name;
         }
     }
-    return NULL;
+    return count;
 }
 
 /**
- * @brief Find matching parameter starting from index
- * @param prefix Prefix to match
- * @param len Length of prefix
- * @param start_idx Pointer to start index (updated to next index after match)
- * @return Matching parameter name or NULL
+ * @brief Get all matching parameters
  */
-static const char *find_matching_param(const char *prefix, size_t len, size_t *start_idx) {
-    for (size_t i = *start_idx; i < CONSOLE_PARAM_COUNT; i++) {
+static size_t get_matching_params(const char *prefix, size_t len,
+                                  const char **matches, size_t max_matches) {
+    size_t count = 0;
+    for (size_t i = 0; i < CONSOLE_PARAM_COUNT && count < max_matches; i++) {
         if (strncmp(CONSOLE_PARAMS[i].name, prefix, len) == 0) {
-            *start_idx = i + 1;
-            return CONSOLE_PARAMS[i].name;
+            matches[count++] = CONSOLE_PARAMS[i].name;
         }
     }
-    return NULL;
+    return count;
 }
 
 /**
- * @brief Find matching diag subcommand starting from index
+ * @brief Get all matching diag arguments
  */
-static const char *find_matching_diag_arg(const char *prefix, size_t len, size_t *start_idx) {
+static size_t get_matching_diag_args(const char *prefix, size_t len,
+                                     const char **matches, size_t max_matches) {
     static const char *diag_args[] = { "on", "off" };
-    static const size_t diag_args_count = 2;
+    size_t count = 0;
 
-    for (size_t i = *start_idx; i < diag_args_count; i++) {
+    for (size_t i = 0; i < 2 && count < max_matches; i++) {
         if (strncmp(diag_args[i], prefix, len) == 0) {
-            *start_idx = i + 1;
-            return diag_args[i];
+            matches[count++] = diag_args[i];
         }
     }
-    return NULL;
+    return count;
 }
 
 /**
- * @brief Find matching debug subcommand starting from index
+ * @brief Get all matching debug arguments
  *
- * Debug completions are organized in 3 groups:
- * 1. Special commands: info, none
- * 2. Tags from LOG_TAGS (generated from codebase)
- * 3. Log levels for second argument
+ * Groups: special commands, log tags, log levels
  */
-static const char *find_matching_debug_arg(const char *prefix, size_t len, size_t *start_idx) {
-    /* Group 1: Special commands */
+static size_t get_matching_debug_args(const char *prefix, size_t len,
+                                      const char **matches, size_t max_matches) {
     static const char *special_cmds[] = { "info", "none", "*" };
-    static const size_t special_count = 3;
-
-    /* Group 2: Tags from log_tags.h (LOG_TAGS, LOG_TAGS_COUNT) */
-
-    /* Group 3: Log levels */
     static const char *levels[] = { "error", "warn", "debug", "verbose" };
-    static const size_t levels_count = 4;
+    size_t count = 0;
 
-    size_t total = special_count + LOG_TAGS_COUNT + levels_count;
-    size_t i = *start_idx;
-
-    while (i < total) {
-        const char *candidate;
-
-        if (i < special_count) {
-            candidate = special_cmds[i];
-        } else if (i < special_count + LOG_TAGS_COUNT) {
-            candidate = LOG_TAGS[i - special_count];
-        } else {
-            candidate = levels[i - special_count - LOG_TAGS_COUNT];
+    /* Special commands */
+    for (size_t i = 0; i < 3 && count < max_matches; i++) {
+        if (strncmp(special_cmds[i], prefix, len) == 0) {
+            matches[count++] = special_cmds[i];
         }
-
-        if (strncmp(candidate, prefix, len) == 0) {
-            *start_idx = i + 1;
-            return candidate;
-        }
-        i++;
     }
-    return NULL;
+
+    /* Log tags */
+    for (size_t i = 0; i < LOG_TAGS_COUNT && count < max_matches; i++) {
+        if (strncmp(LOG_TAGS[i], prefix, len) == 0) {
+            matches[count++] = LOG_TAGS[i];
+        }
+    }
+
+    /* Log levels */
+    for (size_t i = 0; i < 4 && count < max_matches; i++) {
+        if (strncmp(levels[i], prefix, len) == 0) {
+            matches[count++] = levels[i];
+        }
+    }
+
+    return count;
+}
+
+/**
+ * @brief Find common prefix length among all matches
+ */
+static size_t find_common_prefix_len(const char **matches, size_t count) {
+    if (count == 0) return 0;
+    if (count == 1) return strlen(matches[0]);
+
+    size_t common_len = strlen(matches[0]);
+    for (size_t i = 1; i < count; i++) {
+        size_t j = 0;
+        while (j < common_len && matches[0][j] == matches[i][j]) {
+            j++;
+        }
+        common_len = j;
+    }
+    return common_len;
 }
 
 bool console_complete(char *line, size_t *pos, size_t max_len) {
@@ -126,105 +145,78 @@ bool console_complete(char *line, size_t *pos, size_t max_len) {
     const char *prefix = &line[token_start];
     size_t prefix_len = *pos - token_start;
 
-    /* Determine what we're completing */
-    bool completing_param = false;
-    bool completing_diag = false;
-    bool completing_debug = false;
-
+    /* Determine completion type */
+    complete_type_t type = COMPLETE_COMMAND;
     if (token_start > 0) {
         if (strncmp(line, "set ", 4) == 0 || strncmp(line, "show ", 5) == 0) {
-            completing_param = true;
+            type = COMPLETE_PARAM;
         } else if (strncmp(line, "diag ", 5) == 0) {
-            completing_diag = true;
+            type = COMPLETE_DIAG;
         } else if (strncmp(line, "debug ", 6) == 0) {
-            completing_debug = true;
+            type = COMPLETE_DEBUG;
         }
     }
 
-    /* Check if we're cycling through matches
-     * Same context = same token position AND same line content before the token
-     * For token_start == 0 (command at start of line), we can't verify context so always start fresh */
-    bool same_context = false;
-    if (s_cycling && s_original_token_start == token_start && token_start > 0) {
-        /* Verify line context before token_start matches */
-        size_t ctx_cmp_len = token_start < sizeof(s_line_context) - 1 ? token_start : sizeof(s_line_context) - 1;
-        same_context = (strncmp(line, s_line_context, ctx_cmp_len) == 0) &&
-                       (strlen(s_line_context) == ctx_cmp_len);
+    /* Get all matches */
+    const char *matches[MAX_COMPLETIONS];
+    size_t match_count = 0;
+
+    switch (type) {
+        case COMPLETE_COMMAND:
+            match_count = get_matching_commands(prefix, prefix_len, matches, MAX_COMPLETIONS);
+            break;
+        case COMPLETE_PARAM:
+            match_count = get_matching_params(prefix, prefix_len, matches, MAX_COMPLETIONS);
+            break;
+        case COMPLETE_DIAG:
+            match_count = get_matching_diag_args(prefix, prefix_len, matches, MAX_COMPLETIONS);
+            break;
+        case COMPLETE_DEBUG:
+            match_count = get_matching_debug_args(prefix, prefix_len, matches, MAX_COMPLETIONS);
+            break;
     }
 
-    if (same_context) {
-        /* Continue cycling - use the original prefix that started this cycle */
-        prefix = s_original_prefix;
-        prefix_len = s_original_prefix_len;
-    } else {
-        /* Start new completion cycle - save original prefix and line context */
-        s_last_match_idx = 0;
-        s_original_token_start = token_start;
-        s_original_prefix_len = prefix_len;
-        size_t copy_len = prefix_len < sizeof(s_original_prefix) - 1 ? prefix_len : sizeof(s_original_prefix) - 1;
-        memcpy(s_original_prefix, prefix, copy_len);
-        s_original_prefix[copy_len] = '\0';
-        /* Save line context (content before token_start) */
-        size_t ctx_len = token_start < sizeof(s_line_context) - 1 ? token_start : sizeof(s_line_context) - 1;
-        memcpy(s_line_context, line, ctx_len);
-        s_line_context[ctx_len] = '\0';
-        s_cycling = true;
+    if (match_count == 0) {
+        return false;
     }
 
-    const char *match = NULL;
-    size_t idx = s_last_match_idx;
+    if (match_count == 1) {
+        /* Single match - complete it */
+        size_t match_len = strlen(matches[0]);
+        size_t new_line_len = token_start + match_len;
 
-    if (completing_debug) {
-        match = find_matching_debug_arg(prefix, prefix_len, &idx);
-    } else if (completing_diag) {
-        match = find_matching_diag_arg(prefix, prefix_len, &idx);
-    } else if (completing_param) {
-        match = find_matching_param(prefix, prefix_len, &idx);
-    } else {
-        match = find_matching_command(prefix, prefix_len, &idx);
+        if (new_line_len >= max_len) {
+            return false;
+        }
+
+        strcpy(&line[token_start], matches[0]);
+        line[new_line_len] = '\0';
+        *pos = new_line_len;
+        return true;
     }
 
-    if (match == NULL) {
-        /* Wrap around */
-        idx = 0;
-        if (completing_debug) {
-            match = find_matching_debug_arg(prefix, prefix_len, &idx);
-        } else if (completing_diag) {
-            match = find_matching_diag_arg(prefix, prefix_len, &idx);
-        } else if (completing_param) {
-            match = find_matching_param(prefix, prefix_len, &idx);
-        } else {
-            match = find_matching_command(prefix, prefix_len, &idx);
+    /* Multiple matches - show all and complete common prefix */
+    printf("\n");
+    for (size_t i = 0; i < match_count; i++) {
+        printf("%s ", matches[i]);
+    }
+    printf("\n");
+    fflush(stdout);
+
+    /* Complete to common prefix if longer than current */
+    size_t common_len = find_common_prefix_len(matches, match_count);
+    if (common_len > prefix_len) {
+        size_t new_line_len = token_start + common_len;
+        if (new_line_len < max_len) {
+            memcpy(&line[token_start], matches[0], common_len);
+            line[new_line_len] = '\0';
+            *pos = new_line_len;
         }
     }
-
-    if (match == NULL) {
-        s_cycling = false;
-        return false;
-    }
-
-    s_last_match_idx = idx;
-
-    /* Replace the prefix with the match */
-    size_t match_len = strlen(match);
-    size_t new_line_len = token_start + match_len;
-
-    if (new_line_len >= max_len) {
-        return false;
-    }
-
-    strcpy(&line[token_start], match);
-    line[new_line_len] = '\0';
-    *pos = new_line_len;
 
     return true;
 }
 
 void console_complete_reset(void) {
-    s_cycling = false;
-    s_last_match_idx = 0;
-    s_original_prefix_len = 0;
-    s_original_token_start = 0;
-    s_original_prefix[0] = '\0';
-    s_line_context[0] = '\0';
+    /* No state to reset with show-all approach */
 }
