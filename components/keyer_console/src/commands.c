@@ -17,6 +17,7 @@
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "nvs.h"
 #include "usb_console.h"
 #include "usb_log.h"
 #include "usb_uf2.h"
@@ -340,22 +341,50 @@ static console_error_t cmd_uf2(const console_parsed_cmd_t *cmd) {
     return CONSOLE_OK;
 }
 
+/**
+ * @brief factory-reset confirm - Erase NVS and reboot
+ */
+static console_error_t cmd_factory_reset(const console_parsed_cmd_t *cmd) {
+    if (cmd->argc == 0 || strcmp(cmd->args[0], "confirm") != 0) {
+        return CONSOLE_ERR_REQUIRES_CONFIRM;
+    }
+#ifdef CONFIG_IDF_TARGET
+    printf("Erasing NVS and rebooting...\r\n");
+
+    /* Erase the keyer config namespace */
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(CONFIG_NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err == ESP_OK) {
+        nvs_erase_all(handle);
+        nvs_commit(handle);
+        nvs_close(handle);
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(100));
+    esp_restart();
+#else
+    printf("factory-reset not available on host\r\n");
+#endif
+    return CONSOLE_OK;
+}
+
 /* ============================================================================
  * Command registry
  * ============================================================================ */
 
 static const console_cmd_t s_commands[] = {
-    { "help",    "List commands or show help",   cmd_help },
-    { "?",       "Alias for help",               cmd_question },
-    { "version", "Show version info",            cmd_version },
-    { "v",       "Alias for version",            cmd_version },
-    { "stats",   "System statistics",            cmd_stats },
-    { "show",    "Show parameters",              cmd_show },
-    { "set",     "Set parameter value",          cmd_set },
-    { "save",    "Persist to NVS",               cmd_save },
-    { "reboot",  "Restart system",               cmd_reboot },
-    { "log",     "Set log level",                cmd_log },
-    { "uf2",     "Enter UF2 bootloader",         cmd_uf2 },
+    { "help",          "List commands or show help",   cmd_help },
+    { "?",             "Alias for help",               cmd_question },
+    { "version",       "Show version info",            cmd_version },
+    { "v",             "Alias for version",            cmd_version },
+    { "stats",         "System statistics",            cmd_stats },
+    { "show",          "Show parameters",              cmd_show },
+    { "set",           "Set parameter value",          cmd_set },
+    { "save",          "Persist to NVS",               cmd_save },
+    { "reboot",        "Restart system",               cmd_reboot },
+    { "log",           "Set log level",                cmd_log },
+    { "uf2",           "Enter UF2 bootloader",         cmd_uf2 },
+    { "factory-reset", "Erase NVS and reboot",         cmd_factory_reset },
 };
 
 #define NUM_COMMANDS (sizeof(s_commands) / sizeof(s_commands[0]))
