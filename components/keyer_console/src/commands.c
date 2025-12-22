@@ -22,6 +22,7 @@
 #include "usb_console.h"
 #include "usb_log.h"
 #include "usb_uf2.h"
+#include "rt_log.h"
 /* Use USB console printf for command output */
 #define printf usb_console_printf
 #endif
@@ -437,6 +438,30 @@ static console_error_t cmd_debug(const console_parsed_cmd_t *cmd) {
 #endif
 }
 
+/**
+ * @brief diag [on|off] - Toggle RT diagnostic logging
+ */
+static console_error_t cmd_diag(const console_parsed_cmd_t *cmd) {
+    if (cmd->argc == 0) {
+        /* Show current state */
+        bool enabled = atomic_load_explicit(&g_rt_diag_enabled, memory_order_relaxed);
+        printf("Diagnostic logging: %s\r\n", enabled ? "ON" : "OFF");
+        return CONSOLE_OK;
+    }
+
+    const char *arg = cmd->args[0];
+    if (strcmp(arg, "on") == 0) {
+        atomic_store_explicit(&g_rt_diag_enabled, true, memory_order_relaxed);
+        printf("Diagnostic logging: ON\r\n");
+    } else if (strcmp(arg, "off") == 0) {
+        atomic_store_explicit(&g_rt_diag_enabled, false, memory_order_relaxed);
+        printf("Diagnostic logging: OFF\r\n");
+    } else {
+        return CONSOLE_ERR_INVALID_VALUE;
+    }
+    return CONSOLE_OK;
+}
+
 /* ============================================================================
  * Command registry
  * ============================================================================ */
@@ -456,6 +481,7 @@ static const console_cmd_t s_commands[] = {
     { "uf2",           "Enter UF2 bootloader",         cmd_uf2 },
     { "flash",         "Enter bootloader mode",        cmd_uf2 },
     { "factory-reset", "Erase NVS and reboot",         cmd_factory_reset },
+    { "diag",          "RT diagnostic logging",        cmd_diag },
 };
 
 #define NUM_COMMANDS (sizeof(s_commands) / sizeof(s_commands[0]))
