@@ -1,0 +1,4 @@
+description: "TinyUSB multi-CDC for console, log, and Winkeyer"
+version: "1.0.0"
+dependencies:
+  espressif/esp_tinyuf2: "^1.0.0"
