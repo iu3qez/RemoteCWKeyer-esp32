@@ -8,13 +8,13 @@ idf_component_register(
     INCLUDE_DIRS
         "include"
     REQUIRES
-        tinyusb
-        esp_tinyuf2
-        keyer_console
+        esp_tinyusb
         keyer_logging
+        esp_system
     PRIV_REQUIRES
         freertos
         esp_timer
+        keyer_console
 )
 
 target_compile_options(${COMPONENT_LIB} PRIVATE

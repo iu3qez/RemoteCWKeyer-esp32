@@ -11,6 +11,7 @@ idf_component_register(
         keyer_audio
         keyer_logging
         keyer_console
+        keyer_usb
         keyer_config
         keyer_hal
         freertos

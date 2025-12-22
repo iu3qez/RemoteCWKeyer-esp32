@@ -41,7 +41,7 @@ static void echo_char(char c) {
     /* Ctrl+C, Ctrl+U: no echo */
 
     if (len > 0) {
-        tinyusb_cdcacm_write(CDC_ITF_CONSOLE, buf, len);
+        tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_0, buf, len);
     }
 }
 
@@ -51,14 +51,14 @@ static void echo_char(char c) {
 static void console_rx_callback(int itf, cdcacm_event_t *event) {
     (void)event;
 
-    if (itf != CDC_ITF_CONSOLE) {
+    if (itf != TINYUSB_CDC_ACM_0) {
         return;
     }
 
     uint8_t buf[64];
     size_t len = 0;
 
-    esp_err_t ret = tinyusb_cdcacm_read(itf, buf, sizeof(buf), &len);
+    esp_err_t ret = tinyusb_cdcacm_read(TINYUSB_CDC_ACM_0, buf, sizeof(buf), &len);
     if (ret != ESP_OK || len == 0) {
         return;
     }
@@ -76,7 +76,7 @@ static void console_rx_callback(int itf, cdcacm_event_t *event) {
         }
     }
 
-    tinyusb_cdcacm_write_flush(CDC_ITF_CONSOLE, 0);
+    tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, 0);
 }
 
 esp_err_t usb_console_init(void) {
@@ -84,7 +84,7 @@ esp_err_t usb_console_init(void) {
 
     /* Register RX callback */
     tinyusb_cdcacm_register_callback(
-        CDC_ITF_CONSOLE,
+        TINYUSB_CDC_ACM_0,
         CDC_EVENT_RX,
         console_rx_callback
     );
@@ -94,8 +94,8 @@ esp_err_t usb_console_init(void) {
 
 void usb_console_print(const char *str) {
     size_t len = strlen(str);
-    tinyusb_cdcacm_write(CDC_ITF_CONSOLE, (const uint8_t *)str, len);
-    tinyusb_cdcacm_write_flush(CDC_ITF_CONSOLE, 0);
+    tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_0, (const uint8_t *)str, len);
+    tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, 0);
 }
 
 void usb_console_printf(const char *fmt, ...) {
@@ -106,8 +106,8 @@ void usb_console_printf(const char *fmt, ...) {
     va_end(args);
 
     if (len > 0) {
-        tinyusb_cdcacm_write(CDC_ITF_CONSOLE, (const uint8_t *)buf, (size_t)len);
-        tinyusb_cdcacm_write_flush(CDC_ITF_CONSOLE, 0);
+        tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_0, (const uint8_t *)buf, (size_t)len);
+        tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, 0);
     }
 }
 

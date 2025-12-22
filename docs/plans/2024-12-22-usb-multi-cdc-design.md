@@ -1,7 +1,7 @@
 # USB Multi-CDC Architecture Design
 
 **Date:** 2024-12-22
-**Status:** Approved
+**Status:** Implemented
 **Author:** Brainstorming session with Claude
 
 ## Overview
@@ -320,6 +320,26 @@ When implementing Winkeyer3:
 2. Implement WK3 protocol parser in `usb_winkeyer.c`
 3. Integrate with `keying_stream_t` for TX
 4. Test with N1MM+, fldigi, other contest loggers
+
+## Implementation Notes (2024-12-22)
+
+### esp_tinyuf2 Conflict
+
+During implementation, we discovered that `esp_tinyusb` and `esp_tinyuf2` cannot be used together:
+- `esp_tinyusb` uses `espressif__tinyusb` managed component
+- `esp_tinyuf2` uses `leeebo__tinyusb_src` (older TinyUSB version)
+- Linking fails with multiple definition errors for TinyUSB symbols
+
+**Workaround:** UF2 bootloader entry currently uses a simple `esp_restart()`. The user can then enter USB download mode manually (hold BOOT button during reset) for firmware updates via esptool.
+
+**Future:** Investigate if esp_tinyuf2 can be configured to share TinyUSB with esp_tinyusb, or use ESP-IDF's built-in USB DFU class instead.
+
+### API Changes
+
+The esp_tinyusb API uses different function names than documented in early examples:
+- `tinyusb_cdcacm_write_queue()` instead of `tinyusb_cdcacm_write()`
+- Interface type is `tinyusb_cdcacm_itf_t` with values `TINYUSB_CDC_ACM_0`, `TINYUSB_CDC_ACM_1`
+- Callback signature is `void(*tusb_cdcacm_callback_t)(int itf, cdcacm_event_t *event)`
 
 ## References
 

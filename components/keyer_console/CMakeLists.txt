@@ -13,6 +13,7 @@ idf_component_register(
         "src/completion.c"
     INCLUDE_DIRS "include"
     REQUIRES keyer_config keyer_logging driver
+    PRIV_REQUIRES keyer_usb
 )
 
 target_compile_options(${COMPONENT_LIB} PRIVATE

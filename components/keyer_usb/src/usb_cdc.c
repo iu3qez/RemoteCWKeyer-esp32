@@ -85,13 +85,13 @@ esp_err_t usb_cdc_init(void) {
 }
 
 size_t usb_cdc_write(uint8_t itf, const uint8_t *data, size_t len) {
-    return tinyusb_cdcacm_write(itf, data, len);
+    return tinyusb_cdcacm_write_queue((tinyusb_cdcacm_itf_t)itf, data, len);
 }
 
 void usb_cdc_flush(uint8_t itf) {
-    tinyusb_cdcacm_write_flush(itf, 0);
+    tinyusb_cdcacm_write_flush((tinyusb_cdcacm_itf_t)itf, 0);
 }
 
 bool usb_cdc_connected(uint8_t itf) {
-    return tud_cdc_n_connected(itf);
+    return tusb_cdc_acm_initialized((tinyusb_cdcacm_itf_t)itf);
 }

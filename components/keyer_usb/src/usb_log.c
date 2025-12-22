@@ -72,7 +72,7 @@ void usb_log_task(void *arg) {
                 entry.msg);
 
             if (len > 0 && usb_cdc_connected(CDC_ITF_LOG)) {
-                tinyusb_cdcacm_write(CDC_ITF_LOG, (uint8_t *)line, (size_t)len);
+                tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_1, (uint8_t *)line, (size_t)len);
             }
         }
 
@@ -90,13 +90,13 @@ void usb_log_task(void *arg) {
                 entry.msg);
 
             if (len > 0 && usb_cdc_connected(CDC_ITF_LOG)) {
-                tinyusb_cdcacm_write(CDC_ITF_LOG, (uint8_t *)line, (size_t)len);
+                tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_1, (uint8_t *)line, (size_t)len);
             }
         }
 
         /* Flush and yield */
         if (usb_cdc_connected(CDC_ITF_LOG)) {
-            tinyusb_cdcacm_write_flush(CDC_ITF_LOG, 0);
+            tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_1, 0);
         }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
