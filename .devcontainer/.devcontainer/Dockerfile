@@ -4,7 +4,13 @@ FROM espressif/idf:${DOCKER_TAG}
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 
-RUN apt-get update -y && apt-get install udev curl -y 
+RUN apt-get update -y && apt-get install udev curl wget gnupg -y
+
+# Install PVS-Studio
+RUN wget -q -O - https://files.pvs-studio.com/etc/pubkey.txt | apt-key add - \
+    && wget -O /etc/apt/sources.list.d/viva64.list https://files.pvs-studio.com/etc/viva64.list \
+    && apt-get update -y \
+    && apt-get install -y pvs-studio
 
 # Install Node.js 18.x (LTS)
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
