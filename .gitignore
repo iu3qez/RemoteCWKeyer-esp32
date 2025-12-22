@@ -34,3 +34,6 @@ build/
 old/
 tmp/
 managed_components/
+dependencies.lock
+.gitignore
+.vscode/settings.json
