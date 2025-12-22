@@ -8,6 +8,11 @@
  * Iambic Modes:
  * - Mode A: Stops immediately when paddles released
  * - Mode B: Completes current element + one more when squeeze released
+ *
+ * Memory Window:
+ * - Inputs before start% are ignored (debounce)
+ * - Inputs between start% and end% are memorized
+ * - Inputs after end% are ignored (too late)
  */
 
 #ifndef KEYER_IAMBIC_H
@@ -16,6 +21,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "sample.h"
+#include "iambic_preset.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,14 +30,6 @@ extern "C" {
 /* ============================================================================
  * Enums
  * ============================================================================ */
-
-/**
- * @brief Iambic keyer mode
- */
-typedef enum {
-    IAMBIC_MODE_A = 0,  /**< Mode A: Stop immediately when paddles released */
-    IAMBIC_MODE_B = 1,  /**< Mode B: Complete current + bonus element on squeeze release */
-} iambic_mode_t;
 
 /**
  * @brief Keying element type
@@ -47,12 +45,16 @@ typedef enum {
 
 /**
  * @brief Iambic keyer configuration
+ *
+ * Can be loaded from a preset or set manually.
  */
 typedef struct {
-    uint32_t wpm;          /**< Speed in words per minute (PARIS timing) */
-    iambic_mode_t mode;    /**< Iambic mode (A or B) */
-    bool dit_memory;       /**< Dit memory enable */
-    bool dah_memory;       /**< Dah memory enable */
+    uint32_t wpm;                   /**< Speed in words per minute (PARIS timing) */
+    iambic_mode_t mode;             /**< Iambic mode (A or B) */
+    memory_mode_t memory_mode;      /**< Which paddles are remembered */
+    squeeze_mode_t squeeze_mode;    /**< Squeeze detection timing */
+    uint8_t mem_window_start_pct;   /**< Memory window start (0-100%) */
+    uint8_t mem_window_end_pct;     /**< Memory window end (0-100%) */
 } iambic_config_t;
 
 /**
@@ -61,8 +63,39 @@ typedef struct {
 #define IAMBIC_CONFIG_DEFAULT { \
     .wpm = 20, \
     .mode = IAMBIC_MODE_B, \
-    .dit_memory = true, \
-    .dah_memory = true \
+    .memory_mode = MEMORY_MODE_DOT_AND_DAH, \
+    .squeeze_mode = SQUEEZE_MODE_LATCH_OFF, \
+    .mem_window_start_pct = 0, \
+    .mem_window_end_pct = 100 \
+}
+
+/**
+ * @brief Load configuration from active preset
+ *
+ * @param config Configuration struct to fill
+ */
+static inline void iambic_config_from_preset(iambic_config_t *config) {
+    const iambic_preset_t *preset = iambic_preset_active();
+    config->wpm = iambic_preset_get_wpm(preset);
+    config->mode = iambic_preset_get_mode(preset);
+    config->memory_mode = iambic_preset_get_memory_mode(preset);
+    config->squeeze_mode = iambic_preset_get_squeeze_mode(preset);
+    config->mem_window_start_pct = iambic_preset_get_mem_start(preset);
+    config->mem_window_end_pct = iambic_preset_get_mem_end(preset);
+}
+
+/**
+ * @brief Check if dit memory is enabled for given memory mode
+ */
+static inline bool iambic_dit_memory_enabled(memory_mode_t mode) {
+    return mode == MEMORY_MODE_DOT_ONLY || mode == MEMORY_MODE_DOT_AND_DAH;
+}
+
+/**
+ * @brief Check if dah memory is enabled for given memory mode
+ */
+static inline bool iambic_dah_memory_enabled(memory_mode_t mode) {
+    return mode == MEMORY_MODE_DAH_ONLY || mode == MEMORY_MODE_DOT_AND_DAH;
 }
 
 /**
@@ -122,7 +155,9 @@ typedef struct {
 
     /* FSM state */
     iambic_state_t state;      /**< Current FSM state */
+    int64_t element_start_us;  /**< Timestamp when current element started */
     int64_t element_end_us;    /**< Timestamp when current element ends */
+    int64_t element_duration_us; /**< Duration of current element */
     iambic_element_t last_element; /**< Last element sent (for alternation) */
 
     /* Paddle state */
@@ -130,11 +165,12 @@ typedef struct {
     bool dah_pressed;          /**< DAH paddle currently pressed */
 
     /* Memory flags */
-    bool dit_memory;           /**< DIT was pressed during element/gap */
-    bool dah_memory;           /**< DAH was pressed during element/gap */
+    bool dit_memory;           /**< DIT was pressed during memory window */
+    bool dah_memory;           /**< DAH was pressed during memory window */
 
-    /* Mode B: squeeze tracking */
+    /* Squeeze tracking */
     bool squeeze_seen;         /**< Squeeze detected during current element */
+    bool squeeze_latched;      /**< Latched squeeze state (for LATCH_ON mode) */
 
     /* Output state */
     bool key_down;             /**< Current key output state */

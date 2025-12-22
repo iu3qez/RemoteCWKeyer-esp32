@@ -6,6 +6,7 @@
 idf_component_register(
     SRCS
         "src/iambic.c"
+        "src/iambic_preset.c"
     INCLUDE_DIRS "include"
     REQUIRES keyer_core
 )
