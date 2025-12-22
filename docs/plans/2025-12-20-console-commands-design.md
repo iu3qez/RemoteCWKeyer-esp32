@@ -90,21 +90,54 @@ Formato output: `E01: unknown command 'foo'`
 | Comando | Sintassi | Descrizione |
 |---------|----------|-------------|
 | `help` | `help [cmd]` | Lista comandi o dettaglio singolo |
+| `?` | `?` | Alias per help |
+| `<cmd> ?` | `log ?` | Help inline per comando specifico |
 | `set` | `set <param> <value>` | Modifica parametro |
 | `show` | `show [pattern]` | Mostra parametri (wildcard: `keyer*`) |
+| `log` | `log` | Mostra livello log corrente |
+| `log` | `log level * LEVEL` | Imposta livello per tutti i tag |
+| `log` | `log level TAG LEVEL` | Imposta livello per tag specifico |
+| `log` | `log *=L` | Formato compatto (E/W/I/D/T) |
 | `debug` | `debug <tag> <level>` | Livelli log ESP-IDF |
 | `debug` | `debug none` | Disabilita tutto il logging |
 | `debug` | `debug * verbose` | Tutto al massimo |
 | `debug` | `debug info` | Stato ring buffer RT |
+| `diag` | `diag` | Mostra stato diagnostic logging |
+| `diag` | `diag on\|off` | Abilita/disabilita RT diagnostic |
 | `save` | `save` | Persiste configurazione su NVS |
 | `reboot` | `reboot confirm` | Riavvio sistema |
 | `factory-reset` | `factory-reset confirm` | Cancella NVS + reboot |
 | `flash` | `flash` | Riavvia in bootloader per esptool |
+| `uf2` | `uf2` | Alias per flash (UF2 bootloader) |
 | `stats` | `stats` | Overview sistema |
 | `stats` | `stats tasks` | Lista task per core |
 | `stats` | `stats heap` | Dettaglio memoria |
 | `stats` | `stats stream` | KeyingStream status |
 | `stats` | `stats rt` | Metriche real-time path |
+| `version` | `version` o `v` | Mostra versione firmware |
+
+### Help inline
+
+Ogni comando supporta `?` come primo argomento per mostrare l'help dettagliato:
+
+```
+> log ?
+log - Set log level
+
+Usage:
+  log                 Show current level
+  log level * LEVEL   Set all tags (ERROR/WARN/INFO/DEBUG/TRACE)
+  log level TAG LEVEL Set specific tag
+  log *=L             Compact: set all (E/W/I/D/T)
+  log TAG=L           Compact: set tag
+
+> help
+Available commands:
+  help           List commands or show help
+  ...
+
+Type 'help <cmd>' or '<cmd> ?' for details
+```
 
 ### Comandi pericolosi
 
