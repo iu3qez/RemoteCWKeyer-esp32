@@ -5,6 +5,7 @@
 
 #include "console.h"
 #include "config_console.h"
+#include "log_tags.h"
 #include <string.h>
 #include <stddef.h>
 
@@ -66,6 +67,48 @@ static const char *find_matching_diag_arg(const char *prefix, size_t len, size_t
     return NULL;
 }
 
+/**
+ * @brief Find matching debug subcommand starting from index
+ *
+ * Debug completions are organized in 3 groups:
+ * 1. Special commands: info, none
+ * 2. Tags from LOG_TAGS (generated from codebase)
+ * 3. Log levels for second argument
+ */
+static const char *find_matching_debug_arg(const char *prefix, size_t len, size_t *start_idx) {
+    /* Group 1: Special commands */
+    static const char *special_cmds[] = { "info", "none", "*" };
+    static const size_t special_count = 3;
+
+    /* Group 2: Tags from log_tags.h (LOG_TAGS, LOG_TAGS_COUNT) */
+
+    /* Group 3: Log levels */
+    static const char *levels[] = { "error", "warn", "debug", "verbose" };
+    static const size_t levels_count = 4;
+
+    size_t total = special_count + LOG_TAGS_COUNT + levels_count;
+    size_t i = *start_idx;
+
+    while (i < total) {
+        const char *candidate;
+
+        if (i < special_count) {
+            candidate = special_cmds[i];
+        } else if (i < special_count + LOG_TAGS_COUNT) {
+            candidate = LOG_TAGS[i - special_count];
+        } else {
+            candidate = levels[i - special_count - LOG_TAGS_COUNT];
+        }
+
+        if (strncmp(candidate, prefix, len) == 0) {
+            *start_idx = i + 1;
+            return candidate;
+        }
+        i++;
+    }
+    return NULL;
+}
+
 bool console_complete(char *line, size_t *pos, size_t max_len) {
     if (line == NULL || pos == NULL || *pos == 0) {
         return false;
@@ -83,12 +126,15 @@ bool console_complete(char *line, size_t *pos, size_t max_len) {
     /* Determine what we're completing */
     bool completing_param = false;
     bool completing_diag = false;
+    bool completing_debug = false;
 
     if (token_start > 0) {
         if (strncmp(line, "set ", 4) == 0 || strncmp(line, "show ", 5) == 0) {
             completing_param = true;
         } else if (strncmp(line, "diag ", 5) == 0) {
             completing_diag = true;
+        } else if (strncmp(line, "debug ", 6) == 0) {
+            completing_debug = true;
         }
     }
 
@@ -104,7 +150,9 @@ bool console_complete(char *line, size_t *pos, size_t max_len) {
     const char *match = NULL;
     size_t idx = s_last_match_idx;
 
-    if (completing_diag) {
+    if (completing_debug) {
+        match = find_matching_debug_arg(prefix, prefix_len, &idx);
+    } else if (completing_diag) {
         match = find_matching_diag_arg(prefix, prefix_len, &idx);
     } else if (completing_param) {
         match = find_matching_param(prefix, prefix_len, &idx);
@@ -115,7 +163,9 @@ bool console_complete(char *line, size_t *pos, size_t max_len) {
     if (match == NULL) {
         /* Wrap around */
         idx = 0;
-        if (completing_diag) {
+        if (completing_debug) {
+            match = find_matching_debug_arg(prefix, prefix_len, &idx);
+        } else if (completing_diag) {
             match = find_matching_diag_arg(prefix, prefix_len, &idx);
         } else if (completing_param) {
             match = find_matching_param(prefix, prefix_len, &idx);

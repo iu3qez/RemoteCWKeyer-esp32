@@ -265,6 +265,17 @@ Completamento su:
 1. **Comandi** - dopo primo token parziale
 2. **Parametri** - dopo `set ` o `show `
 3. **Categorie** - per wildcard
+4. **Debug args** - dopo `debug `: `info`, `none`, `*`, tag ESP_LOG, livelli
+5. **Diag args** - dopo `diag `: `on`, `off`
+
+### Tag ESP_LOG auto-generati
+
+Lo script `scripts/gen_log_tags.py` estrae i tag `static const char *TAG = "..."` dal codice e genera `components/keyer_console/include/log_tags.h` durante la build.
+
+```
+> debug <tab>
+info → none → * → config_nvs → main → usb_cdc → ... → error → warn → debug → verbose
+```
 
 Reset cycling quando utente digita altro carattere.
 
