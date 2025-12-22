@@ -22,9 +22,24 @@
 static char s_line_buf[CONSOLE_LINE_MAX];
 static size_t s_line_pos = 0;
 
+/** Saved line buffer for history navigation */
+static char s_saved_line[CONSOLE_LINE_MAX];
+static size_t s_saved_pos = 0;
+
+/** Escape sequence state machine */
+typedef enum {
+    ESC_NONE,
+    ESC_RECEIVED,
+    ESC_BRACKET_RECEIVED,
+} escape_state_t;
+
+static escape_state_t s_escape_state = ESC_NONE;
+
 void console_init(void) {
     s_line_pos = 0;
     memset(s_line_buf, 0, sizeof(s_line_buf));
+    s_escape_state = ESC_NONE;
+    console_history_init();
 }
 
 void console_print_prompt(void) {
@@ -33,9 +48,93 @@ void console_print_prompt(void) {
 }
 
 bool console_push_char(char c) {
+    /* Handle escape sequences for arrow keys */
+    if (s_escape_state == ESC_BRACKET_RECEIVED) {
+        s_escape_state = ESC_NONE;
+
+        if (c == 'A') {
+            /* Arrow up - previous history entry */
+            const char *hist = console_history_prev();
+            if (hist != NULL) {
+                /* Save current line on first navigation */
+                if (s_saved_pos == 0 && s_line_pos > 0) {
+                    memcpy(s_saved_line, s_line_buf, s_line_pos);
+                    s_saved_pos = s_line_pos;
+                }
+
+                /* Replace line with history entry */
+                strncpy(s_line_buf, hist, CONSOLE_LINE_MAX - 1);
+                s_line_buf[CONSOLE_LINE_MAX - 1] = '\0';
+                s_line_pos = strlen(s_line_buf);
+
+                /* Clear and redraw line */
+                printf("\r> %s\033[K", s_line_buf);
+                fflush(stdout);
+            }
+            return false;
+        } else if (c == 'B') {
+            /* Arrow down - next history entry */
+            const char *hist = console_history_next();
+            if (hist != NULL) {
+                /* Replace line with history entry */
+                strncpy(s_line_buf, hist, CONSOLE_LINE_MAX - 1);
+                s_line_buf[CONSOLE_LINE_MAX - 1] = '\0';
+                s_line_pos = strlen(s_line_buf);
+            } else {
+                /* Restore saved line */
+                if (s_saved_pos > 0) {
+                    memcpy(s_line_buf, s_saved_line, s_saved_pos);
+                    s_line_pos = s_saved_pos;
+                    s_saved_pos = 0;
+                } else {
+                    s_line_pos = 0;
+                }
+            }
+
+            /* Clear and redraw line */
+            printf("\r> %s\033[K", s_line_buf);
+            fflush(stdout);
+            return false;
+        }
+        return false;
+    }
+
+    if (s_escape_state == ESC_RECEIVED) {
+        if (c == '[') {
+            s_escape_state = ESC_BRACKET_RECEIVED;
+        } else {
+            s_escape_state = ESC_NONE;
+        }
+        return false;
+    }
+
+    if (c == 0x1B) {
+        /* ESC character - start escape sequence */
+        s_escape_state = ESC_RECEIVED;
+        return false;
+    }
+
+    /* Handle Tab completion */
+    if (c == 0x09) {
+        /* Tab character - try to complete */
+        if (console_complete(s_line_buf, &s_line_pos, CONSOLE_LINE_MAX)) {
+            /* Completion succeeded - redraw line */
+            printf("\r> %s", s_line_buf);
+            fflush(stdout);
+        }
+        return false;
+    }
+
+    /* Reset history navigation and completion state on any normal input */
+    console_history_reset_nav();
+    console_complete_reset();
+
     if (c == '\r' || c == '\n') {
         if (s_line_pos > 0) {
             s_line_buf[s_line_pos] = '\0';
+
+            /* Add to history */
+            console_history_push(s_line_buf);
 
             /* Parse and execute command */
             console_parsed_cmd_t cmd;
@@ -49,6 +148,7 @@ bool console_push_char(char c) {
             }
 
             s_line_pos = 0;
+            s_saved_pos = 0;
             return true;
         }
         return false;
@@ -60,10 +160,12 @@ bool console_push_char(char c) {
     } else if (c == 0x03) {
         /* Ctrl+C - cancel current line */
         s_line_pos = 0;
+        s_saved_pos = 0;
         return true;
     } else if (c == 0x15) {
         /* Ctrl+U - clear line */
         s_line_pos = 0;
+        s_saved_pos = 0;
     } else if (c >= 0x20 && c <= 0x7E) {
         /* Printable character */
         if (s_line_pos < CONSOLE_LINE_MAX - 1) {

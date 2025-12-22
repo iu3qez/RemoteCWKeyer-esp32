@@ -146,6 +146,64 @@ bool console_push_char(char c);
  */
 void console_print_prompt(void);
 
+/* ============================================================================
+ * History
+ * ============================================================================ */
+
+/**
+ * @brief Initialize command history
+ */
+void console_history_init(void);
+
+/**
+ * @brief Add command to history (skips duplicates of last entry)
+ * @param line Command line to add
+ */
+void console_history_push(const char *line);
+
+/**
+ * @brief Navigate to older entry (arrow up)
+ * @return Pointer to history entry or NULL if at oldest
+ */
+const char *console_history_prev(void);
+
+/**
+ * @brief Navigate to newer entry (arrow down)
+ * @return Pointer to history entry or NULL if at newest
+ */
+const char *console_history_next(void);
+
+/**
+ * @brief Reset navigation state
+ */
+void console_history_reset_nav(void);
+
+/* ============================================================================
+ * Tab completion
+ * ============================================================================ */
+
+/**
+ * @brief Complete current token with matching command or parameter
+ *
+ * Completes the token at cursor position:
+ * - First token: complete commands from console_get_commands()
+ * - After "set " or "show ": complete parameter names from CONSOLE_PARAMS
+ * - Tab cycles through matches
+ *
+ * @param line Line buffer (modified in-place)
+ * @param pos Pointer to cursor position (updated after completion)
+ * @param max_len Maximum length of line buffer
+ * @return true if completion was applied
+ */
+bool console_complete(char *line, size_t *pos, size_t max_len);
+
+/**
+ * @brief Reset completion cycling state
+ *
+ * Call this when user types any character other than Tab.
+ */
+void console_complete_reset(void);
+
 #ifdef __cplusplus
 }
 #endif

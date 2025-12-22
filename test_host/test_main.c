@@ -53,6 +53,24 @@ void test_config_get_param_str_wpm(void);
 void test_config_set_param_str_wpm(void);
 void test_config_set_param_str_out_of_range(void);
 
+void test_history_push_and_prev(void);
+void test_history_next(void);
+void test_history_wrap_at_depth(void);
+void test_history_skip_duplicates(void);
+void test_history_skip_empty(void);
+void test_history_reset_nav(void);
+void test_history_empty(void);
+
+void test_complete_command_help(void);
+void test_complete_param_after_set(void);
+void test_complete_param_after_show(void);
+void test_complete_no_match(void);
+void test_complete_cycling(void);
+void test_complete_wrap_around(void);
+void test_complete_reset(void);
+void test_complete_empty_line(void);
+void test_complete_buffer_limit(void);
+
 void setUp(void) {
     /* Called before each test */
 }
@@ -123,6 +141,28 @@ int main(void) {
     RUN_TEST(test_config_get_param_str_wpm);
     RUN_TEST(test_config_set_param_str_wpm);
     RUN_TEST(test_config_set_param_str_out_of_range);
+
+    /* History tests */
+    printf("\n=== History Tests ===\n");
+    RUN_TEST(test_history_push_and_prev);
+    RUN_TEST(test_history_next);
+    RUN_TEST(test_history_wrap_at_depth);
+    RUN_TEST(test_history_skip_duplicates);
+    RUN_TEST(test_history_skip_empty);
+    RUN_TEST(test_history_reset_nav);
+    RUN_TEST(test_history_empty);
+
+    /* Completion tests */
+    printf("\n=== Completion Tests ===\n");
+    RUN_TEST(test_complete_command_help);
+    RUN_TEST(test_complete_param_after_set);
+    RUN_TEST(test_complete_param_after_show);
+    RUN_TEST(test_complete_no_match);
+    RUN_TEST(test_complete_cycling);
+    RUN_TEST(test_complete_wrap_around);
+    RUN_TEST(test_complete_reset);
+    RUN_TEST(test_complete_empty_line);
+    RUN_TEST(test_complete_buffer_limit);
 
     return UNITY_END();
 }

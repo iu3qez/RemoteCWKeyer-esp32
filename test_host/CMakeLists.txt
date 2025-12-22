@@ -69,6 +69,8 @@ set(CONSOLE_SOURCES
     ${COMPONENT_DIR}/keyer_console/src/console.c
     ${COMPONENT_DIR}/keyer_console/src/parser.c
     ${COMPONENT_DIR}/keyer_console/src/commands.c
+    ${COMPONENT_DIR}/keyer_console/src/history.c
+    ${COMPONENT_DIR}/keyer_console/src/completion.c
 )
 
 set(CONFIG_SOURCES
@@ -86,6 +88,8 @@ set(TEST_SOURCES
     test_fault.c
     test_console_parser.c
     test_config_console.c
+    test_history.c
+    test_completion.c
     stubs/esp_stubs.c
 )
 
