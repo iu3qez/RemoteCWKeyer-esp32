@@ -132,6 +132,16 @@ void console_task(void *arg);
 bool console_process_char(char c);
 
 /**
+ * @brief Push character to console (from USB callback)
+ *
+ * Same as console_process_char but without echo (echo handled by USB).
+ *
+ * @param c Input character
+ * @return true if command was executed
+ */
+bool console_push_char(char c);
+
+/**
  * @brief Print the console prompt
  */
 void console_print_prompt(void);

@@ -29,11 +29,10 @@ void console_print_prompt(void) {
     fflush(stdout);
 }
 
-bool console_process_char(char c) {
+bool console_push_char(char c) {
     if (c == '\r' || c == '\n') {
         if (s_line_pos > 0) {
             s_line_buf[s_line_pos] = '\0';
-            printf("\r\n");
 
             /* Parse and execute command */
             console_parsed_cmd_t cmd;
@@ -54,30 +53,38 @@ bool console_process_char(char c) {
         /* Backspace */
         if (s_line_pos > 0) {
             s_line_pos--;
-            printf("\b \b");
         }
     } else if (c == 0x03) {
         /* Ctrl+C - cancel current line */
-        printf("^C\r\n");
         s_line_pos = 0;
         return true;
     } else if (c == 0x15) {
         /* Ctrl+U - clear line */
-        while (s_line_pos > 0) {
-            s_line_pos--;
-            printf("\b \b");
-        }
+        s_line_pos = 0;
     } else if (c >= 0x20 && c <= 0x7E) {
         /* Printable character */
         if (s_line_pos < CONSOLE_LINE_MAX - 1) {
             s_line_buf[s_line_pos++] = c;
-            putchar(c);
         }
     }
-    /* Ignore other characters (escape sequences, etc.) for now */
 
-    fflush(stdout);
     return false;
+}
+
+bool console_process_char(char c) {
+    /* Echo character (for non-USB usage) */
+    if (c >= 0x20 && c <= 0x7E) {
+        putchar(c);
+    } else if (c == '\r' || c == '\n') {
+        printf("\r\n");
+    } else if (c == '\b' || c == 0x7F) {
+        printf("\b \b");
+    } else if (c == 0x03) {
+        printf("^C\r\n");
+    }
+    fflush(stdout);
+
+    return console_push_char(c);
 }
 
 #ifdef CONFIG_IDF_TARGET
