@@ -8,6 +8,7 @@
 #include "console.h"
 #include "config_console.h"
 #include "config_nvs.h"
+#include "rt_log.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -22,7 +23,6 @@
 #include "usb_console.h"
 #include "usb_log.h"
 #include "usb_uf2.h"
-#include "rt_log.h"
 /* Use USB console printf for command output */
 #define printf usb_console_printf
 #endif

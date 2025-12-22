@@ -71,6 +71,11 @@ void test_complete_reset(void);
 void test_complete_empty_line(void);
 void test_complete_buffer_limit(void);
 
+void test_diag_disabled_by_default(void);
+void test_diag_enable_disable(void);
+void test_diag_macro_does_not_crash_when_disabled(void);
+void test_diag_macro_logs_when_enabled(void);
+
 void setUp(void) {
     /* Called before each test */
 }
@@ -163,6 +168,13 @@ int main(void) {
     RUN_TEST(test_complete_reset);
     RUN_TEST(test_complete_empty_line);
     RUN_TEST(test_complete_buffer_limit);
+
+    /* RT Diagnostic tests */
+    printf("\n=== RT Diagnostic Tests ===\n");
+    RUN_TEST(test_diag_disabled_by_default);
+    RUN_TEST(test_diag_enable_disable);
+    RUN_TEST(test_diag_macro_does_not_crash_when_disabled);
+    RUN_TEST(test_diag_macro_logs_when_enabled);
 
     return UNITY_END();
 }

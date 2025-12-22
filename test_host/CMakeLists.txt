@@ -65,6 +65,10 @@ set(AUDIO_SOURCES
     ${COMPONENT_DIR}/keyer_audio/src/ptt.c
 )
 
+set(LOGGING_SOURCES
+    ${COMPONENT_DIR}/keyer_logging/src/log_stream.c
+)
+
 set(CONSOLE_SOURCES
     ${COMPONENT_DIR}/keyer_console/src/console.c
     ${COMPONENT_DIR}/keyer_console/src/parser.c
@@ -90,6 +94,7 @@ set(TEST_SOURCES
     test_config_console.c
     test_history.c
     test_completion.c
+    test_rt_diag.c
     stubs/esp_stubs.c
 )
 
@@ -99,6 +104,7 @@ add_executable(test_runner
     ${CORE_SOURCES}
     ${IAMBIC_SOURCES}
     ${AUDIO_SOURCES}
+    ${LOGGING_SOURCES}
     ${CONSOLE_SOURCES}
     ${CONFIG_SOURCES}
 )
