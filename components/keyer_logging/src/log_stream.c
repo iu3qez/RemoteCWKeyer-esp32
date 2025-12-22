@@ -10,6 +10,9 @@
 log_stream_t g_rt_log_stream = LOG_STREAM_INIT;
 log_stream_t g_bg_log_stream = LOG_STREAM_INIT;
 
+/* Diagnostic logging enable flag (default: off) */
+atomic_bool g_rt_diag_enabled = false;
+
 void log_stream_init(log_stream_t *stream) {
     atomic_init(&stream->write_idx, 0);
     atomic_init(&stream->read_idx, 0);

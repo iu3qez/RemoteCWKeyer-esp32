@@ -87,6 +87,9 @@ extern log_stream_t g_rt_log_stream;
 /** Background log stream (Core 1, low priority) */
 extern log_stream_t g_bg_log_stream;
 
+/** Diagnostic logging enable flag (atomic for RT-safe access) */
+extern atomic_bool g_rt_diag_enabled;
+
 /* ============================================================================
  * Functions
  * ============================================================================ */
