@@ -145,6 +145,13 @@ bool log_stream_has_entries(const log_stream_t *stream);
 void log_stream_reset_dropped(log_stream_t *stream);
 
 /**
+ * @brief Get number of entries in stream
+ * @param stream Stream
+ * @return Number of entries waiting to be drained
+ */
+uint32_t log_stream_count(const log_stream_t *stream);
+
+/**
  * @brief Get log level name
  * @param level Log level
  * @return Level name string

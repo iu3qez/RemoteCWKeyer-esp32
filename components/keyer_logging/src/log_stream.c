@@ -86,6 +86,12 @@ void log_stream_reset_dropped(log_stream_t *stream) {
     atomic_store_explicit(&stream->dropped, 0, memory_order_relaxed);
 }
 
+uint32_t log_stream_count(const log_stream_t *stream) {
+    uint32_t read = atomic_load_explicit(&stream->read_idx, memory_order_relaxed);
+    uint32_t write = atomic_load_explicit(&stream->write_idx, memory_order_acquire);
+    return write - read;
+}
+
 const char *log_level_str(log_level_t level) {
     switch (level) {
         case LOG_LEVEL_ERROR: return "ERROR";

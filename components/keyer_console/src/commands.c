@@ -393,8 +393,10 @@ static console_error_t cmd_factory_reset(const console_parsed_cmd_t *cmd) {
 static console_error_t cmd_debug(const console_parsed_cmd_t *cmd) {
 #ifdef CONFIG_IDF_TARGET
     if (cmd->argc == 0) {
-        /* Show current RT log status */
-        printf("RT Log: (use 'debug info' for details)\r\n");
+        /* Show brief RT log status */
+        uint32_t rt_dropped = log_stream_dropped(&g_rt_log_stream);
+        printf("RT Log: %lu dropped (use 'debug info' for details)\r\n",
+               (unsigned long)rt_dropped);
         return CONSOLE_OK;
     }
 
@@ -402,8 +404,17 @@ static console_error_t cmd_debug(const console_parsed_cmd_t *cmd) {
 
     /* debug info - show RT log buffer status */
     if (strcmp(arg1, "info") == 0) {
-        printf("RT Log: buffer status\r\n");
-        printf("(RT log stats not yet implemented)\r\n");
+        uint32_t rt_count = log_stream_count(&g_rt_log_stream);
+        uint32_t rt_dropped = log_stream_dropped(&g_rt_log_stream);
+        uint32_t bg_count = log_stream_count(&g_bg_log_stream);
+        uint32_t bg_dropped = log_stream_dropped(&g_bg_log_stream);
+
+        printf("RT Log:  %lu/%d entries, %lu dropped\r\n",
+               (unsigned long)rt_count, LOG_BUFFER_SIZE, (unsigned long)rt_dropped);
+        printf("BG Log:  %lu/%d entries, %lu dropped\r\n",
+               (unsigned long)bg_count, LOG_BUFFER_SIZE, (unsigned long)bg_dropped);
+        printf("Diag:    %s\r\n",
+               atomic_load_explicit(&g_rt_diag_enabled, memory_order_relaxed) ? "ON" : "OFF");
         return CONSOLE_OK;
     }
 
