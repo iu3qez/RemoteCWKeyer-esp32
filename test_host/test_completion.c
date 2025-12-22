@@ -167,3 +167,34 @@ void test_complete_buffer_limit(void) {
     /* "set sidetone_freq_hz" is 20 chars, won't fit in 8 byte buffer */
     TEST_ASSERT_FALSE(completed);
 }
+
+/**
+ * @brief Test debug command cycling through options
+ */
+void test_complete_debug_cycling(void) {
+    console_complete_reset();
+
+    /* "debug " with empty prefix should cycle through all options */
+    char line[64] = "debug ";
+    size_t pos = 6;
+
+    /* First tab - should get first option "info" */
+    bool completed = console_complete(line, &pos, sizeof(line));
+    TEST_ASSERT_TRUE(completed);
+    TEST_ASSERT_EQUAL_STRING("debug info", line);
+
+    /* Second tab - should get next option "none" */
+    completed = console_complete(line, &pos, sizeof(line));
+    TEST_ASSERT_TRUE(completed);
+    TEST_ASSERT_EQUAL_STRING("debug none", line);
+
+    /* Third tab - should get next option "*" */
+    completed = console_complete(line, &pos, sizeof(line));
+    TEST_ASSERT_TRUE(completed);
+    TEST_ASSERT_EQUAL_STRING("debug *", line);
+
+    /* Fourth tab - should get first log tag "config_nvs" */
+    completed = console_complete(line, &pos, sizeof(line));
+    TEST_ASSERT_TRUE(completed);
+    TEST_ASSERT_EQUAL_STRING("debug config_nvs", line);
+}

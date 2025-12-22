@@ -70,6 +70,7 @@ void test_complete_wrap_around(void);
 void test_complete_reset(void);
 void test_complete_empty_line(void);
 void test_complete_buffer_limit(void);
+void test_complete_debug_cycling(void);
 
 void test_diag_disabled_by_default(void);
 void test_diag_enable_disable(void);
@@ -168,6 +169,7 @@ int main(void) {
     RUN_TEST(test_complete_reset);
     RUN_TEST(test_complete_empty_line);
     RUN_TEST(test_complete_buffer_limit);
+    RUN_TEST(test_complete_debug_cycling);
 
     /* RT Diagnostic tests */
     printf("\n=== RT Diagnostic Tests ===\n");

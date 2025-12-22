@@ -11,7 +11,10 @@
 
 /** Completion state for cycling through matches */
 static size_t s_last_match_idx = 0;
-static size_t s_prefix_len = 0;
+static size_t s_original_prefix_len = 0;
+static size_t s_original_token_start = 0;
+static char s_original_prefix[64] = {0};
+static char s_line_context[64] = {0};  /* Line content before token_start */
 static bool s_cycling = false;
 
 /**
@@ -138,12 +141,33 @@ bool console_complete(char *line, size_t *pos, size_t max_len) {
         }
     }
 
-    /* Check if we're cycling through matches */
-    if (s_cycling && s_prefix_len == prefix_len) {
-        /* Continue from last match */
+    /* Check if we're cycling through matches
+     * Same context = same token position AND same line content before the token
+     * For token_start == 0 (command at start of line), we can't verify context so always start fresh */
+    bool same_context = false;
+    if (s_cycling && s_original_token_start == token_start && token_start > 0) {
+        /* Verify line context before token_start matches */
+        size_t ctx_cmp_len = token_start < sizeof(s_line_context) - 1 ? token_start : sizeof(s_line_context) - 1;
+        same_context = (strncmp(line, s_line_context, ctx_cmp_len) == 0) &&
+                       (strlen(s_line_context) == ctx_cmp_len);
+    }
+
+    if (same_context) {
+        /* Continue cycling - use the original prefix that started this cycle */
+        prefix = s_original_prefix;
+        prefix_len = s_original_prefix_len;
     } else {
+        /* Start new completion cycle - save original prefix and line context */
         s_last_match_idx = 0;
-        s_prefix_len = prefix_len;
+        s_original_token_start = token_start;
+        s_original_prefix_len = prefix_len;
+        size_t copy_len = prefix_len < sizeof(s_original_prefix) - 1 ? prefix_len : sizeof(s_original_prefix) - 1;
+        memcpy(s_original_prefix, prefix, copy_len);
+        s_original_prefix[copy_len] = '\0';
+        /* Save line context (content before token_start) */
+        size_t ctx_len = token_start < sizeof(s_line_context) - 1 ? token_start : sizeof(s_line_context) - 1;
+        memcpy(s_line_context, line, ctx_len);
+        s_line_context[ctx_len] = '\0';
         s_cycling = true;
     }
 
@@ -199,4 +223,8 @@ bool console_complete(char *line, size_t *pos, size_t max_len) {
 void console_complete_reset(void) {
     s_cycling = false;
     s_last_match_idx = 0;
+    s_original_prefix_len = 0;
+    s_original_token_start = 0;
+    s_original_prefix[0] = '\0';
+    s_line_context[0] = '\0';
 }
