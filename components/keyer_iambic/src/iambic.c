@@ -185,7 +185,7 @@ static void update_gpio(iambic_processor_t *proc, gpio_state_t gpio, int64_t now
 static void tick_idle(iambic_processor_t *proc, int64_t now_us) {
     /* Determine next element from memory or current paddle state */
     iambic_element_t next_element;
-    iambic_element_t *next = decide_next_element(proc, &next_element);
+    const iambic_element_t *next = decide_next_element(proc, &next_element);
 
     if (next != NULL) {
         start_element(proc, *next, now_us);
