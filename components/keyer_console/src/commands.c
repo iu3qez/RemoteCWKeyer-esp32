@@ -15,6 +15,8 @@
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "usb_log.h"
+#include "usb_uf2.h"
 #endif
 
 /* ============================================================================
@@ -193,6 +195,106 @@ static console_error_t cmd_set(const console_parsed_cmd_t *cmd) {
     return CONSOLE_OK;
 }
 
+/**
+ * @brief log - Set log level
+ */
+static console_error_t cmd_log(const console_parsed_cmd_t *cmd) {
+#ifdef CONFIG_IDF_TARGET
+    if (cmd->argc == 0) {
+        /* Show current level */
+        printf("Log level: %s\r\n", log_level_str(usb_log_get_level()));
+        return CONSOLE_OK;
+    }
+
+    /* Parse "level TAG LEVEL" or "TAG=L" format */
+    const char *arg = cmd->args[0];
+
+    if (strcmp(arg, "level") == 0) {
+        /* ESP-IDF style: log level TAG LEVEL */
+        if (cmd->argc < 3) {
+            return CONSOLE_ERR_MISSING_ARG;
+        }
+        const char *tag = cmd->args[1];
+        const char *level_str = cmd->args[2];
+
+        log_level_t level;
+        if (strcmp(level_str, "ERROR") == 0 || strcmp(level_str, "E") == 0) {
+            level = LOG_LEVEL_ERROR;
+        } else if (strcmp(level_str, "WARN") == 0 || strcmp(level_str, "W") == 0) {
+            level = LOG_LEVEL_WARN;
+        } else if (strcmp(level_str, "INFO") == 0 || strcmp(level_str, "I") == 0) {
+            level = LOG_LEVEL_INFO;
+        } else if (strcmp(level_str, "DEBUG") == 0 || strcmp(level_str, "D") == 0) {
+            level = LOG_LEVEL_DEBUG;
+        } else if (strcmp(level_str, "TRACE") == 0 || strcmp(level_str, "T") == 0) {
+            level = LOG_LEVEL_TRACE;
+        } else {
+            return CONSOLE_ERR_INVALID_VALUE;
+        }
+
+        if (strcmp(tag, "*") == 0) {
+            usb_log_set_level(level);
+        } else {
+            usb_log_set_tag_level(tag, level);
+        }
+        printf("Log %s = %s\r\n", tag, log_level_str(level));
+        return CONSOLE_OK;
+    }
+
+    /* Compact style: TAG=L */
+    char tag_buf[32];
+    strncpy(tag_buf, arg, sizeof(tag_buf) - 1);
+    tag_buf[sizeof(tag_buf) - 1] = '\0';
+
+    char *eq = strchr(tag_buf, '=');
+    if (eq != NULL) {
+        *eq = '\0';
+        const char *tag = tag_buf;
+        const char *level_char = eq + 1;
+
+        log_level_t level;
+        switch (*level_char) {
+            case 'E': level = LOG_LEVEL_ERROR; break;
+            case 'W': level = LOG_LEVEL_WARN; break;
+            case 'I': level = LOG_LEVEL_INFO; break;
+            case 'D': level = LOG_LEVEL_DEBUG; break;
+            case 'T': level = LOG_LEVEL_TRACE; break;
+            default: return CONSOLE_ERR_INVALID_VALUE;
+        }
+
+        if (strcmp(tag, "*") == 0) {
+            usb_log_set_level(level);
+        } else {
+            usb_log_set_tag_level(tag, level);
+        }
+        printf("Log %s = %s\r\n", tag, log_level_str(level));
+        return CONSOLE_OK;
+    }
+
+    return CONSOLE_ERR_INVALID_VALUE;
+#else
+    (void)cmd;
+    printf("log not available on host\r\n");
+    return CONSOLE_OK;
+#endif
+}
+
+/**
+ * @brief uf2 - Enter UF2 bootloader mode
+ */
+static console_error_t cmd_uf2(const console_parsed_cmd_t *cmd) {
+    (void)cmd;
+#ifdef CONFIG_IDF_TARGET
+    printf("Entering UF2 bootloader mode...\r\n");
+    vTaskDelay(pdMS_TO_TICKS(100));
+    usb_uf2_enter();
+    /* Does not return */
+#else
+    printf("uf2 not available on host\r\n");
+#endif
+    return CONSOLE_OK;
+}
+
 /* ============================================================================
  * Command registry
  * ============================================================================ */
@@ -207,6 +309,8 @@ static const console_cmd_t s_commands[] = {
     { "set",     "Set parameter value",          cmd_set },
     { "save",    "Persist to NVS",               cmd_save },
     { "reboot",  "Restart system",               cmd_reboot },
+    { "log",     "Set log level",                cmd_log },
+    { "uf2",     "Enter UF2 bootloader",         cmd_uf2 },
 };
 
 #define NUM_COMMANDS (sizeof(s_commands) / sizeof(s_commands[0]))
