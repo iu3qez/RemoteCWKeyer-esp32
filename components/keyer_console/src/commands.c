@@ -62,6 +62,16 @@ const char *console_error_message(console_error_t err) {
  * ============================================================================ */
 
 /**
+ * @brief Show detailed help for a command
+ */
+static void show_command_help(const console_cmd_t *c) {
+    printf("%s - %s\r\n", c->name, c->brief);
+    if (c->usage != NULL) {
+        printf("\r\nUsage:\r\n%s\r\n", c->usage);
+    }
+}
+
+/**
  * @brief help [cmd] - List commands or show help for specific command
  */
 static console_error_t cmd_help(const console_parsed_cmd_t *cmd) {
@@ -71,7 +81,7 @@ static console_error_t cmd_help(const console_parsed_cmd_t *cmd) {
         if (c == NULL) {
             return CONSOLE_ERR_UNKNOWN_CMD;
         }
-        printf("  %s - %s\r\n", c->name, c->brief);
+        show_command_help(c);
     } else {
         /* List all commands */
         size_t count;
@@ -80,6 +90,7 @@ static console_error_t cmd_help(const console_parsed_cmd_t *cmd) {
         for (size_t i = 0; i < count; i++) {
             printf("  %-14s %s\r\n", cmds[i].name, cmds[i].brief);
         }
+        printf("\r\nType 'help <cmd>' or '<cmd> ?' for details\r\n");
     }
     return CONSOLE_OK;
 }
@@ -466,22 +477,60 @@ static console_error_t cmd_diag(const console_parsed_cmd_t *cmd) {
  * Command registry
  * ============================================================================ */
 
+/* Usage strings for commands with non-trivial syntax */
+static const char USAGE_LOG[] =
+    "  log                 Show current level\r\n"
+    "  log level * LEVEL   Set all tags (ERROR/WARN/INFO/DEBUG/TRACE)\r\n"
+    "  log level TAG LEVEL Set specific tag\r\n"
+    "  log *=L             Compact: set all (E/W/I/D/T)\r\n"
+    "  log TAG=L           Compact: set tag";
+
+static const char USAGE_STATS[] =
+    "  stats               Overview (uptime, heap, stream)\r\n"
+    "  stats heap          Heap memory details\r\n"
+    "  stats tasks         Task list by core\r\n"
+    "  stats stream        Stream buffer status\r\n"
+    "  stats rt            RT task statistics";
+
+static const char USAGE_SHOW[] =
+    "  show                Show all parameters\r\n"
+    "  show <name>         Show specific parameter\r\n"
+    "  show <prefix>*      Show params starting with prefix";
+
+static const char USAGE_SET[] =
+    "  set <param> <value> Set parameter value\r\n"
+    "\r\n"
+    "Examples:\r\n"
+    "  set wpm 25\r\n"
+    "  set sidetone_freq_hz 700";
+
+static const char USAGE_DEBUG[] =
+    "  debug               Show RT log status\r\n"
+    "  debug info          Show RT log buffer details\r\n"
+    "  debug none          Disable all ESP-IDF logging\r\n"
+    "  debug <tag> <level> Set tag level (none/error/warn/info/debug/verbose)";
+
+static const char USAGE_DIAG[] =
+    "  diag                Show diagnostic state\r\n"
+    "  diag on             Enable RT diagnostic logging\r\n"
+    "  diag off            Disable RT diagnostic logging";
+
 static const console_cmd_t s_commands[] = {
-    { "help",          "List commands or show help",   cmd_help },
-    { "?",             "Alias for help",               cmd_question },
-    { "version",       "Show version info",            cmd_version },
-    { "v",             "Alias for version",            cmd_version },
-    { "stats",         "System statistics",            cmd_stats },
-    { "show",          "Show parameters",              cmd_show },
-    { "set",           "Set parameter value",          cmd_set },
-    { "save",          "Persist to NVS",               cmd_save },
-    { "reboot",        "Restart system",               cmd_reboot },
-    { "log",           "Set log level",                cmd_log },
-    { "debug",         "Set ESP-IDF log levels",       cmd_debug },
-    { "uf2",           "Enter UF2 bootloader",         cmd_uf2 },
-    { "flash",         "Enter bootloader mode",        cmd_uf2 },
-    { "factory-reset", "Erase NVS and reboot",         cmd_factory_reset },
-    { "diag",          "RT diagnostic logging",        cmd_diag },
+    { "help",          "List commands or show help",   NULL,        cmd_help },
+    { "?",             "Alias for help",               NULL,        cmd_question },
+    { "version",       "Show version info",            NULL,        cmd_version },
+    { "v",             "Alias for version",            NULL,        cmd_version },
+    { "stats",         "System statistics",            USAGE_STATS, cmd_stats },
+    { "show",          "Show parameters",              USAGE_SHOW,  cmd_show },
+    { "set",           "Set parameter value",          USAGE_SET,   cmd_set },
+    { "save",          "Persist to NVS",               NULL,        cmd_save },
+    { "reboot",        "Restart system",               NULL,        cmd_reboot },
+    { "log",           "Set log level",                USAGE_LOG,   cmd_log },
+    { "debug",         "Set ESP-IDF log levels",       USAGE_DEBUG, cmd_debug },
+    { "uf2",           "Enter UF2 bootloader",         NULL,        cmd_uf2 },
+    { "flash",         "Enter bootloader mode",        NULL,        cmd_uf2 },
+    { "factory-reset", "Erase NVS and reboot",         NULL,        cmd_factory_reset },
+    { "diag",          "RT diagnostic logging",        USAGE_DIAG,  cmd_diag },
 };
 
 #define NUM_COMMANDS (sizeof(s_commands) / sizeof(s_commands[0]))
@@ -513,6 +562,12 @@ console_error_t console_execute(const console_parsed_cmd_t *cmd) {
     const console_cmd_t *c = console_find_command(cmd->command);
     if (c == NULL) {
         return CONSOLE_ERR_UNKNOWN_CMD;
+    }
+
+    /* Handle "cmd ?" to show help */
+    if (cmd->argc > 0 && cmd->args[0] != NULL && strcmp(cmd->args[0], "?") == 0) {
+        show_command_help(c);
+        return CONSOLE_OK;
     }
 
     return c->handler(cmd);

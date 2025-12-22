@@ -85,6 +85,7 @@ typedef console_error_t (*console_cmd_handler_t)(const console_parsed_cmd_t *cmd
 typedef struct {
     const char *name;           /**< Command name */
     const char *brief;          /**< Brief description */
+    const char *usage;          /**< Detailed usage (NULL if none) */
     console_cmd_handler_t handler; /**< Handler function */
 } console_cmd_t;
 
