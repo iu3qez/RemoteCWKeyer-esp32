@@ -75,6 +75,7 @@ set(TEST_SOURCES
     test_main.c
     test_stream.c
     test_iambic.c
+    test_iambic_preset.c
     test_sidetone.c
     test_fault.c
     test_console_parser.c

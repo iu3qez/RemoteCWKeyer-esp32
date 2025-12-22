@@ -20,6 +20,15 @@ void test_iambic_mode_a_squeeze(void);
 void test_iambic_mode_b_squeeze(void);
 void test_iambic_memory(void);
 
+void test_preset_init(void);
+void test_preset_activate(void);
+void test_preset_get_set_values(void);
+void test_preset_copy(void);
+void test_preset_reset(void);
+void test_preset_set_name(void);
+void test_preset_timing_helpers(void);
+void test_preset_null_safety(void);
+
 void test_sidetone_init(void);
 void test_sidetone_keying(void);
 void test_sidetone_fade(void);
@@ -65,6 +74,17 @@ int main(void) {
     RUN_TEST(test_iambic_mode_a_squeeze);
     RUN_TEST(test_iambic_mode_b_squeeze);
     RUN_TEST(test_iambic_memory);
+
+    /* Iambic Preset tests */
+    printf("\n=== Iambic Preset Tests ===\n");
+    RUN_TEST(test_preset_init);
+    RUN_TEST(test_preset_activate);
+    RUN_TEST(test_preset_get_set_values);
+    RUN_TEST(test_preset_copy);
+    RUN_TEST(test_preset_reset);
+    RUN_TEST(test_preset_set_name);
+    RUN_TEST(test_preset_timing_helpers);
+    RUN_TEST(test_preset_null_safety);
 
     /* Sidetone tests */
     printf("\n=== Sidetone Tests ===\n");
