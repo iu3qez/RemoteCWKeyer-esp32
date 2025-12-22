@@ -19,6 +19,8 @@
 #include "console.h"
 #include "hal_gpio.h"
 #include "hal_audio.h"
+#include "usb_cdc.h"
+#include "usb_log.h"
 
 static const char *TAG = "main";
 
@@ -47,6 +49,9 @@ void app_main(void) {
     }
     ESP_ERROR_CHECK(ret);
 
+    /* Initialize USB CDC (before console) */
+    ESP_ERROR_CHECK(usb_cdc_init());
+
     /* Initialize stream */
     ESP_LOGI(TAG, "Initializing keying stream (%d samples)", STREAM_BUFFER_SIZE);
     stream_init(&g_keying_stream, s_stream_buffer, STREAM_BUFFER_SIZE);
@@ -58,8 +63,7 @@ void app_main(void) {
     log_stream_init(&g_rt_log_stream);
     log_stream_init(&g_bg_log_stream);
 
-    /* Initialize UART logger (GPIO6 TX) */
-    uart_logger_init();
+    /* Note: UART logger replaced by USB CDC log on CDC1 */
 
     /* Initialize HAL */
     hal_gpio_config_t gpio_cfg = HAL_GPIO_CONFIG_DEFAULT;
@@ -95,10 +99,10 @@ void app_main(void) {
         1  /* Core 1 */
     );
 
-    /* Create UART logger task on Core 1 */
+    /* Create USB log drain task on Core 1 */
     xTaskCreatePinnedToCore(
-        uart_logger_task,
-        "uart_log",
+        usb_log_task,
+        "usb_log",
         4096,
         NULL,
         tskIDLE_PRIORITY + 1,
@@ -106,16 +110,7 @@ void app_main(void) {
         1  /* Core 1 */
     );
 
-    /* Create console task on Core 1 */
-    xTaskCreatePinnedToCore(
-        console_task,
-        "console",
-        4096,
-        NULL,
-        tskIDLE_PRIORITY + 1,
-        NULL,
-        1  /* Core 1 */
-    );
+    /* Note: console_task removed - console handled by USB CDC RX callback */
 
     ESP_LOGI(TAG, "keyer_c started successfully");
 }
