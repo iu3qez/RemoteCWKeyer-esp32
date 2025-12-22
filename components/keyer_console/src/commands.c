@@ -23,6 +23,8 @@
 #include "usb_console.h"
 #include "usb_log.h"
 #include "usb_uf2.h"
+#include "usb_cdc.h"
+#include "tusb_cdc_acm.h"
 /* Use USB console printf for command output */
 #define printf usb_console_printf
 #endif
@@ -484,6 +486,52 @@ static console_error_t cmd_diag(const console_parsed_cmd_t *cmd) {
     return CONSOLE_OK;
 }
 
+/**
+ * @brief test - Diagnostic test commands
+ */
+static console_error_t cmd_test(const console_parsed_cmd_t *cmd) {
+#ifdef CONFIG_IDF_TARGET
+    if (cmd->argc == 0) {
+        printf("Usage: test cdc1 | test log\r\n");
+        return CONSOLE_OK;
+    }
+
+    const char *arg = cmd->args[0];
+
+    if (strcmp(arg, "cdc1") == 0) {
+        /* Write directly to CDC1 */
+        const char *msg = "=== CDC1 TEST MESSAGE ===\r\n";
+        size_t len = strlen(msg);
+
+        printf("Writing to CDC1 (connected=%d)...\r\n",
+               usb_cdc_connected(CDC_ITF_LOG));
+
+        tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_1, (const uint8_t *)msg, len);
+        tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_1, 0);
+
+        printf("Done. Check CDC1 terminal.\r\n");
+        return CONSOLE_OK;
+    }
+
+    if (strcmp(arg, "log") == 0) {
+        /* Push test entry to log stream */
+        int64_t now_us = esp_timer_get_time();
+        RT_INFO(&g_rt_log_stream, now_us, "TEST LOG ENTRY");
+
+        printf("Pushed test entry to RT log stream.\r\n");
+        printf("Stream count: %lu\r\n",
+               (unsigned long)log_stream_count(&g_rt_log_stream));
+        return CONSOLE_OK;
+    }
+
+    return CONSOLE_ERR_INVALID_VALUE;
+#else
+    (void)cmd;
+    printf("test not available on host\r\n");
+    return CONSOLE_OK;
+#endif
+}
+
 /* ============================================================================
  * Command registry
  * ============================================================================ */
@@ -542,6 +590,7 @@ static const console_cmd_t s_commands[] = {
     { "flash",         "Enter bootloader mode",        NULL,        cmd_uf2 },
     { "factory-reset", "Erase NVS and reboot",         NULL,        cmd_factory_reset },
     { "diag",          "RT diagnostic logging",        USAGE_DIAG,  cmd_diag },
+    { "test",          "Diagnostic tests",             NULL,        cmd_test },
 };
 
 #define NUM_COMMANDS (sizeof(s_commands) / sizeof(s_commands[0]))
