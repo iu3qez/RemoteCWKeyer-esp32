@@ -50,6 +50,22 @@ static const char *find_matching_param(const char *prefix, size_t len, size_t *s
     return NULL;
 }
 
+/**
+ * @brief Find matching diag subcommand starting from index
+ */
+static const char *find_matching_diag_arg(const char *prefix, size_t len, size_t *start_idx) {
+    static const char *diag_args[] = { "on", "off" };
+    static const size_t diag_args_count = 2;
+
+    for (size_t i = *start_idx; i < diag_args_count; i++) {
+        if (strncmp(diag_args[i], prefix, len) == 0) {
+            *start_idx = i + 1;
+            return diag_args[i];
+        }
+    }
+    return NULL;
+}
+
 bool console_complete(char *line, size_t *pos, size_t max_len) {
     if (line == NULL || pos == NULL || *pos == 0) {
         return false;
@@ -65,8 +81,16 @@ bool console_complete(char *line, size_t *pos, size_t max_len) {
     size_t prefix_len = *pos - token_start;
 
     /* Determine what we're completing */
-    bool completing_param = (token_start > 0) &&
-        (strncmp(line, "set ", 4) == 0 || strncmp(line, "show ", 5) == 0);
+    bool completing_param = false;
+    bool completing_diag = false;
+
+    if (token_start > 0) {
+        if (strncmp(line, "set ", 4) == 0 || strncmp(line, "show ", 5) == 0) {
+            completing_param = true;
+        } else if (strncmp(line, "diag ", 5) == 0) {
+            completing_diag = true;
+        }
+    }
 
     /* Check if we're cycling through matches */
     if (s_cycling && s_prefix_len == prefix_len) {
@@ -80,7 +104,9 @@ bool console_complete(char *line, size_t *pos, size_t max_len) {
     const char *match = NULL;
     size_t idx = s_last_match_idx;
 
-    if (completing_param) {
+    if (completing_diag) {
+        match = find_matching_diag_arg(prefix, prefix_len, &idx);
+    } else if (completing_param) {
         match = find_matching_param(prefix, prefix_len, &idx);
     } else {
         match = find_matching_command(prefix, prefix_len, &idx);
@@ -89,7 +115,9 @@ bool console_complete(char *line, size_t *pos, size_t max_len) {
     if (match == NULL) {
         /* Wrap around */
         idx = 0;
-        if (completing_param) {
+        if (completing_diag) {
+            match = find_matching_diag_arg(prefix, prefix_len, &idx);
+        } else if (completing_param) {
             match = find_matching_param(prefix, prefix_len, &idx);
         } else {
             match = find_matching_command(prefix, prefix_len, &idx);
