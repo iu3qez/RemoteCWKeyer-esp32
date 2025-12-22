@@ -24,6 +24,9 @@
 #include "rt_log.h"
 #include "hal_gpio.h"
 
+/* Drift threshold: 5% */
+#define DIAG_DRIFT_THRESHOLD_PCT 5
+
 /* External globals */
 extern keying_stream_t g_keying_stream;
 extern fault_state_t g_fault_state;
@@ -32,6 +35,106 @@ extern fault_state_t g_fault_state;
 #define AUDIO_BUFFER_SIZE 64
 static int16_t s_audio_buffer_storage[AUDIO_BUFFER_SIZE];
 static audio_ring_buffer_t s_audio_buffer;
+
+/* ============================================================================
+ * Diagnostic State Tracking
+ * ============================================================================ */
+
+/**
+ * @brief Diagnostic state for detecting transitions
+ */
+typedef struct {
+    bool prev_key_down;              /**< Previous key state */
+    fade_state_t prev_fade_state;    /**< Previous sidetone fade state */
+    iambic_state_t prev_iambic_state; /**< Previous iambic FSM state */
+    int64_t element_start_us;        /**< When current element started */
+    int64_t expected_duration_us;    /**< Expected element duration */
+} rt_diag_state_t;
+
+static rt_diag_state_t s_diag = {0};
+
+/**
+ * @brief Get expected duration for current element
+ */
+static int64_t get_expected_duration(const iambic_processor_t *iambic) {
+    switch (iambic->state) {
+        case IAMBIC_STATE_SEND_DIT:
+            return iambic_dit_duration_us(&iambic->config);
+        case IAMBIC_STATE_SEND_DAH:
+            return iambic_dah_duration_us(&iambic->config);
+        default:
+            return 0;
+    }
+}
+
+/**
+ * @brief Log diagnostic events based on state transitions
+ */
+static void rt_diag_log(rt_diag_state_t *diag,
+                        const iambic_processor_t *iambic,
+                        const sidetone_gen_t *sidetone,
+                        bool key_down,
+                        int64_t now_us) {
+    /* Key down transition */
+    if (key_down && !diag->prev_key_down) {
+        diag->element_start_us = now_us;
+        diag->expected_duration_us = get_expected_duration(iambic);
+
+        if (iambic->state == IAMBIC_STATE_SEND_DIT) {
+            RT_DIAG_INFO(&g_rt_log_stream, now_us, "KEY DIT down");
+        } else if (iambic->state == IAMBIC_STATE_SEND_DAH) {
+            RT_DIAG_INFO(&g_rt_log_stream, now_us, "KEY DAH down");
+        }
+    }
+
+    /* Key up transition */
+    if (!key_down && diag->prev_key_down) {
+        int64_t actual_duration = now_us - diag->element_start_us;
+        RT_DIAG_INFO(&g_rt_log_stream, now_us, "KEY up %lldus",
+                     (long long)actual_duration);
+
+        /* Check for timing drift */
+        if (diag->expected_duration_us > 0) {
+            int64_t diff = actual_duration - diag->expected_duration_us;
+            if (diff < 0) diff = -diff;
+            int64_t drift_pct = (diff * 100) / diag->expected_duration_us;
+
+            if (drift_pct > DIAG_DRIFT_THRESHOLD_PCT) {
+                RT_DIAG_WARN(&g_rt_log_stream, now_us,
+                             "DRIFT %lld%% (exp=%lld act=%lld)",
+                             (long long)drift_pct,
+                             (long long)diag->expected_duration_us,
+                             (long long)actual_duration);
+            }
+        }
+    }
+
+    /* Memory armed (detect via iambic state) */
+    if (iambic->dit_memory && diag->prev_iambic_state != iambic->state) {
+        RT_DIAG_DEBUG(&g_rt_log_stream, now_us, "MEM DIT");
+    }
+    if (iambic->dah_memory && diag->prev_iambic_state != iambic->state) {
+        RT_DIAG_DEBUG(&g_rt_log_stream, now_us, "MEM DAH");
+    }
+
+    /* Sidetone fade state transitions */
+    if (sidetone->fade_state != diag->prev_fade_state) {
+        const char *state_str;
+        switch (sidetone->fade_state) {
+            case FADE_SILENT:  state_str = "SILENT"; break;
+            case FADE_IN:      state_str = "FADE_IN"; break;
+            case FADE_SUSTAIN: state_str = "SUSTAIN"; break;
+            case FADE_OUT:     state_str = "FADE_OUT"; break;
+            default:           state_str = "?"; break;
+        }
+        RT_DIAG_DEBUG(&g_rt_log_stream, now_us, "TONE %s", state_str);
+    }
+
+    /* Update previous state */
+    diag->prev_key_down = key_down;
+    diag->prev_fade_state = sidetone->fade_state;
+    diag->prev_iambic_state = iambic->state;
+}
 
 void rt_task(void *arg) {
     (void)arg;
@@ -117,6 +220,10 @@ void rt_task(void *arg) {
 
         /* 5. Update PTT */
         ptt_tick(&ptt, (uint64_t)now_us);
+
+        /* 6. Diagnostic logging (zero overhead if disabled) */
+        rt_diag_log(&s_diag, &iambic, &sidetone,
+                    out.local_key != 0, now_us);
 
         /* Wait for next tick */
         vTaskDelayUntil(&last_wake, period);
