@@ -32,3 +32,4 @@ sdkconfig.defaults.generated
 build/
 keyer_c/
 old/
+tmp/
