@@ -7,6 +7,7 @@
 
 #include "console.h"
 #include "config_console.h"
+#include "config_nvs.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -170,8 +171,15 @@ static console_error_t cmd_reboot(const console_parsed_cmd_t *cmd) {
  */
 static console_error_t cmd_save(const console_parsed_cmd_t *cmd) {
     (void)cmd;
-    /* TODO: Implement NVS save */
-    printf("Configuration saved\r\n");
+#ifdef CONFIG_IDF_TARGET
+    int ret = config_save_to_nvs();
+    if (ret < 0) {
+        return CONSOLE_ERR_NVS_ERROR;
+    }
+    printf("Saved %d parameters to NVS\r\n", ret);
+#else
+    printf("NVS not available on host\r\n");
+#endif
     return CONSOLE_OK;
 }
 
