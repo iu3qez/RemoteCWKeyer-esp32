@@ -17,6 +17,8 @@
 #include "audio.h"
 #include "rt_log.h"
 #include "console.h"
+#include "config.h"
+#include "config_nvs.h"
 #include "hal_gpio.h"
 #include "hal_audio.h"
 #include "usb_cdc.h"
@@ -48,6 +50,15 @@ void app_main(void) {
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+
+    /* Initialize config with defaults, then load from NVS */
+    config_init_defaults(&g_config);
+    int loaded = config_load_from_nvs();
+    if (loaded > 0) {
+        ESP_LOGI(TAG, "Loaded %d parameters from NVS", loaded);
+    } else {
+        ESP_LOGI(TAG, "Using default configuration");
+    }
 
     /* Initialize USB CDC (before console) */
     ESP_ERROR_CHECK(usb_cdc_init());
