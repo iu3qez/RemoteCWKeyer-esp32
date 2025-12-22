@@ -15,8 +15,11 @@
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "usb_console.h"
 #include "usb_log.h"
 #include "usb_uf2.h"
+/* Use USB console printf for command output */
+#define printf usb_console_printf
 #endif
 
 /* ============================================================================

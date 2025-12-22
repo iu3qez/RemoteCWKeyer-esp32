@@ -14,6 +14,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/usb_serial_jtag.h"
+#include "usb_console.h"
+/* Use USB console printf for console output */
+#define printf usb_console_printf
 #endif
 
 static char s_line_buf[CONSOLE_LINE_MAX];
