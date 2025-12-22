@@ -576,7 +576,7 @@ In case of conflict, higher-ranked principles take precedence.
 ```
 RustRemoteCWKeyer/
 ├── ARCHITECTURE.md          # This document (immutable)
-├── keyer_c/                 # C implementation (ESP-IDF)
+├──  /                 # C implementation (ESP-IDF)
 │   ├── components/
 │   │   ├── keyer_core/      # stream, sample, consumer, fault
 │   │   ├── keyer_iambic/    # Iambic FSM (pure logic)

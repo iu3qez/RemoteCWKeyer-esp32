@@ -7,7 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This repository contains two implementations of the CW (Morse code) keyer:
 
 1. **Rust implementation** (root directory) - Original implementation using esp-rs
-2. **C implementation** ([keyer_c/](keyer_c/)) - Pure C implementation using ESP-IDF
+2. **C implementation** 
+ - Pure C implementation using ESP-IDF
 
 Both implementations follow the same architectural principles from [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -15,14 +16,14 @@ Both implementations follow the same architectural principles from [ARCHITECTURE
 
 ---
 
-## C Implementation (keyer_c/)
+## C Implementation
 
 The pure C implementation uses ESP-IDF v5.x with strict coding standards for embedded real-time systems.
 
 ### Directory Structure
 
 ```
-keyer_c/
+ /
 ├── CMakeLists.txt          # Top-level ESP-IDF project
 ├── sdkconfig.defaults      # ESP-IDF configuration
 ├── partitions.csv          # Flash partition table
@@ -112,12 +113,12 @@ Run PVS-Studio before every commit:
 idf.py build
 
 # Run PVS-Studio
-pvs-studio-analyzer analyze -f keyer_c/build/compile_commands.json \
-    -o keyer_c/build/pvs-report.log \
+pvs-studio-analyzer analyze -f  /build/compile_commands.json \
+    -o  /build/pvs-report.log \
     -j4
 
 # Convert to readable format
-plog-converter -t fullhtml -o keyer_c/build/pvs-report keyer_c/build/pvs-report.log
+plog-converter -t fullhtml -o  /build/pvs-report  /build/pvs-report.log
 ```
 
 **Zero warnings policy**: All PVS-Studio warnings must be fixed or explicitly suppressed with justification.
@@ -344,30 +345,30 @@ if (lag > MAX_LAG_SAMPLES) {
 
 ### keyer_core
 
-- **[stream.h](keyer_c/components/keyer_core/include/stream.h)** - Lock-free SPMC ring buffer
-- **[sample.h](keyer_c/components/keyer_core/include/sample.h)** - 6-byte packed sample struct
-- **[consumer.h](keyer_c/components/keyer_core/include/consumer.h)** - Hard RT and best-effort consumers
-- **[fault.h](keyer_c/components/keyer_core/include/fault.h)** - Atomic fault state
+- **[stream.h]( /components/keyer_core/include/stream.h)** - Lock-free SPMC ring buffer
+- **[sample.h]( /components/keyer_core/include/sample.h)** - 6-byte packed sample struct
+- **[consumer.h]( /components/keyer_core/include/consumer.h)** - Hard RT and best-effort consumers
+- **[fault.h]( /components/keyer_core/include/fault.h)** - Atomic fault state
 
 ### keyer_iambic
 
-- **[iambic.h](keyer_c/components/keyer_iambic/include/iambic.h)** - Iambic FSM (Mode A/B)
+- **[iambic.h]( /components/keyer_iambic/include/iambic.h)** - Iambic FSM (Mode A/B)
 
 ### keyer_audio
 
-- **[sidetone.h](keyer_c/components/keyer_audio/include/sidetone.h)** - Phase accumulator sidetone
-- **[audio_buffer.h](keyer_c/components/keyer_audio/include/audio_buffer.h)** - Lock-free audio ring buffer
-- **[ptt.h](keyer_c/components/keyer_audio/include/ptt.h)** - PTT controller with tail timeout
+- **[sidetone.h]( /components/keyer_audio/include/sidetone.h)** - Phase accumulator sidetone
+- **[audio_buffer.h]( /components/keyer_audio/include/audio_buffer.h)** - Lock-free audio ring buffer
+- **[ptt.h]( /components/keyer_audio/include/ptt.h)** - PTT controller with tail timeout
 
 ### keyer_logging
 
-- **[rt_log.h](keyer_c/components/keyer_logging/include/rt_log.h)** - RT-safe logging macros
+- **[rt_log.h]( /components/keyer_logging/include/rt_log.h)** - RT-safe logging macros
 
 ### keyer_hal
 
-- **[hal_gpio.h](keyer_c/components/keyer_hal/include/hal_gpio.h)** - Paddle input, TX output
-- **[hal_audio.h](keyer_c/components/keyer_hal/include/hal_audio.h)** - I2S audio output
-- **[hal_es8311.h](keyer_c/components/keyer_hal/include/hal_es8311.h)** - ES8311 codec driver
+- **[hal_gpio.h]( /components/keyer_hal/include/hal_gpio.h)** - Paddle input, TX output
+- **[hal_audio.h]( /components/keyer_hal/include/hal_audio.h)** - I2S audio output
+- **[hal_es8311.h]( /components/keyer_hal/include/hal_es8311.h)** - ES8311 codec driver
 
 ---
 
@@ -393,7 +394,7 @@ Non-compliant code shall not be merged.
 ### Host Tests (Unity)
 
 ```bash
-cd keyer_c/test_host
+cd  /test_host
 
 # Build and run all tests
 cmake -B build

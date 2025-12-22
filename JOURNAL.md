@@ -330,7 +330,7 @@ Su ESP32 (Xtensa), `uint32_t` è `unsigned long`, quindi:
 
 ```bash
 # Host tests (Unity)
-cd keyer_c/test_host
+cd  /test_host
 cmake -B build && cmake --build build
 ./build/test_runner
 ```
