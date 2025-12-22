@@ -1,7 +1,9 @@
-/* Auto-generated from parameters.yaml - DO NOT EDIT MANUALLY */
 /**
  * @file config_console.c
  * @brief Console command parameter registry implementation
+ *
+ * Parameter descriptors are generated from parameters.yaml,
+ * but get/set string functions are hand-written defensive code.
  */
 
 #include "config_console.h"
@@ -9,6 +11,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 
 /* Get/set function implementations */
 static param_value_t get_wpm(void) {
@@ -186,6 +189,11 @@ const param_descriptor_t *config_find_param(const char *name) {
 }
 
 int config_get_param_str(const char *name, char *buf, size_t len) {
+    /* Issue 1 fix: Validate buffer pointer and length */
+    if (buf == NULL || len == 0) {
+        return -3;  /* Invalid buffer */
+    }
+
     const param_descriptor_t *p = config_find_param(name);
     if (p == NULL) {
         return -1;  /* Unknown parameter */
@@ -219,6 +227,11 @@ int config_set_param_str(const char *name, const char *value) {
         return -1;  /* Unknown parameter */
     }
 
+    /* Issue 2 fix: Validate value pointer */
+    if (value == NULL) {
+        return -2;  /* Invalid value */
+    }
+
     param_value_t v;
     char *endptr;
     unsigned long ul;
@@ -226,7 +239,12 @@ int config_set_param_str(const char *name, const char *value) {
     switch (p->type) {
         case PARAM_TYPE_U8:
         case PARAM_TYPE_ENUM:
+            /* Issue 3 fix: Detect integer overflow */
+            errno = 0;
             ul = strtoul(value, &endptr, 10);
+            if (errno == ERANGE) {
+                return -2;  /* Invalid value (overflow) */
+            }
             if (*endptr != '\0') {
                 return -2;  /* Invalid value */
             }
@@ -237,7 +255,12 @@ int config_set_param_str(const char *name, const char *value) {
             break;
 
         case PARAM_TYPE_U16:
+            /* Issue 3 fix: Detect integer overflow */
+            errno = 0;
             ul = strtoul(value, &endptr, 10);
+            if (errno == ERANGE) {
+                return -2;  /* Invalid value (overflow) */
+            }
             if (*endptr != '\0') {
                 return -2;
             }
@@ -248,7 +271,12 @@ int config_set_param_str(const char *name, const char *value) {
             break;
 
         case PARAM_TYPE_U32:
+            /* Issue 3 fix: Detect integer overflow */
+            errno = 0;
             ul = strtoul(value, &endptr, 10);
+            if (errno == ERANGE) {
+                return -2;  /* Invalid value (overflow) */
+            }
             if (*endptr != '\0') {
                 return -2;
             }
