@@ -54,6 +54,7 @@ set(CORE_SOURCES
 
 set(IAMBIC_SOURCES
     ${COMPONENT_DIR}/keyer_iambic/src/iambic.c
+    ${COMPONENT_DIR}/keyer_iambic/src/iambic_preset.c
 )
 
 set(AUDIO_SOURCES

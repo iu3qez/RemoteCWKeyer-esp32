@@ -14,6 +14,7 @@
  * @brief Skip whitespace in string
  * @note Reserved for future tab completion implementation
  */
+__attribute__((unused))
 static const char *skip_whitespace(const char *s) {
     while (*s != '\0' && isspace((unsigned char)*s)) {
         s++;
@@ -25,6 +26,7 @@ static const char *skip_whitespace(const char *s) {
  * @brief Find end of token (next whitespace or end of string)
  * @note Reserved for future tab completion implementation
  */
+__attribute__((unused))
 static const char *find_token_end(const char *s) {
     while (*s != '\0' && !isspace((unsigned char)*s)) {
         s++;
