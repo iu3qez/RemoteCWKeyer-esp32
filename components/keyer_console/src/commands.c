@@ -6,6 +6,7 @@
  */
 
 #include "console.h"
+#include "config_console.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -178,11 +179,33 @@ static console_error_t cmd_save(const console_parsed_cmd_t *cmd) {
  * @brief show [pattern] - Show parameters
  */
 static console_error_t cmd_show(const console_parsed_cmd_t *cmd) {
-    (void)cmd;
-    /* TODO: Integrate with config registry */
-    printf("wpm=20\r\n");
-    printf("sidetone_freq=600\r\n");
-    printf("sidetone_volume=80\r\n");
+    const char *pattern = (cmd->argc > 0) ? cmd->args[0] : NULL;
+    size_t pattern_len = pattern ? strlen(pattern) : 0;
+    bool has_wildcard = pattern && pattern[pattern_len - 1] == '*';
+
+    if (has_wildcard) {
+        pattern_len--;  /* Exclude the wildcard */
+    }
+
+    for (size_t i = 0; i < CONSOLE_PARAM_COUNT; i++) {
+        const param_descriptor_t *p = &CONSOLE_PARAMS[i];
+        bool match = false;
+
+        if (pattern == NULL) {
+            match = true;
+        } else if (has_wildcard) {
+            match = (strncmp(p->name, pattern, pattern_len) == 0) ||
+                    (strncmp(p->category, pattern, pattern_len) == 0);
+        } else {
+            match = (strcmp(p->name, pattern) == 0);
+        }
+
+        if (match) {
+            char buf[32];
+            config_get_param_str(p->name, buf, sizeof(buf));
+            printf("%s=%s\r\n", p->name, buf);
+        }
+    }
     return CONSOLE_OK;
 }
 
@@ -193,9 +216,20 @@ static console_error_t cmd_set(const console_parsed_cmd_t *cmd) {
     if (cmd->argc < 2) {
         return CONSOLE_ERR_MISSING_ARG;
     }
-    /* TODO: Integrate with config registry */
-    printf("set %s = %s\r\n", cmd->args[0], cmd->args[1]);
-    return CONSOLE_OK;
+
+    int ret = config_set_param_str(cmd->args[0], cmd->args[1]);
+    switch (ret) {
+        case 0:
+            return CONSOLE_OK;
+        case -1:
+            return CONSOLE_ERR_UNKNOWN_CMD;
+        case -2:
+            return CONSOLE_ERR_INVALID_VALUE;
+        case -4:
+            return CONSOLE_ERR_OUT_OF_RANGE;
+        default:
+            return CONSOLE_ERR_INVALID_VALUE;
+    }
 }
 
 /**
