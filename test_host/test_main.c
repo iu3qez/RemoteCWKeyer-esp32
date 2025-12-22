@@ -47,6 +47,12 @@ void test_parse_leading_whitespace(void);
 void test_parse_trailing_whitespace(void);
 void test_parse_multiple_spaces(void);
 
+void test_config_find_param_wpm(void);
+void test_config_find_param_unknown(void);
+void test_config_get_param_str_wpm(void);
+void test_config_set_param_str_wpm(void);
+void test_config_set_param_str_out_of_range(void);
+
 void setUp(void) {
     /* Called before each test */
 }
@@ -109,6 +115,14 @@ int main(void) {
     RUN_TEST(test_parse_leading_whitespace);
     RUN_TEST(test_parse_trailing_whitespace);
     RUN_TEST(test_parse_multiple_spaces);
+
+    /* Config console tests */
+    printf("\n=== Config Console Tests ===\n");
+    RUN_TEST(test_config_find_param_wpm);
+    RUN_TEST(test_config_find_param_unknown);
+    RUN_TEST(test_config_get_param_str_wpm);
+    RUN_TEST(test_config_set_param_str_wpm);
+    RUN_TEST(test_config_set_param_str_out_of_range);
 
     return UNITY_END();
 }

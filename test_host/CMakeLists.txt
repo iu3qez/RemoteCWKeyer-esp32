@@ -41,6 +41,7 @@ include_directories(
     ${COMPONENT_DIR}/keyer_audio/include
     ${COMPONENT_DIR}/keyer_logging/include
     ${COMPONENT_DIR}/keyer_console/include
+    ${COMPONENT_DIR}/keyer_config/include
     ${CMAKE_SOURCE_DIR}/stubs
 )
 
@@ -70,6 +71,11 @@ set(CONSOLE_SOURCES
     ${COMPONENT_DIR}/keyer_console/src/commands.c
 )
 
+set(CONFIG_SOURCES
+    ${COMPONENT_DIR}/keyer_config/src/config.c
+    ${COMPONENT_DIR}/keyer_config/src/config_console.c
+)
+
 # Test sources
 set(TEST_SOURCES
     test_main.c
@@ -79,6 +85,7 @@ set(TEST_SOURCES
     test_sidetone.c
     test_fault.c
     test_console_parser.c
+    test_config_console.c
     stubs/esp_stubs.c
 )
 
@@ -89,6 +96,7 @@ add_executable(test_runner
     ${IAMBIC_SOURCES}
     ${AUDIO_SOURCES}
     ${CONSOLE_SOURCES}
+    ${CONFIG_SOURCES}
 )
 
 target_link_libraries(test_runner PRIVATE unity)
