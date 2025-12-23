@@ -14,6 +14,7 @@ void ptt_init(ptt_controller_t *ptt, uint32_t tail_ms) {
     ptt->tail_us = (uint64_t)tail_ms * 1000;
     ptt->last_audio_us = 0;
     ptt->audio_active = false;
+    ptt->pa_callback = NULL;
 }
 
 void ptt_audio_sample(ptt_controller_t *ptt, uint64_t timestamp_us) {
@@ -25,6 +26,9 @@ void ptt_audio_sample(ptt_controller_t *ptt, uint64_t timestamp_us) {
     /* Turn on PTT immediately on audio */
     if (ptt->state == PTT_OFF) {
         ptt->state = PTT_ON;
+        if (ptt->pa_callback != NULL) {
+            ptt->pa_callback(true);
+        }
     }
 }
 
@@ -35,6 +39,9 @@ void ptt_tick(ptt_controller_t *ptt, uint64_t timestamp_us) {
         /* Check if tail timeout expired */
         if (!ptt->audio_active && timestamp_us > ptt->last_audio_us + ptt->tail_us) {
             ptt->state = PTT_OFF;
+            if (ptt->pa_callback != NULL) {
+                ptt->pa_callback(false);
+            }
         }
     }
 
@@ -45,6 +52,9 @@ void ptt_tick(ptt_controller_t *ptt, uint64_t timestamp_us) {
 void ptt_force_off(ptt_controller_t *ptt) {
     assert(ptt != NULL);
 
+    if (ptt->state == PTT_ON && ptt->pa_callback != NULL) {
+        ptt->pa_callback(false);
+    }
     ptt->state = PTT_OFF;
     ptt->audio_active = false;
 }
@@ -53,4 +63,9 @@ void ptt_set_tail(ptt_controller_t *ptt, uint32_t tail_ms) {
     assert(ptt != NULL);
 
     ptt->tail_us = (uint64_t)tail_ms * 1000;
+}
+
+void ptt_set_pa_callback(ptt_controller_t *ptt, ptt_pa_callback_t callback) {
+    assert(ptt != NULL);
+    ptt->pa_callback = callback;
 }

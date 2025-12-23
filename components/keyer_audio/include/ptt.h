@@ -24,6 +24,12 @@ typedef enum {
 } ptt_state_t;
 
 /**
+ * @brief PA control callback type
+ * @param enable true to enable PA, false to disable
+ */
+typedef void (*ptt_pa_callback_t)(bool enable);
+
+/**
  * @brief PTT controller
  */
 typedef struct {
@@ -31,6 +37,7 @@ typedef struct {
     uint64_t tail_us;        /**< Tail timeout in microseconds */
     uint64_t last_audio_us;  /**< Timestamp of last audio activity */
     bool audio_active;       /**< Audio currently active */
+    ptt_pa_callback_t pa_callback;  /**< Optional PA control callback */
 } ptt_controller_t;
 
 /**
@@ -97,6 +104,14 @@ void ptt_force_off(ptt_controller_t *ptt);
  * @param tail_ms New tail timeout in milliseconds
  */
 void ptt_set_tail(ptt_controller_t *ptt, uint32_t tail_ms);
+
+/**
+ * @brief Set PA control callback
+ *
+ * @param ptt Controller
+ * @param callback Function to call on PTT state change (may be NULL)
+ */
+void ptt_set_pa_callback(ptt_controller_t *ptt, ptt_pa_callback_t callback);
 
 #ifdef __cplusplus
 }
