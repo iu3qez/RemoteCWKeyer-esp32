@@ -198,8 +198,13 @@ static esp_err_t init_codec(void) {
         .digital_mic = false,
         .invert_mclk = false,
         .invert_sclk = false,
-        .hw_gain = {0},
+        .hw_gain = {
+            .pa_voltage = 5.0f,      /* External PA supply voltage */
+            .codec_dac_voltage = 3.3f,  /* ES8311 DAC supply voltage */
+            .pa_gain = 0.0f,         /* No additional PA gain */
+        },
         .no_dac_ref = false,
+        .mclk_div = I2S_MCLK_MULTIPLE_256,  /* MCLK = 256 * sample_rate */
     };
     s_codec_if = es8311_codec_new(&es_cfg);
     if (s_codec_if == NULL) {
@@ -232,11 +237,11 @@ static esp_err_t init_codec(void) {
         return ESP_FAIL;
     }
 
-    /* Set initial volume and unmute */
+    /* Set initial volume but keep MUTED until PA is enabled */
+    esp_codec_dev_set_out_mute(s_codec_dev, true);  /* Start muted */
     esp_codec_dev_set_out_vol(s_codec_dev, (int)s_config.volume_percent);
-    esp_codec_dev_set_out_mute(s_codec_dev, false);
 
-    ESP_LOGI(TAG, "ES8311 codec initialized (volume=%d%%)", s_config.volume_percent);
+    ESP_LOGI(TAG, "ES8311 codec initialized (volume=%d%%, muted)", s_config.volume_percent);
     return ESP_OK;
 }
 
@@ -283,7 +288,7 @@ esp_err_t hal_audio_init(const hal_audio_config_t *config) {
 }
 
 size_t hal_audio_write(const int16_t *samples, size_t count) {
-    if (!s_audio_available || s_i2s_tx == NULL) {
+    if (!s_audio_available || s_codec_dev == NULL) {
         return count;  /* Silently discard */
     }
 
@@ -296,15 +301,31 @@ size_t hal_audio_write(const int16_t *samples, size_t count) {
         stereo_buf[i * 2 + 1] = samples[i];  /* Right (copy) */
     }
 
-    size_t bytes_written = 0;
-    esp_err_t ret = i2s_channel_write(s_i2s_tx, stereo_buf,
-                                       to_write * 2 * sizeof(int16_t),
-                                       &bytes_written, 0);
-    if (ret != ESP_OK && ret != ESP_ERR_TIMEOUT) {
-        ESP_LOGW(TAG, "I2S write failed: %s", esp_err_to_name(ret));
+    /* DEBUG: Log first write */
+    static bool first_write = true;
+    if (first_write && to_write > 0) {
+        ESP_LOGI(TAG, "First audio write: count=%zu, sample[0]=%d", to_write, samples[0]);
+        first_write = false;
     }
 
-    return bytes_written / (2 * sizeof(int16_t));
+    /* Write through codec device (not directly to I2S) */
+    size_t byte_count = to_write * 2 * sizeof(int16_t);
+
+    /* DEBUG: Log codec write details */
+    static int write_count = 0;
+    if (write_count < 5 && samples[0] != 0) {
+        ESP_LOGI(TAG, "Codec write #%d: bytes=%zu, sample[0]=%d, stereo[0]=%d",
+                 write_count, byte_count, samples[0], stereo_buf[0]);
+        write_count++;
+    }
+
+    int ret = esp_codec_dev_write(s_codec_dev, stereo_buf, (int)byte_count);
+    if (ret != ESP_CODEC_DEV_OK) {
+        ESP_LOGW(TAG, "esp_codec_dev_write failed: %d", ret);
+        return 0;
+    }
+
+    return to_write;
 }
 
 esp_err_t hal_audio_set_volume(uint8_t volume_percent) {
@@ -334,18 +355,40 @@ esp_err_t hal_audio_set_pa(bool enable) {
         return ESP_OK;  /* No change needed */
     }
 
-    uint32_t pa_mask = (1u << (uint32_t)s_config.pa_pin);
-    uint8_t level = s_config.pa_active_high ? (enable ? 1 : 0) : (enable ? 0 : 1);
+    /* Enable PA first, THEN unmute codec (reverse order when disabling) */
+    if (enable) {
+        /* Step 1: Enable PA */
+        uint32_t pa_mask = (1u << (uint32_t)s_config.pa_pin);
+        uint8_t level = s_config.pa_active_high ? 1 : 0;
+        esp_err_t ret = esp_io_expander_set_level(s_io_expander, pa_mask, level);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to enable PA: %s", esp_err_to_name(ret));
+            return ret;
+        }
 
-    esp_err_t ret = esp_io_expander_set_level(s_io_expander, pa_mask, level);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to %s PA: %s",
-                 enable ? "enable" : "disable", esp_err_to_name(ret));
-        return ret;
+        /* Step 2: Unmute codec after PA is on */
+        if (s_codec_dev != NULL) {
+            esp_codec_dev_set_out_mute(s_codec_dev, false);
+            ESP_LOGI(TAG, "PA enabled, codec unmuted");
+        }
+    } else {
+        /* Step 1: Mute codec first */
+        if (s_codec_dev != NULL) {
+            esp_codec_dev_set_out_mute(s_codec_dev, true);
+        }
+
+        /* Step 2: Disable PA */
+        uint32_t pa_mask = (1u << (uint32_t)s_config.pa_pin);
+        uint8_t level = s_config.pa_active_high ? 0 : 1;
+        esp_err_t ret = esp_io_expander_set_level(s_io_expander, pa_mask, level);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to disable PA: %s", esp_err_to_name(ret));
+            return ret;
+        }
+        ESP_LOGI(TAG, "Codec muted, PA disabled");
     }
 
     s_pa_enabled = enable;
-    ESP_LOGI(TAG, "PA %s", enable ? "enabled" : "disabled");
     return ESP_OK;
 }
 

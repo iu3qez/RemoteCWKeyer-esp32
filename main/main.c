@@ -29,6 +29,7 @@ static const char *TAG = "main";
 /* External task functions */
 extern void rt_task(void *arg);
 extern void bg_task(void *arg);
+extern void start_audio_test(void);  /* Audio test task */
 
 /* UART logger task handle (for stopping after USB CDC ready) */
 static TaskHandle_t s_uart_log_task_handle = NULL;

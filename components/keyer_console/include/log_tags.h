@@ -11,6 +11,7 @@
 #include <stddef.h>
 
 static const char *LOG_TAGS[] = {
+    "audio_test",
     "config_nvs",
     "esp_netif",
     "esp_tls",

@@ -180,27 +180,12 @@ void rt_task(void *arg) {
         stream_sample_t out;
         hard_rt_result_t result = hard_rt_consumer_tick(&consumer, &out);
 
+        /* Handle consumer result */
         switch (result) {
-            case HARD_RT_OK: {
+            case HARD_RT_OK:
                 /* Update TX output */
                 hal_gpio_set_tx(out.local_key != 0);
-
-                /* Generate sidetone samples (8 samples per 1ms tick for 8kHz) */
-                bool key_down = (out.local_key != 0);
-                int16_t audio_samples[SAMPLES_PER_TICK];
-                for (int i = 0; i < SAMPLES_PER_TICK; i++) {
-                    audio_samples[i] = sidetone_next_sample(&sidetone, key_down);
-                }
-
-                /* Write to I2S (non-blocking) */
-                hal_audio_write(audio_samples, SAMPLES_PER_TICK);
-
-                /* Update PTT on key down */
-                if (key_down) {
-                    ptt_audio_sample(&ptt, (uint64_t)now_us);
-                }
                 break;
-            }
 
             case HARD_RT_FAULT:
                 /* FAULT - stop TX/audio immediately */
@@ -212,8 +197,33 @@ void rt_task(void *arg) {
                 break;
 
             case HARD_RT_NO_DATA:
-                /* No new data - continue */
+                /* No new data - use previous state (out is unchanged) */
                 break;
+        }
+
+        /* Generate and write audio ALWAYS (even when stream empty) to maintain I2S sync */
+        bool key_down = (out.local_key != 0);
+        int16_t audio_samples[SAMPLES_PER_TICK];
+        for (int i = 0; i < SAMPLES_PER_TICK; i++) {
+            audio_samples[i] = sidetone_next_sample(&sidetone, key_down);
+        }
+
+        /* DEBUG: Log when key goes down and check ALL audio samples */
+        static bool prev_key = false;
+        if (key_down && !prev_key) {
+            RT_INFO(&g_rt_log_stream, now_us, "KEY - s:%d %d %d %d %d %d %d %d f=%d p=%d",
+                    audio_samples[0], audio_samples[1], audio_samples[2], audio_samples[3],
+                    audio_samples[4], audio_samples[5], audio_samples[6], audio_samples[7],
+                    sidetone.fade_state, sidetone.fade_pos);
+        }
+        prev_key = key_down;
+
+        /* ALWAYS write to I2S (even silence) to keep codec/I2S synchronized */
+        hal_audio_write(audio_samples, SAMPLES_PER_TICK);
+
+        /* Update PTT on key down */
+        if (key_down) {
+            ptt_audio_sample(&ptt, (uint64_t)now_us);
         }
 
         /* 5. Update PTT */

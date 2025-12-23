@@ -4,6 +4,7 @@ idf_component_register(
         "main.c"
         "rt_task.c"
         "bg_task.c"
+        "audio_test.c"
     INCLUDE_DIRS "."
     REQUIRES
         keyer_core
