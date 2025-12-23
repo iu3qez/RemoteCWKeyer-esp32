@@ -111,7 +111,7 @@ void iambic_reset(iambic_processor_t *proc) {
 static bool is_in_memory_window(const iambic_processor_t *proc, int64_t now_us) {
     /* Only applies during element transmission (not gap) */
     if (proc->state != IAMBIC_STATE_SEND_DIT && proc->state != IAMBIC_STATE_SEND_DAH) {
-        return true;  /* Always accept during gap */
+        return false;  /* NEVER arm memory during gap - use current paddle state */
     }
 
     if (proc->element_duration_us <= 0) {
@@ -159,8 +159,10 @@ static void update_gpio(iambic_processor_t *proc, gpio_state_t gpio, int64_t now
         proc->squeeze_latched = is_squeeze;
     }
 
-    /* Arm memory when paddle pressed during element/gap AND within memory window */
-    if (proc->state != IAMBIC_STATE_IDLE) {
+    /* Arm memory ONLY during element transmission (not gap, not idle)
+     * Memory window prevents arming at beginning (debounce) and end (too late).
+     * During gap, we rely on Priority 3 (current paddle state) for squeeze alternation. */
+    if (proc->state == IAMBIC_STATE_SEND_DIT || proc->state == IAMBIC_STATE_SEND_DAH) {
         bool in_window = is_in_memory_window(proc, now_us);
 
         if (in_window) {

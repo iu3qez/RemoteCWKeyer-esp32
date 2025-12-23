@@ -184,3 +184,71 @@ void test_iambic_memory(void) {
     /* Should play DAH from memory */
     TEST_ASSERT_EQUAL(IAMBIC_STATE_SEND_DAH, s_iambic.state);
 }
+
+void test_iambic_squeeze_prolonged(void) {
+    /* Test prolonged squeeze produces DIT-DAH-DIT-DAH alternation
+     * This test captures the bug where only DITs are sent followed by one DAH */
+    iambic_config_t config = IAMBIC_CONFIG_DEFAULT;
+    config.wpm = 20;
+    config.mode = IAMBIC_MODE_B;
+    config.memory_mode = MEMORY_MODE_DOT_AND_DAH;
+    config.mem_window_start_pct = 0;
+    config.mem_window_end_pct = 100;
+    iambic_init(&s_iambic, &config);
+
+    int64_t time = 0;
+    gpio_state_t squeeze = gpio_from_paddles(true, true);
+
+    /* First element: should start with DIT */
+    esp_timer_set_time(time);
+    stream_sample_t sample = iambic_tick(&s_iambic, time, squeeze);
+    TEST_ASSERT_EQUAL(IAMBIC_STATE_SEND_DIT, s_iambic.state);
+    TEST_ASSERT_TRUE(s_iambic.key_down);
+
+    /* Complete DIT (60ms) */
+    time += DIT_DURATION_20WPM + 1000;
+    esp_timer_set_time(time);
+    sample = iambic_tick(&s_iambic, time, squeeze);
+    TEST_ASSERT_EQUAL(IAMBIC_STATE_GAP, s_iambic.state);
+
+    /* Complete GAP (60ms) */
+    time += DIT_DURATION_20WPM + 1000;
+    esp_timer_set_time(time);
+    sample = iambic_tick(&s_iambic, time, squeeze);
+
+    /* Second element: should be DAH (opposite of first) */
+    TEST_ASSERT_EQUAL(IAMBIC_STATE_SEND_DAH, s_iambic.state);
+    TEST_ASSERT_TRUE(s_iambic.key_down);
+
+    /* Complete DAH (180ms) */
+    time += (DIT_DURATION_20WPM * 3) + 1000;
+    esp_timer_set_time(time);
+    sample = iambic_tick(&s_iambic, time, squeeze);
+    TEST_ASSERT_EQUAL(IAMBIC_STATE_GAP, s_iambic.state);
+
+    /* Complete GAP */
+    time += DIT_DURATION_20WPM + 1000;
+    esp_timer_set_time(time);
+    sample = iambic_tick(&s_iambic, time, squeeze);
+
+    /* Third element: should be DIT again (alternation) */
+    TEST_ASSERT_EQUAL(IAMBIC_STATE_SEND_DIT, s_iambic.state);
+    TEST_ASSERT_TRUE(s_iambic.key_down);
+
+    /* Complete DIT */
+    time += DIT_DURATION_20WPM + 1000;
+    esp_timer_set_time(time);
+    sample = iambic_tick(&s_iambic, time, squeeze);
+    TEST_ASSERT_EQUAL(IAMBIC_STATE_GAP, s_iambic.state);
+
+    /* Complete GAP */
+    time += DIT_DURATION_20WPM + 1000;
+    esp_timer_set_time(time);
+    sample = iambic_tick(&s_iambic, time, squeeze);
+
+    /* Fourth element: should be DAH again (continued alternation) */
+    TEST_ASSERT_EQUAL(IAMBIC_STATE_SEND_DAH, s_iambic.state);
+    TEST_ASSERT_TRUE(s_iambic.key_down);
+
+    (void)sample;
+}
