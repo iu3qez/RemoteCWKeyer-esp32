@@ -145,12 +145,43 @@ static console_error_t cmd_stats(const console_parsed_cmd_t *cmd) {
         printf("heap free:    %lu bytes\r\n", (unsigned long)heap_free);
         printf("heap minimum: %lu bytes\r\n", (unsigned long)heap_min);
     } else if (strcmp(cmd->args[0], "tasks") == 0) {
-        printf("=== Core 0 (RT) ===\r\n");
-        printf("NAME            CPU%%  STACK  PRIO\r\n");
-        printf("(enable runtime stats for details)\r\n\r\n");
-        printf("=== Core 1 (BE) ===\r\n");
-        printf("NAME            CPU%%  STACK  PRIO\r\n");
-        printf("(enable runtime stats for details)\r\n");
+        /* Get number of tasks */
+        UBaseType_t num_tasks = uxTaskGetNumberOfTasks();
+        TaskStatus_t *tasks = malloc(num_tasks * sizeof(TaskStatus_t));
+        if (tasks == NULL) {
+            printf("Out of memory\r\n");
+            return CONSOLE_OK;
+        }
+
+        uint32_t total_runtime;
+        UBaseType_t actual = uxTaskGetSystemState(tasks, num_tasks, &total_runtime);
+
+        printf("=== Tasks (%u) ===\r\n", (unsigned)actual);
+        printf("%-16s %4s %6s %4s %4s\r\n", "NAME", "CORE", "STACK", "PRIO", "STATE");
+
+        for (UBaseType_t i = 0; i < actual; i++) {
+            const char *state;
+            switch (tasks[i].eCurrentState) {
+                case eRunning:   state = "RUN"; break;
+                case eReady:     state = "RDY"; break;
+                case eBlocked:   state = "BLK"; break;
+                case eSuspended: state = "SUS"; break;
+                case eDeleted:   state = "DEL"; break;
+                default:         state = "???"; break;
+            }
+
+            int core = xTaskGetCoreID(tasks[i].xHandle);
+            const char *core_str = (core == 0) ? "0" : (core == 1) ? "1" : "*";
+
+            printf("%-16s %4s %6u %4u %4s\r\n",
+                   tasks[i].pcTaskName,
+                   core_str,
+                   (unsigned)tasks[i].usStackHighWaterMark,
+                   (unsigned)tasks[i].uxCurrentPriority,
+                   state);
+        }
+
+        free(tasks);
     } else if (strcmp(cmd->args[0], "stream") == 0) {
         printf("stream: ok\r\n");
     } else if (strcmp(cmd->args[0], "rt") == 0) {
