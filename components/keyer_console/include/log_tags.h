@@ -14,6 +14,7 @@ static const char *LOG_TAGS[] = {
     "config_nvs",
     "esp_netif",
     "esp_tls",
+    "hal_audio",
     "hal_gpio",
     "http_client",
     "main",
