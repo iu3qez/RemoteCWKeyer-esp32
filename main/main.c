@@ -30,6 +30,9 @@ static const char *TAG = "main";
 extern void rt_task(void *arg);
 extern void bg_task(void *arg);
 
+/* UART logger task handle (for stopping after USB CDC ready) */
+static TaskHandle_t s_uart_log_task_handle = NULL;
+
 /* Stream buffer in PSRAM */
 #define STREAM_BUFFER_SIZE 4096
 static EXT_RAM_BSS_ATTR stream_sample_t s_stream_buffer[STREAM_BUFFER_SIZE];
@@ -42,6 +45,20 @@ fault_state_t g_fault_state = FAULT_STATE_INIT;
 
 void app_main(void) {
     ESP_LOGI(TAG, "keyer_c starting...");
+
+    /* Initialize log streams FIRST (before any RT_* logging) */
+    log_stream_init(&g_rt_log_stream);
+    log_stream_init(&g_bg_log_stream);
+
+    /* Enable RT diagnostics for boot debugging */
+    atomic_store_explicit(&g_rt_diag_enabled, true, memory_order_relaxed);
+
+    /* Initialize UART logger early for boot logs (GPIO6, 115200) */
+    uart_logger_init();
+
+    /* DEBUG: 5 second pause to allow UART connection */
+    ESP_LOGI(TAG, "DEBUG: Waiting 5 seconds for UART connection...");
+    vTaskDelay(pdMS_TO_TICKS(5000));
 
     /* Initialize NVS */
     esp_err_t ret = nvs_flash_init();
@@ -73,12 +90,6 @@ void app_main(void) {
 
     /* Initialize fault state */
     fault_init(&g_fault_state);
-
-    /* Initialize log streams */
-    log_stream_init(&g_rt_log_stream);
-    log_stream_init(&g_bg_log_stream);
-
-    /* Note: UART logger replaced by USB CDC log on CDC1 */
 
     hal_audio_config_t audio_cfg = HAL_AUDIO_CONFIG_DEFAULT;
     hal_audio_init(&audio_cfg);
@@ -124,7 +135,27 @@ void app_main(void) {
         1  /* Core 1 */
     );
 
-    /* Note: console_task removed - console handled by USB CDC RX callback */
+    /* Create UART log drain task on Core 1 (for boot logs, stopped after USB ready) */
+    xTaskCreatePinnedToCore(
+        uart_logger_task,
+        "uart_log",
+        2048,
+        NULL,
+        tskIDLE_PRIORITY + 1,
+        &s_uart_log_task_handle,
+        1  /* Core 1 */
+    );
+
+    /* Wait for USB CDC to be ready, then stop UART logger */
+    ESP_LOGI(TAG, "Waiting for USB CDC...");
+    while (!usb_cdc_connected(CDC_ITF_CONSOLE)) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    ESP_LOGI(TAG, "USB CDC connected, stopping UART logger");
+    if (s_uart_log_task_handle != NULL) {
+        vTaskDelete(s_uart_log_task_handle);
+        s_uart_log_task_handle = NULL;
+    }
 
     ESP_LOGI(TAG, "keyer_c started successfully");
 }
