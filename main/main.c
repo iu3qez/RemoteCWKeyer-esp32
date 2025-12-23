@@ -60,6 +60,10 @@ void app_main(void) {
         ESP_LOGI(TAG, "Using default configuration");
     }
 
+    /* Initialize HAL GPIO (includes force_gpio_reset for JTAG-claimed pins) */
+    hal_gpio_config_t gpio_cfg = HAL_GPIO_CONFIG_DEFAULT;
+    hal_gpio_init(&gpio_cfg);
+
     /* Initialize USB CDC (before console) */
     ESP_ERROR_CHECK(usb_cdc_init());
 
@@ -75,10 +79,6 @@ void app_main(void) {
     log_stream_init(&g_bg_log_stream);
 
     /* Note: UART logger replaced by USB CDC log on CDC1 */
-
-    /* Initialize HAL */
-    hal_gpio_config_t gpio_cfg = HAL_GPIO_CONFIG_DEFAULT;
-    hal_gpio_init(&gpio_cfg);
 
     hal_audio_config_t audio_cfg = HAL_AUDIO_CONFIG_DEFAULT;
     hal_audio_init(&audio_cfg);

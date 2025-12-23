@@ -29,9 +29,9 @@ typedef struct {
  * @brief Default GPIO configuration
  */
 #define HAL_GPIO_CONFIG_DEFAULT { \
-    .dit_pin = 4, \
-    .dah_pin = 5, \
-    .tx_pin = 6, \
+    .dit_pin = 3, \
+    .dah_pin = 4, \
+    .tx_pin = 15, \
     .active_low = true, \
     .tx_active_high = true \
 }
@@ -59,6 +59,12 @@ void hal_gpio_set_tx(bool on);
  * @return true if TX is keyed
  */
 bool hal_gpio_get_tx(void);
+
+/**
+ * @brief Get current GPIO configuration
+ * @return Current configuration
+ */
+hal_gpio_config_t hal_gpio_get_config(void);
 
 #ifdef __cplusplus
 }

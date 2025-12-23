@@ -10,7 +10,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "config.h"
-#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {

@@ -21,7 +21,7 @@ idf_component_register(
         "src/history.c"
         "src/completion.c"
     INCLUDE_DIRS "include"
-    REQUIRES keyer_config keyer_logging driver
+    REQUIRES keyer_config keyer_logging driver keyer_hal
     PRIV_REQUIRES keyer_usb
 )
 

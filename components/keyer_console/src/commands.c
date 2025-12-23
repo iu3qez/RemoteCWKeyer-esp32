@@ -9,10 +9,13 @@
 #include "config_console.h"
 #include "config_nvs.h"
 #include "rt_log.h"
+#include "hal_gpio.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifdef CONFIG_IDF_TARGET
+#include "driver/gpio.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
@@ -520,6 +523,136 @@ static console_error_t cmd_diag(const console_parsed_cmd_t *cmd) {
 }
 
 /**
+ * @brief gpio - Read raw GPIO state for debugging
+ */
+static console_error_t cmd_gpio(const console_parsed_cmd_t *cmd) {
+#ifdef CONFIG_IDF_TARGET
+    /* Check for pin argument: gpio <pin> to test a specific pin */
+    if (cmd->argc > 0) {
+        /* gpio init - reinitialize GPIO with logging */
+        if (strcmp(cmd->args[0], "init") == 0) {
+            printf("Re-initializing GPIO pins 3, 4, 15...\r\n");
+
+            /* Configure DIT (GPIO 3) */
+            gpio_config_t dit_conf = {
+                .pin_bit_mask = (1ULL << 3),
+                .mode = GPIO_MODE_INPUT,
+                .pull_up_en = GPIO_PULLUP_ENABLE,
+                .pull_down_en = GPIO_PULLDOWN_DISABLE,
+                .intr_type = GPIO_INTR_DISABLE,
+            };
+            esp_err_t err = gpio_config(&dit_conf);
+            printf("GPIO3 (DIT): %s\r\n", esp_err_to_name(err));
+
+            /* Configure DAH (GPIO 4) */
+            gpio_config_t dah_conf = {
+                .pin_bit_mask = (1ULL << 4),
+                .mode = GPIO_MODE_INPUT,
+                .pull_up_en = GPIO_PULLUP_ENABLE,
+                .pull_down_en = GPIO_PULLDOWN_DISABLE,
+                .intr_type = GPIO_INTR_DISABLE,
+            };
+            err = gpio_config(&dah_conf);
+            printf("GPIO4 (DAH): %s\r\n", esp_err_to_name(err));
+
+            /* Configure TX (GPIO 15) */
+            gpio_config_t tx_conf = {
+                .pin_bit_mask = (1ULL << 15),
+                .mode = GPIO_MODE_OUTPUT,
+                .pull_up_en = GPIO_PULLUP_DISABLE,
+                .pull_down_en = GPIO_PULLDOWN_DISABLE,
+                .intr_type = GPIO_INTR_DISABLE,
+            };
+            err = gpio_config(&tx_conf);
+            printf("GPIO15 (TX): %s\r\n", esp_err_to_name(err));
+
+            /* Read levels after config */
+            printf("\r\nAfter config:\r\n");
+            printf("  GPIO3 = %d\r\n", gpio_get_level(3));
+            printf("  GPIO4 = %d\r\n", gpio_get_level(4));
+            printf("  GPIO15 = %d\r\n", gpio_get_level(15));
+            return CONSOLE_OK;
+        }
+
+        int pin = atoi(cmd->args[0]);
+        if (pin < 0 || pin > 48) {
+            printf("Invalid pin (0-48) or use 'gpio init'\r\n");
+            return CONSOLE_ERR_INVALID_VALUE;
+        }
+
+        /* Configure pin as input with pull-up */
+        gpio_config_t io_conf = {
+            .pin_bit_mask = (1ULL << pin),
+            .mode = GPIO_MODE_INPUT,
+            .pull_up_en = GPIO_PULLUP_ENABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+            .intr_type = GPIO_INTR_DISABLE,
+        };
+        esp_err_t err = gpio_config(&io_conf);
+        if (err != ESP_OK) {
+            printf("gpio_config failed: %s\r\n", esp_err_to_name(err));
+            return CONSOLE_OK;
+        }
+
+        printf("GPIO%d configured with pull-up. Reading...\r\n", pin);
+        for (int i = 0; i < 5; i++) {
+            int level = gpio_get_level((gpio_num_t)pin);
+            printf("  GPIO%d = %d\r\n", pin, level);
+            vTaskDelay(pdMS_TO_TICKS(200));
+        }
+        printf("With pull-up: should read 1 when floating, 0 when shorted to GND\r\n");
+        return CONSOLE_OK;
+    }
+
+    /* Get HAL config to see which pins it's actually using */
+    hal_gpio_config_t hal_cfg = hal_gpio_get_config();
+
+    /* Read from pins HAL thinks it's using */
+    int dit_raw = gpio_get_level(hal_cfg.dit_pin);
+    int dah_raw = gpio_get_level(hal_cfg.dah_pin);
+    int tx_raw = gpio_get_level(hal_cfg.tx_pin);
+
+    /* Also read hardcoded GPIO 3, 4 directly for comparison */
+    int gpio3_direct = gpio_get_level(3);
+    int gpio4_direct = gpio_get_level(4);
+    printf("Direct read: GPIO3=%d  GPIO4=%d\r\n", gpio3_direct, gpio4_direct);
+
+    /* Read via HAL (with active_low logic applied) */
+    gpio_state_t state = hal_gpio_read_paddles();
+
+    printf("HAL Config: DIT=%d, DAH=%d, TX=%d\r\n",
+           hal_cfg.dit_pin, hal_cfg.dah_pin, hal_cfg.tx_pin);
+    printf("GPIO Raw:  DIT(%d)=%d  DAH(%d)=%d  TX(%d)=%d\r\n",
+           hal_cfg.dit_pin, dit_raw, hal_cfg.dah_pin, dah_raw, hal_cfg.tx_pin, tx_raw);
+    printf("HAL State: dit=%d  dah=%d  (active_low=%d)\r\n",
+           gpio_dit(state) ? 1 : 0, gpio_dah(state) ? 1 : 0, hal_cfg.active_low);
+    printf("state.bits = 0x%02X\r\n", state.bits);
+
+    /* Manual calculation for debug */
+    bool dit_pressed = hal_cfg.active_low ? (dit_raw == 0) : (dit_raw != 0);
+    bool dah_pressed = hal_cfg.active_low ? (dah_raw == 0) : (dah_raw != 0);
+    printf("Manual calc: dit_pressed=%d dah_pressed=%d\r\n", dit_pressed, dah_pressed);
+
+    /* Debug: manually create gpio_state to compare */
+    gpio_state_t manual_state = gpio_from_paddles(dit_pressed, dah_pressed);
+    printf("Manual gpio_from_paddles: bits=0x%02X dit=%d dah=%d\r\n",
+           manual_state.bits, gpio_dit(manual_state), gpio_dah(manual_state));
+    printf("\r\nWith pull-up enabled, floating pins should read 1.\r\n");
+    printf("If reading 0 when floating, the pin may be:\r\n");
+    printf("  - Used by PSRAM/Flash (check your board)\r\n");
+    printf("  - Shorted to GND on PCB\r\n");
+    printf("  - Not a valid GPIO on this chip\r\n");
+    printf("\r\nTry: gpio init  or  gpio <pin>\r\n");
+
+    return CONSOLE_OK;
+#else
+    (void)cmd;
+    printf("gpio not available on host\r\n");
+    return CONSOLE_OK;
+#endif
+}
+
+/**
  * @brief test - Diagnostic test commands
  */
 static console_error_t cmd_test(const console_parsed_cmd_t *cmd) {
@@ -624,6 +757,7 @@ static const console_cmd_t s_commands[] = {
     { "factory-reset", "Erase NVS and reboot",         NULL,        cmd_factory_reset },
     { "diag",          "RT diagnostic logging",        USAGE_DIAG,  cmd_diag },
     { "test",          "Diagnostic tests",             NULL,        cmd_test },
+    { "gpio",          "Read raw GPIO state",          NULL,        cmd_gpio },
 };
 
 #define NUM_COMMANDS (sizeof(s_commands) / sizeof(s_commands[0]))
