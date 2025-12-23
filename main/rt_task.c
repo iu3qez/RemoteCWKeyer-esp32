@@ -19,22 +19,20 @@
 #include "keyer_core.h"
 #include "iambic.h"
 #include "sidetone.h"
-#include "audio_buffer.h"
 #include "ptt.h"
 #include "rt_log.h"
 #include "hal_gpio.h"
+#include "hal_audio.h"
 
 /* Drift threshold: 5% */
 #define DIAG_DRIFT_THRESHOLD_PCT 5
 
+/* Audio samples per RT tick: 8000 Hz sample rate / 1000 Hz tick rate = 8 */
+#define SAMPLES_PER_TICK 8
+
 /* External globals */
 extern keying_stream_t g_keying_stream;
 extern fault_state_t g_fault_state;
-
-/* Audio buffer for I2S output */
-#define AUDIO_BUFFER_SIZE 64
-static int16_t s_audio_buffer_storage[AUDIO_BUFFER_SIZE];
-static audio_ring_buffer_t s_audio_buffer;
 
 /* ============================================================================
  * Diagnostic State Tracking
@@ -157,9 +155,6 @@ void rt_task(void *arg) {
     ptt_controller_t ptt;
     ptt_init(&ptt, 100);  /* 100ms tail */
 
-    /* Initialize audio buffer */
-    audio_buffer_init(&s_audio_buffer, s_audio_buffer_storage, AUDIO_BUFFER_SIZE);
-
     TickType_t last_wake = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(1);  /* 1ms tick */
 
@@ -186,23 +181,26 @@ void rt_task(void *arg) {
         hard_rt_result_t result = hard_rt_consumer_tick(&consumer, &out);
 
         switch (result) {
-            case HARD_RT_OK:
+            case HARD_RT_OK: {
                 /* Update TX output */
                 hal_gpio_set_tx(out.local_key != 0);
 
-                /* Generate sidetone if key down */
-                if (out.local_key) {
-                    int16_t audio = sidetone_next_sample(&sidetone, true);
-                    audio_buffer_push(&s_audio_buffer, audio);
+                /* Generate sidetone samples (8 samples per 1ms tick for 8kHz) */
+                bool key_down = (out.local_key != 0);
+                int16_t audio_samples[SAMPLES_PER_TICK];
+                for (int i = 0; i < SAMPLES_PER_TICK; i++) {
+                    audio_samples[i] = sidetone_next_sample(&sidetone, key_down);
+                }
+
+                /* Write to I2S (non-blocking) */
+                hal_audio_write(audio_samples, SAMPLES_PER_TICK);
+
+                /* Update PTT on key down */
+                if (key_down) {
                     ptt_audio_sample(&ptt, (uint64_t)now_us);
-                } else {
-                    /* Key up - fade out */
-                    int16_t audio = sidetone_next_sample(&sidetone, false);
-                    if (audio != 0) {
-                        audio_buffer_push(&s_audio_buffer, audio);
-                    }
                 }
                 break;
+            }
 
             case HARD_RT_FAULT:
                 /* FAULT - stop TX/audio immediately */

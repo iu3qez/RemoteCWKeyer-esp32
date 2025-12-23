@@ -83,6 +83,9 @@ void app_main(void) {
     hal_audio_config_t audio_cfg = HAL_AUDIO_CONFIG_DEFAULT;
     hal_audio_init(&audio_cfg);
 
+    /* Enable PA for sidetone output (TODO: integrate with PTT for proper control) */
+    hal_audio_set_pa(true);
+
     /* Initialize console */
     console_init();
 
