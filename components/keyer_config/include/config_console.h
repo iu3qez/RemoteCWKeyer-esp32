@@ -45,7 +45,7 @@ typedef struct {
 } param_descriptor_t;
 
 /** Number of parameters */
-#define CONSOLE_PARAM_COUNT 14
+#define CONSOLE_PARAM_COUNT 17
 
 /** All parameter descriptors */
 extern const param_descriptor_t CONSOLE_PARAMS[CONSOLE_PARAM_COUNT];

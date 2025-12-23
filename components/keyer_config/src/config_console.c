@@ -34,14 +34,52 @@ static void set_iambic_mode(param_value_t v) {
     config_bump_generation(&g_config);
 }
 
-static param_value_t get_memory_window_us(void) {
+static param_value_t get_memory_mode(void) {
     param_value_t v;
-    v.u32 = atomic_load_explicit(&g_config.memory_window_us, memory_order_relaxed);
+    v.u8 = atomic_load_explicit(&g_config.memory_mode, memory_order_relaxed);
     return v;
 }
-static void set_memory_window_us(param_value_t v) {
-    atomic_store_explicit(&g_config.memory_window_us, v.u32, memory_order_relaxed);
-    config_bump_generation(&g_config);
+static void set_memory_mode(param_value_t v) {
+    if (v.u8 <= 3) {  /* 0=NONE, 1=DOT_ONLY, 2=DAH_ONLY, 3=DOT_AND_DAH */
+        atomic_store_explicit(&g_config.memory_mode, v.u8, memory_order_relaxed);
+        config_bump_generation(&g_config);
+    }
+}
+
+static param_value_t get_squeeze_mode(void) {
+    param_value_t v;
+    v.u8 = atomic_load_explicit(&g_config.squeeze_mode, memory_order_relaxed);
+    return v;
+}
+static void set_squeeze_mode(param_value_t v) {
+    if (v.u8 <= 1) {  /* 0=LATCH_OFF, 1=LATCH_ON */
+        atomic_store_explicit(&g_config.squeeze_mode, v.u8, memory_order_relaxed);
+        config_bump_generation(&g_config);
+    }
+}
+
+static param_value_t get_mem_window_start_pct(void) {
+    param_value_t v;
+    v.u8 = atomic_load_explicit(&g_config.mem_window_start_pct, memory_order_relaxed);
+    return v;
+}
+static void set_mem_window_start_pct(param_value_t v) {
+    if (v.u8 <= 100) {
+        atomic_store_explicit(&g_config.mem_window_start_pct, v.u8, memory_order_relaxed);
+        config_bump_generation(&g_config);
+    }
+}
+
+static param_value_t get_mem_window_end_pct(void) {
+    param_value_t v;
+    v.u8 = atomic_load_explicit(&g_config.mem_window_end_pct, memory_order_relaxed);
+    return v;
+}
+static void set_mem_window_end_pct(param_value_t v) {
+    if (v.u8 <= 100) {
+        atomic_store_explicit(&g_config.mem_window_end_pct, v.u8, memory_order_relaxed);
+        config_bump_generation(&g_config);
+    }
 }
 
 static param_value_t get_weight(void) {
@@ -158,7 +196,10 @@ static void set_led_brightness(param_value_t v) {
 const param_descriptor_t CONSOLE_PARAMS[CONSOLE_PARAM_COUNT] = {
     { "wpm", "keyer", PARAM_TYPE_U16, 5, 100, get_wpm, set_wpm },
     { "iambic_mode", "keyer", PARAM_TYPE_ENUM, 0, 1, get_iambic_mode, set_iambic_mode },
-    { "memory_window_us", "keyer", PARAM_TYPE_U32, 0, 1000, get_memory_window_us, set_memory_window_us },
+    { "memory_mode", "keyer", PARAM_TYPE_ENUM, 0, 3, get_memory_mode, set_memory_mode },
+    { "squeeze_mode", "keyer", PARAM_TYPE_ENUM, 0, 1, get_squeeze_mode, set_squeeze_mode },
+    { "mem_window_start_pct", "keyer", PARAM_TYPE_U8, 0, 100, get_mem_window_start_pct, set_mem_window_start_pct },
+    { "mem_window_end_pct", "keyer", PARAM_TYPE_U8, 0, 100, get_mem_window_end_pct, set_mem_window_end_pct },
     { "weight", "keyer", PARAM_TYPE_U8, 33, 67, get_weight, set_weight },
     { "sidetone_freq_hz", "audio", PARAM_TYPE_U16, 400, 800, get_sidetone_freq_hz, set_sidetone_freq_hz },
     { "sidetone_volume", "audio", PARAM_TYPE_U8, 1, 100, get_sidetone_volume, set_sidetone_volume },

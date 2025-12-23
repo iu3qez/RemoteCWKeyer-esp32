@@ -8,6 +8,10 @@
  * RT-Safe: Preset reads are <200ns, never block RT path.
  * Static allocation: No heap, all data compile-time sized.
  * Atomic operations: All configuration changes via atomics.
+ *
+ * @deprecated This preset system is deprecated in favor of unified g_config.
+ *             Enum types (iambic_mode_t, memory_mode_t, squeeze_mode_t) still used.
+ *             Future: NVS-backed presets integrated with g_config.
  */
 
 #ifndef KEYER_IAMBIC_PRESET_H

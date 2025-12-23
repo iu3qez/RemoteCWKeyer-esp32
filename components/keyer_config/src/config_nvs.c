@@ -11,12 +11,54 @@
 
 static const char *TAG = "config_nvs";
 
+/**
+ * @brief Migrate old memory_window_us parameter to new percentage-based system
+ *
+ * This function checks if the old "mem_win" parameter exists in NVS and hasn't
+ * been migrated yet. If so, it sets the new percentage-based parameters to
+ * 0-100% (full window) and erases the old parameter.
+ */
+static void migrate_memory_window_params(nvs_handle_t handle) {
+    uint32_t old_window_us;
+
+    /* Check if old parameter exists */
+    if (nvs_get_u32(handle, "mem_win", &old_window_us) != ESP_OK) {
+        return;  /* No migration needed */
+    }
+
+    /* Check if already migrated */
+    uint8_t test_val;
+    if (nvs_get_u8(handle, NVS_KEY_MEM_WINDOW_START_PCT, &test_val) == ESP_OK) {
+        /* Already migrated, just clean up old key */
+        nvs_erase_key(handle, "mem_win");
+        nvs_commit(handle);
+        return;
+    }
+
+    /* Migrate: old system always used 0-100% window */
+    nvs_set_u8(handle, NVS_KEY_MEM_WINDOW_START_PCT, 0);
+    nvs_set_u8(handle, NVS_KEY_MEM_WINDOW_END_PCT, 100);
+    nvs_erase_key(handle, "mem_win");
+    nvs_commit(handle);
+
+    ESP_LOGI(TAG, "Migrated memory_window_us to percentage-based system (0-100%%)");
+}
+
 int config_load_from_nvs(void) {
     nvs_handle_t handle;
-    esp_err_t err = nvs_open(CONFIG_NVS_NAMESPACE, NVS_READONLY, &handle);
+    esp_err_t err;
+
+    /* First, run migration with READWRITE access */
+    err = nvs_open(CONFIG_NVS_NAMESPACE, NVS_READWRITE, &handle);
     if (err == ESP_ERR_NVS_NOT_FOUND) {
         ESP_LOGI(TAG, "No saved config found, using defaults");
         return 0;
+    }
+    if (err == ESP_OK) {
+        migrate_memory_window_params(handle);
+        nvs_close(handle);
+        /* Reopen in READONLY mode for loading */
+        err = nvs_open(CONFIG_NVS_NAMESPACE, NVS_READONLY, &handle);
     }
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to open NVS: %s", esp_err_to_name(err));
@@ -40,9 +82,27 @@ int config_load_from_nvs(void) {
         loaded++;
     }
 
-    /* Load memory_window_us */
-    if (nvs_get_u32(handle, NVS_KEY_MEMORY_WINDOW_US, &u32_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.memory_window_us, u32_val, memory_order_relaxed);
+    /* Load memory_mode */
+    if (nvs_get_u8(handle, NVS_KEY_MEMORY_MODE, &u8_val) == ESP_OK && u8_val <= 3) {
+        atomic_store_explicit(&g_config.memory_mode, u8_val, memory_order_relaxed);
+        loaded++;
+    }
+
+    /* Load squeeze_mode */
+    if (nvs_get_u8(handle, NVS_KEY_SQUEEZE_MODE, &u8_val) == ESP_OK && u8_val <= 1) {
+        atomic_store_explicit(&g_config.squeeze_mode, u8_val, memory_order_relaxed);
+        loaded++;
+    }
+
+    /* Load mem_window_start_pct */
+    if (nvs_get_u8(handle, NVS_KEY_MEM_WINDOW_START_PCT, &u8_val) == ESP_OK && u8_val <= 100) {
+        atomic_store_explicit(&g_config.mem_window_start_pct, u8_val, memory_order_relaxed);
+        loaded++;
+    }
+
+    /* Load mem_window_end_pct */
+    if (nvs_get_u8(handle, NVS_KEY_MEM_WINDOW_END_PCT, &u8_val) == ESP_OK && u8_val <= 100) {
+        atomic_store_explicit(&g_config.mem_window_end_pct, u8_val, memory_order_relaxed);
         loaded++;
     }
 
@@ -139,9 +199,27 @@ int config_save_to_nvs(void) {
         saved++;
     }
 
-    /* Save memory_window_us */
-    if (nvs_set_u32(handle, NVS_KEY_MEMORY_WINDOW_US,
-            (uint32_t)atomic_load_explicit(&g_config.memory_window_us, memory_order_relaxed)) == ESP_OK) {
+    /* Save memory_mode */
+    if (nvs_set_u8(handle, NVS_KEY_MEMORY_MODE,
+            (uint8_t)atomic_load_explicit(&g_config.memory_mode, memory_order_relaxed)) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save squeeze_mode */
+    if (nvs_set_u8(handle, NVS_KEY_SQUEEZE_MODE,
+            (uint8_t)atomic_load_explicit(&g_config.squeeze_mode, memory_order_relaxed)) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save mem_window_start_pct */
+    if (nvs_set_u8(handle, NVS_KEY_MEM_WINDOW_START_PCT,
+            (uint8_t)atomic_load_explicit(&g_config.mem_window_start_pct, memory_order_relaxed)) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save mem_window_end_pct */
+    if (nvs_set_u8(handle, NVS_KEY_MEM_WINDOW_END_PCT,
+            (uint8_t)atomic_load_explicit(&g_config.mem_window_end_pct, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 

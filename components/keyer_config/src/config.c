@@ -11,7 +11,10 @@ keyer_config_t g_config;
 void config_init_defaults(keyer_config_t *cfg) {
     atomic_init(&cfg->wpm, 25);
     atomic_init(&cfg->iambic_mode, 0);  /* ModeA */
-    atomic_init(&cfg->memory_window_us, 500);
+    atomic_init(&cfg->memory_mode, 3);  /* DOT_AND_DAH */
+    atomic_init(&cfg->squeeze_mode, 0);  /* LATCH_OFF */
+    atomic_init(&cfg->mem_window_start_pct, 0);
+    atomic_init(&cfg->mem_window_end_pct, 100);
     atomic_init(&cfg->weight, 50);
     atomic_init(&cfg->sidetone_freq_hz, 600);
     atomic_init(&cfg->sidetone_volume, 70);

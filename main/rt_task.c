@@ -23,6 +23,7 @@
 #include "rt_log.h"
 #include "hal_gpio.h"
 #include "hal_audio.h"
+#include "config.h"
 
 /* Drift threshold: 5% */
 #define DIAG_DRIFT_THRESHOLD_PCT 5
@@ -137,9 +138,14 @@ static void rt_diag_log(rt_diag_state_t *diag,
 void rt_task(void *arg) {
     (void)arg;
 
-    /* Initialize iambic processor */
-    iambic_config_t iambic_cfg = IAMBIC_CONFIG_DEFAULT;
-    iambic_cfg.wpm = 25;
+    /* Initialize iambic processor from g_config */
+    iambic_config_t iambic_cfg;
+    iambic_cfg.wpm = (uint32_t)CONFIG_GET_WPM();
+    iambic_cfg.mode = (iambic_mode_t)CONFIG_GET_IAMBIC_MODE();
+    iambic_cfg.memory_mode = (memory_mode_t)CONFIG_GET_MEMORY_MODE();
+    iambic_cfg.squeeze_mode = (squeeze_mode_t)CONFIG_GET_SQUEEZE_MODE();
+    iambic_cfg.mem_window_start_pct = CONFIG_GET_MEM_WINDOW_START_PCT();
+    iambic_cfg.mem_window_end_pct = CONFIG_GET_MEM_WINDOW_END_PCT();
     iambic_processor_t iambic;
     iambic_init(&iambic, &iambic_cfg);
 
@@ -162,8 +168,27 @@ void rt_task(void *arg) {
     int64_t now_us = esp_timer_get_time();
     RT_INFO(&g_rt_log_stream, now_us, "RT task started");
 
+    /* Track config generation for hot-reload */
+    uint16_t last_config_gen = atomic_load_explicit(&g_config.generation, memory_order_acquire);
+
     for (;;) {
         now_us = esp_timer_get_time();
+
+        /* Check for config changes and hot-reload during IDLE */
+        uint16_t current_gen = atomic_load_explicit(&g_config.generation, memory_order_acquire);
+        if (current_gen != last_config_gen && iambic.state == IAMBIC_STATE_IDLE) {
+            /* Reload iambic config from g_config (safe during IDLE only) */
+            iambic_cfg.wpm = (uint32_t)CONFIG_GET_WPM();
+            iambic_cfg.mode = (iambic_mode_t)CONFIG_GET_IAMBIC_MODE();
+            iambic_cfg.memory_mode = (memory_mode_t)CONFIG_GET_MEMORY_MODE();
+            iambic_cfg.squeeze_mode = (squeeze_mode_t)CONFIG_GET_SQUEEZE_MODE();
+            iambic_cfg.mem_window_start_pct = CONFIG_GET_MEM_WINDOW_START_PCT();
+            iambic_cfg.mem_window_end_pct = CONFIG_GET_MEM_WINDOW_END_PCT();
+            iambic_set_config(&iambic, &iambic_cfg);
+            RT_INFO(&g_rt_log_stream, now_us, "Config updated: WPM=%lu mode=%u",
+                    (unsigned long)iambic_cfg.wpm, (unsigned)iambic_cfg.mode);
+            last_config_gen = current_gen;
+        }
 
         /* 1. Poll GPIO paddles */
         gpio_state_t gpio = hal_gpio_read_paddles();

@@ -72,28 +72,122 @@ parameters:
               it: "Modo B (Ultimo Contatto)"
       advanced: false
 
-  - name: memory_window_us
-    type: u32
-    default: 500
-    range: [0, 1000]
-    nvs_key: "mem_win"
+  - name: memory_mode
+    type: enum
+    enum_values: [NONE, DOT_ONLY, DAH_ONLY, DOT_AND_DAH]
+    default: DOT_AND_DAH
+    nvs_key: "mem_mode"
     runtime_change: idle_only
     category: keyer
-    priority: 10
+    priority: 3
     gui:
       label_short:
         en: "Memory"
         it: "Memoria"
       label_long:
-        en: "Memory Window (µs)"
-        it: "Finestra Memoria (µs)"
+        en: "Memory Mode"
+        it: "Modalità Memoria"
       description:
-        en: "Iambic memory window duration in microseconds"
-        it: "Durata della finestra di memoria iambica in microsecondi"
+        en: "Which paddles are remembered during element transmission"
+        it: "Quali paddle sono memorizzati durante la trasmissione dell'elemento"
+      widget: dropdown
+      widget_config:
+        options:
+          - value: NONE
+            label:
+              en: "No memory"
+              it: "Nessuna memoria"
+          - value: DOT_ONLY
+            label:
+              en: "Remember dot only"
+              it: "Solo memoria dot"
+          - value: DAH_ONLY
+            label:
+              en: "Remember dah only"
+              it: "Solo memoria dah"
+          - value: DOT_AND_DAH
+            label:
+              en: "Remember both (full iambic)"
+              it: "Memoria entrambi (iambic completo)"
+      advanced: false
+
+  - name: squeeze_mode
+    type: enum
+    enum_values: [LATCH_OFF, LATCH_ON]
+    default: LATCH_OFF
+    nvs_key: "sqz_mode"
+    runtime_change: idle_only
+    category: keyer
+    priority: 4
+    gui:
+      label_short:
+        en: "Squeeze"
+        it: "Squeeze"
+      label_long:
+        en: "Squeeze Timing"
+        it: "Temporizzazione Squeeze"
+      description:
+        en: "When to sample paddle state (Live=continuous, Snapshot=latch at start)"
+        it: "Quando campionare lo stato dei paddle (Live=continuo, Snapshot=latch all'inizio)"
+      widget: dropdown
+      widget_config:
+        options:
+          - value: LATCH_OFF
+            label:
+              en: "Live (immediate)"
+              it: "Live (immediato)"
+          - value: LATCH_ON
+            label:
+              en: "Snapshot (latch)"
+              it: "Snapshot (latch)"
+      advanced: true
+
+  - name: mem_window_start_pct
+    type: u8
+    default: 0
+    range: [0, 100]
+    nvs_key: "mem_start"
+    runtime_change: idle_only
+    category: keyer
+    priority: 11
+    gui:
+      label_short:
+        en: "Mem Start"
+        it: "Inizio Mem"
+      label_long:
+        en: "Memory Window Start (%)"
+        it: "Inizio Finestra Memoria (%)"
+      description:
+        en: "Memory window start - inputs before this % are ignored (debounce)"
+        it: "Inizio finestra memoria - input prima di questa % sono ignorati (debounce)"
       widget: slider
       widget_config:
-        step: 50
-        tick_interval: 250
+        step: 5
+        tick_interval: 25
+      advanced: true
+
+  - name: mem_window_end_pct
+    type: u8
+    default: 100
+    range: [0, 100]
+    nvs_key: "mem_end"
+    runtime_change: idle_only
+    category: keyer
+    priority: 12
+    gui:
+      label_short:
+        en: "Mem End"
+        it: "Fine Mem"
+      label_long:
+        en: "Memory Window End (%)"
+        it: "Fine Finestra Memoria (%)"
+      description:
+        en: "Memory window end - inputs after this % are ignored (too late)"
+        it: "Fine finestra memoria - input dopo questa % sono ignorati (troppo tardi)"
+      widget: slider
+      widget_config:
+        step: 5
+        tick_interval: 25
       advanced: true
 
   - name: weight

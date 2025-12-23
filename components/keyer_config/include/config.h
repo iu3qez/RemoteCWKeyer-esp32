@@ -28,7 +28,10 @@ extern "C" {
 typedef struct {
     atomic_ushort wpm;  /**< Words Per Minute (5-100) */
     atomic_uchar iambic_mode;  /**< Iambic Mode */
-    atomic_uint memory_window_us;  /**< Memory Window (µs) (0-1000) */
+    atomic_uchar memory_mode;  /**< Memory Mode */
+    atomic_uchar squeeze_mode;  /**< Squeeze Timing */
+    atomic_uchar mem_window_start_pct;  /**< Memory Window Start (%) (0-100) */
+    atomic_uchar mem_window_end_pct;  /**< Memory Window End (%) (0-100) */
     atomic_uchar weight;  /**< Dit/Dah Weight (33-67) */
     atomic_ushort sidetone_freq_hz;  /**< Sidetone Frequency (Hz) (400-800) */
     atomic_uchar sidetone_volume;  /**< Sidetone Volume (%) (1-100) */
@@ -78,11 +81,35 @@ void config_bump_generation(keyer_config_t *cfg);
     config_bump_generation(&g_config); \
 } while(0)
 
-#define CONFIG_GET_MEMORY_WINDOW_US() \
-    atomic_load_explicit(&g_config.memory_window_us, memory_order_relaxed)
+#define CONFIG_GET_MEMORY_MODE() \
+    atomic_load_explicit(&g_config.memory_mode, memory_order_relaxed)
 
-#define CONFIG_SET_MEMORY_WINDOW_US(v) do { \
-    atomic_store_explicit(&g_config.memory_window_us, (v), memory_order_relaxed); \
+#define CONFIG_SET_MEMORY_MODE(v) do { \
+    atomic_store_explicit(&g_config.memory_mode, (v), memory_order_relaxed); \
+    config_bump_generation(&g_config); \
+} while(0)
+
+#define CONFIG_GET_SQUEEZE_MODE() \
+    atomic_load_explicit(&g_config.squeeze_mode, memory_order_relaxed)
+
+#define CONFIG_SET_SQUEEZE_MODE(v) do { \
+    atomic_store_explicit(&g_config.squeeze_mode, (v), memory_order_relaxed); \
+    config_bump_generation(&g_config); \
+} while(0)
+
+#define CONFIG_GET_MEM_WINDOW_START_PCT() \
+    atomic_load_explicit(&g_config.mem_window_start_pct, memory_order_relaxed)
+
+#define CONFIG_SET_MEM_WINDOW_START_PCT(v) do { \
+    atomic_store_explicit(&g_config.mem_window_start_pct, (v), memory_order_relaxed); \
+    config_bump_generation(&g_config); \
+} while(0)
+
+#define CONFIG_GET_MEM_WINDOW_END_PCT() \
+    atomic_load_explicit(&g_config.mem_window_end_pct, memory_order_relaxed)
+
+#define CONFIG_SET_MEM_WINDOW_END_PCT(v) do { \
+    atomic_store_explicit(&g_config.mem_window_end_pct, (v), memory_order_relaxed); \
     config_bump_generation(&g_config); \
 } while(0)
 

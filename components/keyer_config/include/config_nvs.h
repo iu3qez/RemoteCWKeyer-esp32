@@ -45,7 +45,10 @@ esp_err_t config_save_param(const char *name);
 /* NVS key definitions */
 #define NVS_KEY_WPM "wpm"
 #define NVS_KEY_IAMBIC_MODE "mode"
-#define NVS_KEY_MEMORY_WINDOW_US "mem_win"
+#define NVS_KEY_MEMORY_MODE "mem_mode"
+#define NVS_KEY_SQUEEZE_MODE "sqz_mode"
+#define NVS_KEY_MEM_WINDOW_START_PCT "mem_start"
+#define NVS_KEY_MEM_WINDOW_END_PCT "mem_end"
 #define NVS_KEY_WEIGHT "weight"
 #define NVS_KEY_SIDETONE_FREQ_HZ "st_freq"
 #define NVS_KEY_SIDETONE_VOLUME "st_vol"
