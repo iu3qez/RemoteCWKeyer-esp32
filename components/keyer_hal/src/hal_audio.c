@@ -158,7 +158,7 @@ static esp_err_t init_codec(void) {
     /* Create I2C control interface */
     audio_codec_i2c_cfg_t i2c_cfg = {
         .port = I2C_NUM_0,
-        .addr = ES8311_I2C_ADDR,
+        .addr = ES8311_I2C_ADDR << 1,  /* 7-bit addr shifted to 8-bit format */
         .bus_handle = s_i2c_bus,
     };
     s_ctrl_if = audio_codec_new_i2c_ctrl(&i2c_cfg);
