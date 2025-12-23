@@ -620,13 +620,19 @@ static console_error_t cmd_gpio(const console_parsed_cmd_t *cmd) {
     /* Read via HAL (with active_low logic applied) */
     gpio_state_t state = hal_gpio_read_paddles();
 
+    /* Call hal_gpio_read_paddles() again and capture result separately */
+    gpio_state_t state2 = hal_gpio_read_paddles();
+
     printf("HAL Config: DIT=%d, DAH=%d, TX=%d\r\n",
            hal_cfg.dit_pin, hal_cfg.dah_pin, hal_cfg.tx_pin);
     printf("GPIO Raw:  DIT(%d)=%d  DAH(%d)=%d  TX(%d)=%d\r\n",
            hal_cfg.dit_pin, dit_raw, hal_cfg.dah_pin, dah_raw, hal_cfg.tx_pin, tx_raw);
     printf("HAL State: dit=%d  dah=%d  (active_low=%d)\r\n",
            gpio_dit(state) ? 1 : 0, gpio_dah(state) ? 1 : 0, hal_cfg.active_low);
-    printf("state.bits = 0x%02X\r\n", state.bits);
+    printf("state.bits = 0x%02X  state2.bits = 0x%02X\r\n", state.bits, state2.bits);
+
+    /* Debug: Print address of hal_gpio_read_paddles */
+    printf("hal_gpio_read_paddles @ %p\r\n", (void*)hal_gpio_read_paddles);
 
     /* Manual calculation for debug */
     bool dit_pressed = hal_cfg.active_low ? (dit_raw == 0) : (dit_raw != 0);

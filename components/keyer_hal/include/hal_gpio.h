@@ -66,6 +66,12 @@ bool hal_gpio_get_tx(void);
  */
 hal_gpio_config_t hal_gpio_get_config(void);
 
+/**
+ * @brief Enable/disable verbose debug logging
+ * @param enable true to enable debug prints
+ */
+void hal_gpio_set_debug(bool enable);
+
 #ifdef __cplusplus
 }
 #endif

@@ -124,6 +124,10 @@ hal_gpio_config_t hal_gpio_get_config(void) {
 #else
 /* Host stub */
 
+void hal_gpio_set_debug(bool enable) {
+    (void)enable;
+}
+
 static hal_gpio_config_t s_config = HAL_GPIO_CONFIG_DEFAULT;
 static gpio_state_t s_paddle_state = {0};
 static bool s_tx_state = false;
