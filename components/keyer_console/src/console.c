@@ -15,8 +15,10 @@
 #include "freertos/task.h"
 #include "driver/usb_serial_jtag.h"
 #include "usb_console.h"
-/* Use USB console printf for console output */
+/* Use USB console printf for console output (skip for IDE analyzers) */
+#if !defined(__INTELLISENSE__) && !defined(__clang_analyzer__) && !defined(__clangd__)
 #define printf usb_console_printf
+#endif
 #endif
 
 static char s_line_buf[CONSOLE_LINE_MAX];

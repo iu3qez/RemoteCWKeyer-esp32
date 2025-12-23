@@ -14,8 +14,10 @@
 
 #ifdef CONFIG_IDF_TARGET
 #include "usb_console.h"
-/* Use USB console printf for console output */
+/* Use USB console printf for console output (skip for IDE analyzers) */
+#if !defined(__INTELLISENSE__) && !defined(__clang_analyzer__) && !defined(__clangd__)
 #define printf usb_console_printf
+#endif
 #endif
 
 /** Maximum completions to show */

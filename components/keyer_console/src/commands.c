@@ -25,8 +25,10 @@
 #include "usb_uf2.h"
 #include "usb_cdc.h"
 #include "tusb_cdc_acm.h"
-/* Use USB console printf for command output */
+/* Use USB console printf for command output (skip for IDE analyzers) */
+#if !defined(__INTELLISENSE__) && !defined(__clang_analyzer__) && !defined(__clangd__)
 #define printf usb_console_printf
+#endif
 #endif
 
 /* ============================================================================
