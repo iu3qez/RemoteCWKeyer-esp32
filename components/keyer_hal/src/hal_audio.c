@@ -12,6 +12,8 @@
 #include "esp_log.h"
 #include "esp_io_expander.h"
 #include "esp_io_expander_tca95xx_16bit.h"
+#include "esp_codec_dev.h"
+#include "esp_codec_dev_defaults.h"
 
 static const char *TAG = "hal_audio";
 
@@ -21,6 +23,11 @@ static i2c_master_bus_handle_t s_i2c_bus = NULL;
 static esp_io_expander_handle_t s_io_expander = NULL;
 static bool s_pa_enabled = false;
 static i2s_chan_handle_t s_i2s_tx = NULL;
+static esp_codec_dev_handle_t s_codec_dev = NULL;
+static const audio_codec_ctrl_if_t *s_ctrl_if = NULL;
+static const audio_codec_data_if_t *s_data_if = NULL;
+static const audio_codec_gpio_if_t *s_gpio_if = NULL;
+static const audio_codec_if_t *s_codec_if = NULL;
 static bool s_audio_available = false;
 
 /**
@@ -142,6 +149,97 @@ static esp_err_t init_i2s(void) {
     return ESP_OK;
 }
 
+#define ES8311_I2C_ADDR 0x18
+
+/**
+ * @brief Initialize ES8311 codec via esp_codec_dev
+ */
+static esp_err_t init_codec(void) {
+    /* Create I2C control interface */
+    audio_codec_i2c_cfg_t i2c_cfg = {
+        .port = I2C_NUM_0,
+        .addr = ES8311_I2C_ADDR,
+        .bus_handle = s_i2c_bus,
+    };
+    s_ctrl_if = audio_codec_new_i2c_ctrl(&i2c_cfg);
+    if (s_ctrl_if == NULL) {
+        ESP_LOGE(TAG, "Failed to create codec I2C ctrl");
+        return ESP_FAIL;
+    }
+
+    /* Create I2S data interface */
+    audio_codec_i2s_cfg_t i2s_cfg = {
+        .port = I2S_NUM_0,
+        .rx_handle = NULL,
+        .tx_handle = s_i2s_tx,
+    };
+    s_data_if = audio_codec_new_i2s_data(&i2s_cfg);
+    if (s_data_if == NULL) {
+        ESP_LOGE(TAG, "Failed to create codec I2S data");
+        return ESP_FAIL;
+    }
+
+    /* Create GPIO interface */
+    s_gpio_if = audio_codec_new_gpio();
+    if (s_gpio_if == NULL) {
+        ESP_LOGE(TAG, "Failed to create codec GPIO");
+        return ESP_FAIL;
+    }
+
+    /* Create ES8311 codec interface */
+    es8311_codec_cfg_t es_cfg = {
+        .ctrl_if = s_ctrl_if,
+        .gpio_if = s_gpio_if,
+        .codec_mode = ESP_CODEC_DEV_WORK_MODE_DAC,
+        .pa_pin = -1,  /* PA managed separately via TCA9555 */
+        .pa_reverted = false,
+        .master_mode = false,
+        .use_mclk = (s_config.i2s_mclk_pin >= 0),
+        .digital_mic = false,
+        .invert_mclk = false,
+        .invert_sclk = false,
+        .hw_gain = {0},
+        .no_dac_ref = false,
+    };
+    s_codec_if = es8311_codec_new(&es_cfg);
+    if (s_codec_if == NULL) {
+        ESP_LOGE(TAG, "Failed to create ES8311 codec");
+        return ESP_FAIL;
+    }
+
+    /* Create codec device */
+    esp_codec_dev_cfg_t dev_cfg = {
+        .dev_type = ESP_CODEC_DEV_TYPE_OUT,
+        .codec_if = s_codec_if,
+        .data_if = s_data_if,
+    };
+    s_codec_dev = esp_codec_dev_new(&dev_cfg);
+    if (s_codec_dev == NULL) {
+        ESP_LOGE(TAG, "Failed to create codec device");
+        return ESP_FAIL;
+    }
+
+    /* Configure sample info */
+    esp_codec_dev_sample_info_t sample_info = {
+        .bits_per_sample = 16,
+        .channel = 2,  /* Stereo */
+        .channel_mask = ESP_CODEC_DEV_MAKE_CHANNEL_MASK(0) | ESP_CODEC_DEV_MAKE_CHANNEL_MASK(1),
+        .sample_rate = s_config.sample_rate,
+        .mclk_multiple = 0,  /* Auto */
+    };
+    if (esp_codec_dev_open(s_codec_dev, &sample_info) != ESP_CODEC_DEV_OK) {
+        ESP_LOGE(TAG, "Failed to open codec");
+        return ESP_FAIL;
+    }
+
+    /* Set initial volume and unmute */
+    esp_codec_dev_set_out_vol(s_codec_dev, (int)s_config.volume_percent);
+    esp_codec_dev_set_out_mute(s_codec_dev, false);
+
+    ESP_LOGI(TAG, "ES8311 codec initialized (volume=%d%%)", s_config.volume_percent);
+    return ESP_OK;
+}
+
 esp_err_t hal_audio_init(const hal_audio_config_t *config) {
     if (config == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -171,7 +269,12 @@ esp_err_t hal_audio_init(const hal_audio_config_t *config) {
         return ESP_OK;  /* Don't block boot */
     }
 
-    /* TODO: Step 4 in subsequent task */
+    /* Step 4: Initialize ES8311 codec */
+    ret = init_codec();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Codec init failed, continuing without audio");
+        return ESP_OK;  /* Don't block boot */
+    }
 
     s_audio_available = true;
     ESP_LOGI(TAG, "Audio HAL initialized (sample_rate=%lu)",
@@ -205,11 +308,20 @@ size_t hal_audio_write(const int16_t *samples, size_t count) {
 }
 
 esp_err_t hal_audio_set_volume(uint8_t volume_percent) {
-    if (!s_audio_available) {
-        return ESP_OK;
+    if (s_codec_dev == NULL) {
+        return ESP_ERR_INVALID_STATE;
     }
-    (void)volume_percent;
-    /* TODO: Codec volume in Task 6 */
+
+    if (volume_percent > 100) {
+        volume_percent = 100;
+    }
+
+    int ret = esp_codec_dev_set_out_vol(s_codec_dev, (int)volume_percent);
+    if (ret != ESP_CODEC_DEV_OK) {
+        ESP_LOGW(TAG, "Failed to set volume: %d", ret);
+        return ESP_FAIL;
+    }
+
     return ESP_OK;
 }
 
