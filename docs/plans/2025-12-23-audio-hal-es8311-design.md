@@ -1,7 +1,7 @@
 # Audio HAL Design - ES8311 + TCA9555
 
 **Date**: 2025-12-23
-**Status**: Approvato
+**Status**: Implementato
 **Language**: C (ESP-IDF)
 **Based on**: 2025-12-20-audio-system-design.md, brainstorming session
 
