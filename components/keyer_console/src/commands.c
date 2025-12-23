@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
 #include "driver/gpio.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -115,7 +115,7 @@ static console_error_t cmd_question(const console_parsed_cmd_t *cmd) {
 static console_error_t cmd_version(const console_parsed_cmd_t *cmd) {
     (void)cmd;
     printf("CW Keyer v0.1.0\r\n");
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
     printf("ESP-IDF: %s\r\n", esp_get_idf_version());
     printf("Target: %s\r\n", CONFIG_IDF_TARGET);
 #else
@@ -128,7 +128,7 @@ static console_error_t cmd_version(const console_parsed_cmd_t *cmd) {
  * @brief stats [tasks|heap|stream|rt] - System statistics
  */
 static console_error_t cmd_stats(const console_parsed_cmd_t *cmd) {
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
     if (cmd->argc == 0) {
         /* Overview */
         int64_t uptime_us = esp_timer_get_time();
@@ -208,7 +208,7 @@ static console_error_t cmd_reboot(const console_parsed_cmd_t *cmd) {
     if (cmd->argc == 0 || strcmp(cmd->args[0], "confirm") != 0) {
         return CONSOLE_ERR_REQUIRES_CONFIRM;
     }
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
     printf("Rebooting...\r\n");
     vTaskDelay(pdMS_TO_TICKS(100));
     esp_restart();
@@ -223,7 +223,7 @@ static console_error_t cmd_reboot(const console_parsed_cmd_t *cmd) {
  */
 static console_error_t cmd_save(const console_parsed_cmd_t *cmd) {
     (void)cmd;
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
     int ret = config_save_to_nvs();
     if (ret < 0) {
         return CONSOLE_ERR_NVS_ERROR;
@@ -296,7 +296,7 @@ static console_error_t cmd_set(const console_parsed_cmd_t *cmd) {
  * @brief log - Set log level
  */
 static console_error_t cmd_log(const console_parsed_cmd_t *cmd) {
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
     if (cmd->argc == 0) {
         /* Show current level */
         printf("Log level: %s\r\n", log_level_str(usb_log_get_level()));
@@ -381,7 +381,7 @@ static console_error_t cmd_log(const console_parsed_cmd_t *cmd) {
  */
 static console_error_t cmd_uf2(const console_parsed_cmd_t *cmd) {
     (void)cmd;
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
     printf("Entering UF2 bootloader mode...\r\n");
     vTaskDelay(pdMS_TO_TICKS(100));
     usb_uf2_enter();
@@ -399,7 +399,7 @@ static console_error_t cmd_factory_reset(const console_parsed_cmd_t *cmd) {
     if (cmd->argc == 0 || strcmp(cmd->args[0], "confirm") != 0) {
         return CONSOLE_ERR_REQUIRES_CONFIRM;
     }
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
     printf("Erasing NVS and rebooting...\r\n");
 
     /* Erase the keyer config namespace */
@@ -429,7 +429,7 @@ static console_error_t cmd_factory_reset(const console_parsed_cmd_t *cmd) {
  * - debug info           - show RT log buffer status (stub)
  */
 static console_error_t cmd_debug(const console_parsed_cmd_t *cmd) {
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
     if (cmd->argc == 0) {
         /* Show brief RT log status */
         uint32_t rt_dropped = log_stream_dropped(&g_rt_log_stream);
@@ -526,7 +526,7 @@ static console_error_t cmd_diag(const console_parsed_cmd_t *cmd) {
  * @brief gpio - Read raw GPIO state for debugging
  */
 static console_error_t cmd_gpio(const console_parsed_cmd_t *cmd) {
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
     /* Check for pin argument: gpio <pin> to test a specific pin */
     if (cmd->argc > 0) {
         /* gpio init - reinitialize GPIO with logging */
@@ -662,13 +662,58 @@ static console_error_t cmd_gpio(const console_parsed_cmd_t *cmd) {
  * @brief test - Diagnostic test commands
  */
 static console_error_t cmd_test(const console_parsed_cmd_t *cmd) {
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
     if (cmd->argc == 0) {
-        printf("Usage: test cdc1 | test log\r\n");
+        printf("Usage: test cdc1 | test log | test gpio\r\n");
         return CONSOLE_OK;
     }
 
     const char *arg = cmd->args[0];
+
+    if (strcmp(arg, "gpio") == 0) {
+        /* Write GPIO debug info directly to CDC1 */
+        char buf[256];
+        hal_gpio_config_t cfg = hal_gpio_get_config();
+
+        /* Print config once */
+        int len = snprintf(buf, sizeof(buf),
+            "CONFIG: dit=%d dah=%d tx=%d active_low=%d\r\n",
+            cfg.dit_pin, cfg.dah_pin, cfg.tx_pin, cfg.active_low);
+        tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_1, (const uint8_t *)buf, (size_t)len);
+        tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_1, 0);
+
+        /* Test gpio_from_paddles directly */
+        gpio_state_t test1 = gpio_from_paddles(true, false);
+        gpio_state_t test2 = gpio_from_paddles(false, true);
+        gpio_state_t test3 = gpio_from_paddles(true, true);
+        len = snprintf(buf, sizeof(buf),
+            "gpio_from_paddles: (1,0)=0x%02X (0,1)=0x%02X (1,1)=0x%02X\r\n",
+            test1.bits, test2.bits, test3.bits);
+        tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_1, (const uint8_t *)buf, (size_t)len);
+        tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_1, 0);
+
+        for (int i = 0; i < 10; i++) {
+            int dit_raw = gpio_get_level(cfg.dit_pin);
+            int dah_raw = gpio_get_level(cfg.dah_pin);
+            gpio_state_t state = hal_gpio_read_paddles();
+
+            bool dit_pressed = cfg.active_low ? (dit_raw == 0) : (dit_raw != 0);
+            bool dah_pressed = cfg.active_low ? (dah_raw == 0) : (dah_raw != 0);
+
+            /* Also create state manually to compare */
+            gpio_state_t manual = gpio_from_paddles(dit_pressed, dah_pressed);
+
+            len = snprintf(buf, sizeof(buf),
+                "[%d] raw=%d,%d pressed=%d,%d HAL=0x%02X manual=0x%02X\r\n",
+                i, dit_raw, dah_raw, dit_pressed, dah_pressed, state.bits, manual.bits);
+
+            tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_1, (const uint8_t *)buf, (size_t)len);
+            tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_1, 0);
+            vTaskDelay(pdMS_TO_TICKS(500));
+        }
+        printf("Done. Check CDC1.\r\n");
+        return CONSOLE_OK;
+    }
 
     if (strcmp(arg, "cdc1") == 0) {
         /* Write directly to CDC1 */

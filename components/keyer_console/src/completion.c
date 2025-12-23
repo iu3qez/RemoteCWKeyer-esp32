@@ -12,7 +12,7 @@
 #include <string.h>
 #include <stddef.h>
 
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
 #include "usb_console.h"
 /* Use USB console printf for console output (skip for IDE analyzers) */
 #if !defined(__INTELLISENSE__) && !defined(__clang_analyzer__) && !defined(__clangd__)

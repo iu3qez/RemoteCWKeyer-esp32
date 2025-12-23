@@ -5,7 +5,7 @@
 
 #include "hal_audio.h"
 
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
 
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
@@ -395,4 +395,4 @@ void hal_audio_start(void) {}
 void hal_audio_stop(void) {}
 bool hal_audio_is_available(void) { return s_available; }
 
-#endif /* CONFIG_IDF_TARGET */
+#endif /* ESP_PLATFORM */

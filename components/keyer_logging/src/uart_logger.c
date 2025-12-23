@@ -10,7 +10,7 @@
 #include <string.h>
 #include <inttypes.h>
 
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
 /* ESP-IDF includes */
 #include "driver/uart.h"
 #include "driver/gpio.h"
@@ -129,4 +129,4 @@ void uart_logger_task(void *arg) {
     /* No-op on host */
 }
 
-#endif /* CONFIG_IDF_TARGET */
+#endif /* ESP_PLATFORM */

@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/usb_serial_jtag.h"
@@ -194,7 +194,7 @@ bool console_process_char(char c) {
     return console_push_char(c);
 }
 
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
 void console_task(void *arg) {
     (void)arg;
 

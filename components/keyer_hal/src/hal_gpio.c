@@ -5,7 +5,8 @@
 
 #include "hal_gpio.h"
 
-#ifdef CONFIG_IDF_TARGET
+#ifdef ESP_PLATFORM
+/* ESP-IDF target build */
 #include "driver/gpio.h"
 #include "esp_log.h"
 
@@ -86,8 +87,6 @@ void hal_gpio_init(const hal_gpio_config_t *config) {
     ESP_LOGI(TAG, "Initial levels: DIT=%d, DAH=%d", dit_level, dah_level);
 }
 
-static bool s_debug_once = true;
-
 gpio_state_t hal_gpio_read_paddles(void) {
     int dit_level = gpio_get_level((gpio_num_t)s_config.dit_pin);
     int dah_level = gpio_get_level((gpio_num_t)s_config.dah_pin);
@@ -95,14 +94,6 @@ gpio_state_t hal_gpio_read_paddles(void) {
     /* Invert if active low: level=0 means pressed */
     bool dit_pressed = s_config.active_low ? (dit_level == 0) : (dit_level != 0);
     bool dah_pressed = s_config.active_low ? (dah_level == 0) : (dah_level != 0);
-
-    if (s_debug_once) {
-        ESP_LOGI(TAG, "read_paddles: pins=%d,%d levels=%d,%d active_low=%d pressed=%d,%d",
-                 s_config.dit_pin, s_config.dah_pin,
-                 dit_level, dah_level, s_config.active_low,
-                 dit_pressed, dah_pressed);
-        s_debug_once = false;
-    }
 
     return gpio_from_paddles(dit_pressed, dah_pressed);
 }
@@ -123,10 +114,6 @@ hal_gpio_config_t hal_gpio_get_config(void) {
 
 #else
 /* Host stub */
-
-void hal_gpio_set_debug(bool enable) {
-    (void)enable;
-}
 
 static hal_gpio_config_t s_config = HAL_GPIO_CONFIG_DEFAULT;
 static gpio_state_t s_paddle_state = {0};
@@ -157,4 +144,4 @@ void hal_gpio_test_set_paddles(bool dit, bool dah) {
     s_paddle_state = gpio_from_paddles(dit, dah);
 }
 
-#endif /* CONFIG_IDF_TARGET */
+#endif /* ESP_PLATFORM */
