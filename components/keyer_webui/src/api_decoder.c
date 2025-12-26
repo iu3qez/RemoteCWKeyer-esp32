@@ -2,6 +2,7 @@
 #include "esp_log.h"
 #include "cJSON.h"
 #include "decoder.h"
+#include "sse.h"
 
 static const char *TAG = "api_decoder";
 
@@ -69,4 +70,9 @@ esp_err_t api_decoder_enable_handler(httpd_req_t *req) {
 
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_send(req, "{\"success\":true}", HTTPD_RESP_USE_STRLEN);
+}
+
+/* GET /api/decoder/stream - SSE */
+esp_err_t api_decoder_stream_handler(httpd_req_t *req) {
+    return sse_client_register(SSE_STREAM_DECODER, req);
 }

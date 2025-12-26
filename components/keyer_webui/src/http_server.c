@@ -1,5 +1,6 @@
 #include "webui.h"
 #include "assets.h"
+#include "sse.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include <string.h>
@@ -17,6 +18,9 @@ extern esp_err_t api_system_stats_handler(httpd_req_t *req);
 extern esp_err_t api_system_reboot_handler(httpd_req_t *req);
 extern esp_err_t api_decoder_status_handler(httpd_req_t *req);
 extern esp_err_t api_decoder_enable_handler(httpd_req_t *req);
+extern esp_err_t api_decoder_stream_handler(httpd_req_t *req);
+extern esp_err_t api_timeline_config_handler(httpd_req_t *req);
+extern esp_err_t api_timeline_stream_handler(httpd_req_t *req);
 
 /* SPA routes that should serve index.html */
 static const char *SPA_ROUTES[] = {
@@ -167,9 +171,35 @@ static void register_api_routes(httpd_handle_t server) {
         .user_ctx = NULL,
     };
     httpd_register_uri_handler(server, &decoder_enable);
+
+    httpd_uri_t decoder_stream = {
+        .uri = "/api/decoder/stream",
+        .method = HTTP_GET,
+        .handler = api_decoder_stream_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &decoder_stream);
+
+    /* Timeline API */
+    httpd_uri_t timeline_config = {
+        .uri = "/api/timeline/config",
+        .method = HTTP_GET,
+        .handler = api_timeline_config_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &timeline_config);
+
+    httpd_uri_t timeline_stream = {
+        .uri = "/api/timeline/stream",
+        .method = HTTP_GET,
+        .handler = api_timeline_stream_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &timeline_stream);
 }
 
 esp_err_t webui_init(void) {
+    sse_init();
     ESP_LOGI(TAG, "WebUI initialized (%zu assets)", webui_get_asset_count());
     return ESP_OK;
 }
@@ -208,16 +238,17 @@ esp_err_t webui_stop(void) {
     return ESP_OK;
 }
 
-/* SSE stubs - implemented in sse.c */
+/* SSE push functions */
 void webui_timeline_push(const char *event_type, const char *json_data) {
-    (void)event_type;
-    (void)json_data;
+    sse_broadcast(SSE_STREAM_TIMELINE, event_type, json_data);
 }
 
 void webui_decoder_push_char(char c, uint8_t wpm) {
-    (void)c;
-    (void)wpm;
+    char json[32];
+    snprintf(json, sizeof(json), "{\"char\":\"%c\",\"wpm\":%u}", c, wpm);
+    sse_broadcast(SSE_STREAM_DECODER, "char", json);
 }
 
 void webui_decoder_push_word(void) {
+    sse_broadcast(SSE_STREAM_DECODER, "word", "{}");
 }
