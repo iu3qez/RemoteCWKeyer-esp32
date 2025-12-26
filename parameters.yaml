@@ -541,25 +541,306 @@ families:
               it: "Disabilitato"
           advanced: true
 
-      led_brightness:
+  leds:
+    order: 6
+    icon: "lightbulb"
+    label:
+      en: "LEDs"
+      it: "LED"
+    description:
+      en: "RGB LED strip configuration"
+      it: "Configurazione striscia LED RGB"
+    aliases: [led, l]
+
+    parameters:
+      gpio_data:
+        type: u8
+        default: 38
+        range: [0, 48]
+        nvs_key: "led_gpio"
+        runtime_change: reboot
+        priority: 40
+        gui:
+          label_short:
+            en: "Data Pin"
+            it: "Pin Dati"
+          label_long:
+            en: "LED Data GPIO"
+            it: "GPIO Dati LED"
+          description:
+            en: "GPIO pin for WS2812B data line"
+            it: "Pin GPIO per linea dati WS2812B"
+          widget: spinbox
+          widget_config:
+            step: 1
+            prefix: "GPIO "
+          advanced: true
+
+      count:
+        type: u8
+        default: 7
+        range: [0, 32]
+        nvs_key: "led_count"
+        runtime_change: reboot
+        priority: 41
+        gui:
+          label_short:
+            en: "Count"
+            it: "Numero"
+          label_long:
+            en: "Number of LEDs"
+            it: "Numero di LED"
+          description:
+            en: "Number of WS2812B LEDs in strip (0 to disable)"
+            it: "Numero di LED WS2812B nella striscia (0 per disabilitare)"
+          widget: spinbox
+          widget_config:
+            step: 1
+          advanced: false
+
+      brightness:
         type: u8
         default: 50
         range: [0, 100]
         nvs_key: "led_bright"
         runtime_change: immediate
-        priority: 7
+        priority: 42
         gui:
           label_short:
-            en: "LED"
-            it: "LED"
+            en: "Brightness"
+            it: "Luminosità"
           label_long:
             en: "LED Brightness (%)"
             it: "Luminosità LED (%)"
           description:
-            en: "Status LED brightness percentage"
-            it: "Percentuale luminosità LED di stato"
+            en: "Master brightness for all LEDs"
+            it: "Luminosità principale per tutti i LED"
           widget: slider
           widget_config:
-            step: 10
+            step: 5
             tick_interval: 25
           advanced: false
+
+      brightness_dim:
+        type: u8
+        default: 10
+        range: [0, 50]
+        nvs_key: "led_dim"
+        runtime_change: immediate
+        priority: 43
+        gui:
+          label_short:
+            en: "Dim Level"
+            it: "Livello Basso"
+          label_long:
+            en: "Idle Brightness (%)"
+            it: "Luminosità in Attesa (%)"
+          description:
+            en: "Brightness level when idle (dim green)"
+            it: "Livello luminosità in attesa (verde tenue)"
+          widget: slider
+          widget_config:
+            step: 5
+            tick_interval: 10
+          advanced: true
+
+  wifi:
+    order: 7
+    icon: "wifi"
+    label:
+      en: "WiFi"
+      it: "WiFi"
+    description:
+      en: "Wireless network configuration"
+      it: "Configurazione rete wireless"
+    aliases: [w, net]
+
+    parameters:
+      enabled:
+        type: bool
+        default: false
+        nvs_key: "wifi_en"
+        runtime_change: reboot
+        priority: 50
+        gui:
+          label_short:
+            en: "Enable"
+            it: "Abilita"
+          label_long:
+            en: "WiFi Enabled"
+            it: "WiFi Abilitato"
+          description:
+            en: "Enable WiFi connectivity"
+            it: "Abilita connettività WiFi"
+          widget: toggle
+          widget_config:
+            on_label:
+              en: "On"
+              it: "Attivo"
+            off_label:
+              en: "Off"
+              it: "Spento"
+          advanced: false
+
+      ssid:
+        type: string
+        max_length: 32
+        default: ""
+        nvs_key: "wifi_ssid"
+        runtime_change: reboot
+        priority: 51
+        gui:
+          label_short:
+            en: "SSID"
+            it: "SSID"
+          label_long:
+            en: "Network Name"
+            it: "Nome Rete"
+          description:
+            en: "WiFi network name to connect to"
+            it: "Nome della rete WiFi a cui connettersi"
+          widget: text
+          advanced: false
+
+      password:
+        type: string
+        max_length: 64
+        default: ""
+        nvs_key: "wifi_pass"
+        runtime_change: reboot
+        sensitive: true
+        priority: 52
+        gui:
+          label_short:
+            en: "Password"
+            it: "Password"
+          label_long:
+            en: "Network Password"
+            it: "Password Rete"
+          description:
+            en: "WiFi network password"
+            it: "Password della rete WiFi"
+          widget: password
+          advanced: false
+
+      timeout_sec:
+        type: u16
+        default: 30
+        range: [5, 120]
+        nvs_key: "wifi_tout"
+        runtime_change: reboot
+        priority: 53
+        gui:
+          label_short:
+            en: "Timeout"
+            it: "Timeout"
+          label_long:
+            en: "Connection Timeout (s)"
+            it: "Timeout Connessione (s)"
+          description:
+            en: "Seconds to wait for connection before AP fallback"
+            it: "Secondi di attesa prima di passare alla modalità AP"
+          widget: spinbox
+          widget_config:
+            step: 5
+            suffix: " s"
+          advanced: true
+
+      use_static_ip:
+        type: bool
+        default: false
+        nvs_key: "wifi_static"
+        runtime_change: reboot
+        priority: 54
+        gui:
+          label_short:
+            en: "Static IP"
+            it: "IP Statico"
+          label_long:
+            en: "Use Static IP"
+            it: "Usa IP Statico"
+          description:
+            en: "Use static IP instead of DHCP"
+            it: "Usa IP statico invece di DHCP"
+          widget: toggle
+          advanced: true
+
+      ip_address:
+        type: string
+        max_length: 16
+        default: "0.0.0.0"
+        nvs_key: "wifi_ip"
+        runtime_change: reboot
+        priority: 55
+        gui:
+          label_short:
+            en: "IP"
+            it: "IP"
+          label_long:
+            en: "Static IP Address"
+            it: "Indirizzo IP Statico"
+          description:
+            en: "Static IP address (e.g., 192.168.1.100)"
+            it: "Indirizzo IP statico (es. 192.168.1.100)"
+          widget: text
+          advanced: true
+
+      netmask:
+        type: string
+        max_length: 16
+        default: "255.255.255.0"
+        nvs_key: "wifi_mask"
+        runtime_change: reboot
+        priority: 56
+        gui:
+          label_short:
+            en: "Netmask"
+            it: "Netmask"
+          label_long:
+            en: "Subnet Mask"
+            it: "Maschera di Sottorete"
+          description:
+            en: "Subnet mask (e.g., 255.255.255.0)"
+            it: "Maschera di sottorete (es. 255.255.255.0)"
+          widget: text
+          advanced: true
+
+      gateway:
+        type: string
+        max_length: 16
+        default: "0.0.0.0"
+        nvs_key: "wifi_gw"
+        runtime_change: reboot
+        priority: 57
+        gui:
+          label_short:
+            en: "Gateway"
+            it: "Gateway"
+          label_long:
+            en: "Default Gateway"
+            it: "Gateway Predefinito"
+          description:
+            en: "Default gateway IP (e.g., 192.168.1.1)"
+            it: "IP gateway predefinito (es. 192.168.1.1)"
+          widget: text
+          advanced: true
+
+      dns:
+        type: string
+        max_length: 16
+        default: "0.0.0.0"
+        nvs_key: "wifi_dns"
+        runtime_change: reboot
+        priority: 58
+        gui:
+          label_short:
+            en: "DNS"
+            it: "DNS"
+          label_long:
+            en: "DNS Server"
+            it: "Server DNS"
+          description:
+            en: "DNS server IP (e.g., 8.8.8.8)"
+            it: "IP server DNS (es. 8.8.8.8)"
+          widget: text
+          advanced: true
