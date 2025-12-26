@@ -64,6 +64,53 @@ def parse_v2_schema(schema: Dict) -> tuple:
     return params, families
 
 
+def generate_config_schema_json(params, families, output_dir: Path):
+    """Generate JSON schema for WebUI."""
+    import json
+
+    schema = {"parameters": []}
+
+    for param in params:
+        p = {
+            "name": param['full_path'],
+            "type": param['type'].lower(),
+            "widget": param.get('gui', {}).get('widget', 'spinbox'),
+            "description": param.get('gui', {}).get('label_long', {}).get('en', param['name']),
+        }
+
+        if 'unit' in param:
+            p['unit'] = param['unit']
+
+        if 'range' in param:
+            p['min'] = param['range'][0]
+            p['max'] = param['range'][1]
+
+        if param['type'].lower() == 'enum' and 'enum_values' in param:
+            p['values'] = [
+                {"name": v, "description": v}
+                for v in param['enum_values']
+            ]
+
+        schema['parameters'].append(p)
+
+    json_str = json.dumps(schema, indent=2)
+
+    # Generate C header with embedded JSON
+    header_content = f'''/* Auto-generated - DO NOT EDIT */
+#ifndef CONFIG_SCHEMA_JSON_H
+#define CONFIG_SCHEMA_JSON_H
+
+static const char CONFIG_SCHEMA_JSON[] = R"JSON(
+{json_str}
+)JSON";
+
+#endif
+'''
+    output_path = output_dir / 'config_schema.h'
+    output_path.write_text(header_content)
+    print(f"Generated {output_path}")
+
+
 def main():
     """Main entry point"""
     if len(sys.argv) < 3:
@@ -107,6 +154,9 @@ def main():
 
     print("Generating config_console.h...")
     generate_config_console_h(params, families, output_dir)
+
+    print("Generating config_schema.h...")
+    generate_config_schema_json(params, families, output_dir)
 
     print(f"✓ Code generation complete: {output_dir}")
 
