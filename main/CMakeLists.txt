@@ -17,6 +17,8 @@ idf_component_register(
         keyer_hal
         keyer_decoder
         keyer_text
+        keyer_led
+        keyer_wifi
         freertos
         esp_timer
 )

@@ -18,6 +18,7 @@ static const char *LOG_TAGS[] = {
     "hal_audio",
     "hal_gpio",
     "http_client",
+    "led",
     "main",
     "mqtt",
     "text_mem",

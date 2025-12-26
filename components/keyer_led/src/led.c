@@ -5,6 +5,7 @@
 
 #include "led.h"
 #include "driver/rmt_tx.h"
+#include "esp_timer.h"
 #include <string.h>
 #include <stdatomic.h>
 #include "esp_log.h"
