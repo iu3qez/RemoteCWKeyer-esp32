@@ -11,6 +11,10 @@
 #include <stddef.h>
 
 static const char *LOG_TAGS[] = {
+    "api_config",
+    "api_decoder",
+    "api_system",
+    "api_timeline",
     "audio_test",
     "config_nvs",
     "esp_netif",
@@ -21,6 +25,7 @@ static const char *LOG_TAGS[] = {
     "led",
     "main",
     "mqtt",
+    "sse",
     "text_mem",
     "usb_cdc",
     "usb_console",

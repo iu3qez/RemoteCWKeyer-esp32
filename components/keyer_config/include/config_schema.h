@@ -164,12 +164,92 @@ static const char CONFIG_SCHEMA_JSON[] = R"JSON(
       "description": "Debug Logging"
     },
     {
-      "name": "system.led_brightness",
+      "name": "leds.gpio_data",
+      "type": "u8",
+      "widget": "spinbox",
+      "description": "LED Data GPIO",
+      "min": 0,
+      "max": 48
+    },
+    {
+      "name": "leds.count",
+      "type": "u8",
+      "widget": "spinbox",
+      "description": "Number of LEDs",
+      "min": 0,
+      "max": 32
+    },
+    {
+      "name": "leds.brightness",
       "type": "u8",
       "widget": "slider",
       "description": "LED Brightness (%)",
       "min": 0,
       "max": 100
+    },
+    {
+      "name": "leds.brightness_dim",
+      "type": "u8",
+      "widget": "slider",
+      "description": "Idle Brightness (%)",
+      "min": 0,
+      "max": 50
+    },
+    {
+      "name": "wifi.enabled",
+      "type": "bool",
+      "widget": "toggle",
+      "description": "WiFi Enabled"
+    },
+    {
+      "name": "wifi.ssid",
+      "type": "string",
+      "widget": "text",
+      "description": "Network Name"
+    },
+    {
+      "name": "wifi.password",
+      "type": "string",
+      "widget": "password",
+      "description": "Network Password"
+    },
+    {
+      "name": "wifi.timeout_sec",
+      "type": "u16",
+      "widget": "spinbox",
+      "description": "Connection Timeout (s)",
+      "min": 5,
+      "max": 120
+    },
+    {
+      "name": "wifi.use_static_ip",
+      "type": "bool",
+      "widget": "toggle",
+      "description": "Use Static IP"
+    },
+    {
+      "name": "wifi.ip_address",
+      "type": "string",
+      "widget": "text",
+      "description": "Static IP Address"
+    },
+    {
+      "name": "wifi.netmask",
+      "type": "string",
+      "widget": "text",
+      "description": "Subnet Mask"
+    },
+    {
+      "name": "wifi.gateway",
+      "type": "string",
+      "widget": "text",
+      "description": "Default Gateway"
+    },
+    {
+      "name": "wifi.dns",
+      "type": "string",
+      "widget": "text",
+      "description": "DNS Server"
     }
   ]
 }
