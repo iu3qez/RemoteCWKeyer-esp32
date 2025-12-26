@@ -30,7 +30,9 @@ typedef enum {
     COMPLETE_COMMAND,
     COMPLETE_PARAM,
     COMPLETE_DIAG,
-    COMPLETE_DEBUG
+    COMPLETE_DEBUG,
+    COMPLETE_MEM_SLOT,
+    COMPLETE_MEM_SUBCMD
 } complete_type_t;
 
 /**
@@ -169,6 +171,38 @@ static size_t get_matching_diag_args(const char *prefix, size_t len,
 }
 
 /**
+ * @brief Get matching mem slot numbers
+ */
+static size_t get_matching_mem_slots(const char *prefix, size_t len,
+                                     const char **matches, size_t max_matches) {
+    static const char *slots[] = {"1", "2", "3", "4", "5", "6", "7", "8"};
+    size_t count = 0;
+
+    for (size_t i = 0; i < 8 && count < max_matches; i++) {
+        if (strncmp(slots[i], prefix, len) == 0) {
+            matches[count++] = slots[i];
+        }
+    }
+    return count;
+}
+
+/**
+ * @brief Get matching mem subcommands
+ */
+static size_t get_matching_mem_subcmds(const char *prefix, size_t len,
+                                       const char **matches, size_t max_matches) {
+    static const char *subcmds[] = {"clear", "label"};
+    size_t count = 0;
+
+    for (size_t i = 0; i < 2 && count < max_matches; i++) {
+        if (strncmp(subcmds[i], prefix, len) == 0) {
+            matches[count++] = subcmds[i];
+        }
+    }
+    return count;
+}
+
+/**
  * @brief Get all matching debug arguments
  *
  * Groups: special commands, log tags, log levels
@@ -244,6 +278,21 @@ bool console_complete(char *line, size_t *pos, size_t max_len) {
             type = COMPLETE_DIAG;
         } else if (strncmp(line, "debug ", 6) == 0) {
             type = COMPLETE_DEBUG;
+        } else if (strncmp(line, "mem ", 4) == 0) {
+            /* After "mem " - check if first or second arg */
+            const char *arg_start = line + 4;
+            while (*arg_start == ' ') arg_start++;
+            const char *space = strchr(arg_start, ' ');
+            if (space == NULL || prefix >= space) {
+                /* Still on first arg or it's a slot - check context */
+                if (space == NULL) {
+                    type = COMPLETE_MEM_SLOT;
+                } else {
+                    type = COMPLETE_MEM_SUBCMD;
+                }
+            } else {
+                type = COMPLETE_MEM_SUBCMD;
+            }
         }
     }
 
@@ -263,6 +312,12 @@ bool console_complete(char *line, size_t *pos, size_t max_len) {
             break;
         case COMPLETE_DEBUG:
             match_count = get_matching_debug_args(prefix, prefix_len, matches, MAX_COMPLETIONS);
+            break;
+        case COMPLETE_MEM_SLOT:
+            match_count = get_matching_mem_slots(prefix, prefix_len, matches, MAX_COMPLETIONS);
+            break;
+        case COMPLETE_MEM_SUBCMD:
+            match_count = get_matching_mem_subcmds(prefix, prefix_len, matches, MAX_COMPLETIONS);
             break;
     }
 
