@@ -41,6 +41,8 @@ void iambic_init(iambic_processor_t *proc, const iambic_config_t *config) {
     proc->last_element = ELEMENT_DAH;  /* Start with DAH so first DIT press works */
     proc->dit_pressed = false;
     proc->dah_pressed = false;
+    proc->dit_release_time_us = 0;
+    proc->dah_release_time_us = 0;
     proc->dit_memory = false;
     proc->dah_memory = false;
     proc->squeeze_seen = false;
@@ -99,6 +101,8 @@ void iambic_reset(iambic_processor_t *proc) {
     proc->squeeze_seen = false;
     proc->squeeze_latched = false;
     proc->key_down = false;
+    proc->dit_release_time_us = 0;
+    proc->dah_release_time_us = 0;
 }
 
 /* ============================================================================
@@ -138,10 +142,29 @@ static bool is_in_memory_window(const iambic_processor_t *proc, int64_t now_us) 
 }
 
 static void update_gpio(iambic_processor_t *proc, gpio_state_t gpio, int64_t now_us) {
-    bool was_squeeze = proc->dit_pressed && proc->dah_pressed;
+    bool was_dit_pressed = proc->dit_pressed;
+    bool was_dah_pressed = proc->dah_pressed;
+    bool was_squeeze = was_dit_pressed && was_dah_pressed;
 
-    proc->dit_pressed = gpio_dit(gpio);
-    proc->dah_pressed = gpio_dah(gpio);
+    /* Read raw GPIO state */
+    bool raw_dit = gpio_dit(gpio);
+    bool raw_dah = gpio_dah(gpio);
+
+    /* Detect release transitions and record timestamps for debounce */
+    if (was_dit_pressed && !raw_dit) {
+        proc->dit_release_time_us = now_us;
+    }
+    if (was_dah_pressed && !raw_dah) {
+        proc->dah_release_time_us = now_us;
+    }
+
+    /* Apply release debounce: ignore press if within blanking period after release.
+     * This suppresses false triggers from mechanical contact bounce on opening. */
+    bool dit_in_blanking = (now_us - proc->dit_release_time_us) < IAMBIC_DEBOUNCE_RELEASE_US;
+    bool dah_in_blanking = (now_us - proc->dah_release_time_us) < IAMBIC_DEBOUNCE_RELEASE_US;
+
+    proc->dit_pressed = raw_dit && !dit_in_blanking;
+    proc->dah_pressed = raw_dah && !dah_in_blanking;
 
     bool is_squeeze = proc->dit_pressed && proc->dah_pressed;
 
@@ -164,21 +187,47 @@ static void update_gpio(iambic_processor_t *proc, gpio_state_t gpio, int64_t now
      * During gap, we rely on Priority 3 (current paddle state) for squeeze alternation. */
     if (proc->state == IAMBIC_STATE_SEND_DIT || proc->state == IAMBIC_STATE_SEND_DAH) {
         bool in_window = is_in_memory_window(proc, now_us);
+        bool can_arm_dit = (proc->state != IAMBIC_STATE_SEND_DIT);
+        bool can_arm_dah = (proc->state != IAMBIC_STATE_SEND_DAH);
+
+        /* Determine if we should check for memory arming based on squeeze_mode */
+        bool check_dit, check_dah;
+        if (proc->config.squeeze_mode == SQUEEZE_MODE_LATCH_ON) {
+            /* LATCH_ON: Only arm memory if squeeze was active at element start */
+            check_dit = proc->squeeze_latched && proc->dit_pressed;
+            check_dah = proc->squeeze_latched && proc->dah_pressed;
+        } else {
+            /* LATCH_OFF: Live mode - check current paddle state */
+            check_dit = proc->dit_pressed;
+            check_dah = proc->dah_pressed;
+        }
 
         if (in_window) {
-            /*
-             * Only arm memory for the OPPOSITE element to what's currently being sent.
-             * This prevents re-arming the same element during a squeeze.
-             * During GAP, both can be armed since no element is active.
-             */
-            bool can_arm_dit = (proc->state != IAMBIC_STATE_SEND_DIT);
-            bool can_arm_dah = (proc->state != IAMBIC_STATE_SEND_DAH);
-
-            if (can_arm_dit && proc->dit_pressed && iambic_dit_memory_enabled(proc->config.memory_mode)) {
+            /* Inside window: arm memory if paddle pressed */
+            if (can_arm_dit && check_dit && iambic_dit_memory_enabled(proc->config.memory_mode)) {
                 proc->dit_memory = true;
             }
-            if (can_arm_dah && proc->dah_pressed && iambic_dah_memory_enabled(proc->config.memory_mode)) {
+            if (can_arm_dah && check_dah && iambic_dah_memory_enabled(proc->config.memory_mode)) {
                 proc->dah_memory = true;
+            }
+        }
+
+        /* Reset squeeze_seen if squeeze released BEFORE memory window (Mode B fix) */
+        if (proc->config.mode == IAMBIC_MODE_B && proc->squeeze_seen) {
+            bool current_squeeze = (proc->config.squeeze_mode == SQUEEZE_MODE_LATCH_ON)
+                                    ? proc->squeeze_latched
+                                    : (proc->dit_pressed && proc->dah_pressed);
+            if (!current_squeeze) {
+                /* Squeeze released - check if before window */
+                int64_t elapsed = now_us - proc->element_start_us;
+                uint8_t progress_pct = (proc->element_duration_us > 0)
+                    ? (uint8_t)((elapsed * 100) / proc->element_duration_us)
+                    : 0;
+
+                if (progress_pct < proc->config.mem_window_start_pct) {
+                    /* Released BEFORE window start - cancel Mode B bonus */
+                    proc->squeeze_seen = false;
+                }
             }
         }
     }

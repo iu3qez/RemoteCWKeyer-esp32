@@ -13,6 +13,11 @@
  * - Inputs before start% are ignored (debounce)
  * - Inputs between start% and end% are memorized
  * - Inputs after end% are ignored (too late)
+ *
+ * Release Debounce:
+ * - After paddle release, a 5ms blanking period suppresses bounce
+ * - New presses of the same paddle are ignored during this window
+ * - Prevents false triggers from mechanical contact bounce on open
  */
 
 #ifndef KEYER_IAMBIC_H
@@ -22,6 +27,15 @@
 #include <stdbool.h>
 #include "sample.h"
 #include "iambic_preset.h"
+
+/**
+ * @brief Release debounce blanking period in microseconds
+ *
+ * After a paddle is released, new presses are ignored for this duration.
+ * Suppresses false triggers from mechanical contact bounce on opening.
+ * 5ms is sufficient for typical paddle contacts.
+ */
+#define IAMBIC_DEBOUNCE_RELEASE_US 5000
 
 #ifdef __cplusplus
 extern "C" {
@@ -163,6 +177,10 @@ typedef struct {
     /* Paddle state */
     bool dit_pressed;          /**< DIT paddle currently pressed */
     bool dah_pressed;          /**< DAH paddle currently pressed */
+
+    /* Release debounce timestamps */
+    int64_t dit_release_time_us;   /**< Last DIT release timestamp (debounce) */
+    int64_t dah_release_time_us;   /**< Last DAH release timestamp (debounce) */
 
     /* Memory flags */
     bool dit_memory;           /**< DIT was pressed during memory window */
