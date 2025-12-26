@@ -13,6 +13,15 @@
 #include <stdlib.h>
 #include <errno.h>
 
+/* Family registry */
+const family_descriptor_t CONSOLE_FAMILIES[FAMILY_COUNT] = {
+    { "keyer", "k", "Keying behavior and timing", 1 },
+    { "audio", "a,snd", "Sidetone and audio output", 2 },
+    { "hardware", "hw,gpio", "GPIO and pin configuration", 3 },
+    { "timing", "t", "RT loop and PTT timing", 4 },
+    { "system", "sys", "Debug and system settings", 5 },
+};
+
 /* Get/set function implementations */
 static param_value_t get_wpm(void) {
     param_value_t v;
@@ -192,36 +201,62 @@ static void set_led_brightness(param_value_t v) {
     config_bump_generation(&g_config);
 }
 
-/* Parameter registry */
+/* Parameter registry with full_path for dot notation */
 const param_descriptor_t CONSOLE_PARAMS[CONSOLE_PARAM_COUNT] = {
-    { "wpm", "keyer", PARAM_TYPE_U16, 5, 100, get_wpm, set_wpm },
-    { "iambic_mode", "keyer", PARAM_TYPE_ENUM, 0, 1, get_iambic_mode, set_iambic_mode },
-    { "memory_mode", "keyer", PARAM_TYPE_ENUM, 0, 3, get_memory_mode, set_memory_mode },
-    { "squeeze_mode", "keyer", PARAM_TYPE_ENUM, 0, 1, get_squeeze_mode, set_squeeze_mode },
-    { "mem_window_start_pct", "keyer", PARAM_TYPE_U8, 0, 100, get_mem_window_start_pct, set_mem_window_start_pct },
-    { "mem_window_end_pct", "keyer", PARAM_TYPE_U8, 0, 100, get_mem_window_end_pct, set_mem_window_end_pct },
-    { "weight", "keyer", PARAM_TYPE_U8, 33, 67, get_weight, set_weight },
-    { "sidetone_freq_hz", "audio", PARAM_TYPE_U16, 400, 800, get_sidetone_freq_hz, set_sidetone_freq_hz },
-    { "sidetone_volume", "audio", PARAM_TYPE_U8, 1, 100, get_sidetone_volume, set_sidetone_volume },
-    { "fade_duration_ms", "audio", PARAM_TYPE_U8, 1, 10, get_fade_duration_ms, set_fade_duration_ms },
-    { "gpio_dit", "hardware", PARAM_TYPE_U8, 0, 45, get_gpio_dit, set_gpio_dit },
-    { "gpio_dah", "hardware", PARAM_TYPE_U8, 0, 45, get_gpio_dah, set_gpio_dah },
-    { "gpio_tx", "hardware", PARAM_TYPE_U8, 0, 45, get_gpio_tx, set_gpio_tx },
-    { "ptt_tail_ms", "timing", PARAM_TYPE_U32, 50, 500, get_ptt_tail_ms, set_ptt_tail_ms },
-    { "tick_rate_hz", "timing", PARAM_TYPE_U32, 1000, 10000, get_tick_rate_hz, set_tick_rate_hz },
-    { "debug_logging", "system", PARAM_TYPE_BOOL, 0, 1, get_debug_logging, set_debug_logging },
-    { "led_brightness", "system", PARAM_TYPE_U8, 0, 100, get_led_brightness, set_led_brightness },
+    { "wpm", "keyer", "keyer.wpm", PARAM_TYPE_U16, 5, 100, get_wpm, set_wpm },
+    { "iambic_mode", "keyer", "keyer.iambic_mode", PARAM_TYPE_ENUM, 0, 1, get_iambic_mode, set_iambic_mode },
+    { "memory_mode", "keyer", "keyer.memory_mode", PARAM_TYPE_ENUM, 0, 3, get_memory_mode, set_memory_mode },
+    { "squeeze_mode", "keyer", "keyer.squeeze_mode", PARAM_TYPE_ENUM, 0, 1, get_squeeze_mode, set_squeeze_mode },
+    { "mem_window_start_pct", "keyer", "keyer.mem_window_start_pct", PARAM_TYPE_U8, 0, 100, get_mem_window_start_pct, set_mem_window_start_pct },
+    { "mem_window_end_pct", "keyer", "keyer.mem_window_end_pct", PARAM_TYPE_U8, 0, 100, get_mem_window_end_pct, set_mem_window_end_pct },
+    { "weight", "keyer", "keyer.weight", PARAM_TYPE_U8, 33, 67, get_weight, set_weight },
+    { "sidetone_freq_hz", "audio", "audio.sidetone_freq_hz", PARAM_TYPE_U16, 400, 800, get_sidetone_freq_hz, set_sidetone_freq_hz },
+    { "sidetone_volume", "audio", "audio.sidetone_volume", PARAM_TYPE_U8, 1, 100, get_sidetone_volume, set_sidetone_volume },
+    { "fade_duration_ms", "audio", "audio.fade_duration_ms", PARAM_TYPE_U8, 1, 10, get_fade_duration_ms, set_fade_duration_ms },
+    { "gpio_dit", "hardware", "hardware.gpio_dit", PARAM_TYPE_U8, 0, 45, get_gpio_dit, set_gpio_dit },
+    { "gpio_dah", "hardware", "hardware.gpio_dah", PARAM_TYPE_U8, 0, 45, get_gpio_dah, set_gpio_dah },
+    { "gpio_tx", "hardware", "hardware.gpio_tx", PARAM_TYPE_U8, 0, 45, get_gpio_tx, set_gpio_tx },
+    { "ptt_tail_ms", "timing", "timing.ptt_tail_ms", PARAM_TYPE_U32, 50, 500, get_ptt_tail_ms, set_ptt_tail_ms },
+    { "tick_rate_hz", "timing", "timing.tick_rate_hz", PARAM_TYPE_U32, 1000, 10000, get_tick_rate_hz, set_tick_rate_hz },
+    { "debug_logging", "system", "system.debug_logging", PARAM_TYPE_BOOL, 0, 1, get_debug_logging, set_debug_logging },
+    { "led_brightness", "system", "system.led_brightness", PARAM_TYPE_U8, 0, 100, get_led_brightness, set_led_brightness },
 };
 
-const char *CATEGORIES[CATEGORY_COUNT] = {
-    "keyer", "audio", "hardware", "timing", "system"
-};
+const family_descriptor_t *config_find_family(const char *name) {
+    if (name == NULL) {
+        return NULL;
+    }
+    for (size_t i = 0; i < FAMILY_COUNT; i++) {
+        const family_descriptor_t *f = &CONSOLE_FAMILIES[i];
+        /* Match by name */
+        if (strcmp(f->name, name) == 0) {
+            return f;
+        }
+        /* Match by alias */
+        const char *aliases = f->aliases;
+        while (*aliases) {
+            const char *end = aliases;
+            while (*end && *end != ',') end++;
+            size_t len = (size_t)(end - aliases);
+            if (strncmp(aliases, name, len) == 0 && name[len] == '\0') {
+                return f;
+            }
+            aliases = (*end == ',') ? end + 1 : end;
+        }
+    }
+    return NULL;
+}
 
 const param_descriptor_t *config_find_param(const char *name) {
     if (name == NULL) {
         return NULL;
     }
     for (size_t i = 0; i < CONSOLE_PARAM_COUNT; i++) {
+        /* Match by full path (keyer.wpm) */
+        if (strcmp(CONSOLE_PARAMS[i].full_path, name) == 0) {
+            return &CONSOLE_PARAMS[i];
+        }
+        /* Also match by short name for backwards compat */
         if (strcmp(CONSOLE_PARAMS[i].name, name) == 0) {
             return &CONSOLE_PARAMS[i];
         }
