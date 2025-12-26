@@ -1,0 +1,51 @@
+version: "3.8"
+
+services:
+  esp-idf:
+    build:
+      context: .devcontainer
+      dockerfile: Dockerfile
+      args:
+        DOCKER_TAG: v5.5.1
+    image: esp-idf-keyer:v5.5.1
+    container_name: esp-idf-keyer
+
+    # Run in privileged mode for device access
+    privileged: true
+
+    # Device mappings
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+
+    # User configuration
+    user: vscode
+
+    # Working directory
+    working_dir: /workspaces/RustRemoteCWKeyer
+
+    # Volume mounts
+    volumes:
+      # Project workspace
+      - .:/workspaces/RustRemoteCWKeyer:cached
+
+      # Claude Code configuration
+      - ${HOME}/.claude:/home/vscode/.claude:cached
+      - ${HOME}/.claude.json:/home/vscode/.claude.json:cached
+
+      # PVS-Studio license
+      - ${HOME}/.config/PVS-Studio:/home/vscode/.config/PVS-Studio:cached
+
+    # Keep container running
+    stdin_open: true
+    tty: true
+
+    # Override entrypoint for interactive shell
+    entrypoint: ["/opt/esp/entrypoint.sh"]
+    command: ["/bin/bash"]
+
+    # Environment variables
+    environment:
+      - LC_ALL=C.UTF-8
+      - LANG=C.UTF-8
+      - IDF_PATH=/opt/esp/idf
+      - IDF_TOOLS_PATH=/opt/esp
