@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import System from './pages/System.svelte';
   import Config from './pages/Config.svelte';
+  import Decoder from './pages/Decoder.svelte';
 
   let currentPage = $state('/');
 
@@ -38,8 +39,7 @@
       <h1>Keyer</h1>
       <p>Keyer page - coming soon</p>
     {:else if currentPage === '/decoder'}
-      <h1>Decoder</h1>
-      <p>Decoder page - coming soon</p>
+      <Decoder />
     {:else if currentPage === '/timeline'}
       <h1>Timeline</h1>
       <p>Timeline page - coming soon</p>
