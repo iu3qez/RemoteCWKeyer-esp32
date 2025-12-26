@@ -44,7 +44,7 @@ typedef struct {
 } param_meta_t;
 
 /** Number of parameters */
-#define PARAM_COUNT 17
+#define PARAM_COUNT 29
 
 /** All parameter metadata */
 extern const param_meta_t PARAM_METADATA[PARAM_COUNT];

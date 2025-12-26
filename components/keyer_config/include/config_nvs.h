@@ -59,7 +59,19 @@ esp_err_t config_save_param(const char *name);
 #define NVS_KEY_PTT_TAIL_MS "ptt_tail"
 #define NVS_KEY_TICK_RATE_HZ "tick_hz"
 #define NVS_KEY_DEBUG_LOGGING "debug_log"
-#define NVS_KEY_LED_BRIGHTNESS "led_bright"
+#define NVS_KEY_GPIO_DATA "led_gpio"
+#define NVS_KEY_COUNT "led_count"
+#define NVS_KEY_BRIGHTNESS "led_bright"
+#define NVS_KEY_BRIGHTNESS_DIM "led_dim"
+#define NVS_KEY_ENABLED "wifi_en"
+#define NVS_KEY_SSID "wifi_ssid"
+#define NVS_KEY_PASSWORD "wifi_pass"
+#define NVS_KEY_TIMEOUT_SEC "wifi_tout"
+#define NVS_KEY_USE_STATIC_IP "wifi_static"
+#define NVS_KEY_IP_ADDRESS "wifi_ip"
+#define NVS_KEY_NETMASK "wifi_mask"
+#define NVS_KEY_GATEWAY "wifi_gw"
+#define NVS_KEY_DNS "wifi_dns"
 
 #ifdef __cplusplus
 }

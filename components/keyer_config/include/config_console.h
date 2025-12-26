@@ -31,6 +31,7 @@ typedef enum {
     PARAM_TYPE_U32 = 2,
     PARAM_TYPE_BOOL = 3,
     PARAM_TYPE_ENUM = 4,
+    PARAM_TYPE_STRING = 5,
 } param_type_t;
 
 /** Family descriptor */
@@ -53,8 +54,8 @@ typedef struct {
     void (*set_fn)(param_value_t);
 } param_descriptor_t;
 
-#define FAMILY_COUNT 5
-#define CONSOLE_PARAM_COUNT 17
+#define FAMILY_COUNT 7
+#define CONSOLE_PARAM_COUNT 29
 
 extern const family_descriptor_t CONSOLE_FAMILIES[FAMILY_COUNT];
 extern const param_descriptor_t CONSOLE_PARAMS[CONSOLE_PARAM_COUNT];

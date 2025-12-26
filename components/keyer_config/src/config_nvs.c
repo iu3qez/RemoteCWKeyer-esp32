@@ -8,6 +8,7 @@
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "esp_log.h"
+#include <string.h>
 
 static const char *TAG = "config_nvs";
 
@@ -69,6 +70,8 @@ int config_load_from_nvs(void) {
     uint8_t u8_val;
     uint16_t u16_val;
     uint32_t u32_val;
+    char str_buf[65];  /* Max string length + null */
+    size_t str_len;
 
     /* Load keyer.wpm */
     if (nvs_get_u16(handle, NVS_KEY_WPM, &u16_val) == ESP_OK) {
@@ -166,9 +169,93 @@ int config_load_from_nvs(void) {
         loaded++;
     }
 
-    /* Load system.led_brightness */
-    if (nvs_get_u8(handle, NVS_KEY_LED_BRIGHTNESS, &u8_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.system.led_brightness, u8_val, memory_order_relaxed);
+    /* Load leds.gpio_data */
+    if (nvs_get_u8(handle, NVS_KEY_GPIO_DATA, &u8_val) == ESP_OK) {
+        atomic_store_explicit(&g_config.leds.gpio_data, u8_val, memory_order_relaxed);
+        loaded++;
+    }
+
+    /* Load leds.count */
+    if (nvs_get_u8(handle, NVS_KEY_COUNT, &u8_val) == ESP_OK) {
+        atomic_store_explicit(&g_config.leds.count, u8_val, memory_order_relaxed);
+        loaded++;
+    }
+
+    /* Load leds.brightness */
+    if (nvs_get_u8(handle, NVS_KEY_BRIGHTNESS, &u8_val) == ESP_OK) {
+        atomic_store_explicit(&g_config.leds.brightness, u8_val, memory_order_relaxed);
+        loaded++;
+    }
+
+    /* Load leds.brightness_dim */
+    if (nvs_get_u8(handle, NVS_KEY_BRIGHTNESS_DIM, &u8_val) == ESP_OK) {
+        atomic_store_explicit(&g_config.leds.brightness_dim, u8_val, memory_order_relaxed);
+        loaded++;
+    }
+
+    /* Load wifi.enabled */
+    if (nvs_get_u8(handle, NVS_KEY_ENABLED, &u8_val) == ESP_OK) {
+        atomic_store_explicit(&g_config.wifi.enabled, u8_val != 0, memory_order_relaxed);
+        loaded++;
+    }
+
+    /* Load wifi.ssid (string) */
+    str_len = sizeof(str_buf);
+    if (nvs_get_str(handle, NVS_KEY_SSID, str_buf, &str_len) == ESP_OK) {
+        strncpy(g_config.wifi.ssid, str_buf, 32);
+        g_config.wifi.ssid[32] = '\0';
+        loaded++;
+    }
+
+    /* Load wifi.password (string) */
+    str_len = sizeof(str_buf);
+    if (nvs_get_str(handle, NVS_KEY_PASSWORD, str_buf, &str_len) == ESP_OK) {
+        strncpy(g_config.wifi.password, str_buf, 64);
+        g_config.wifi.password[64] = '\0';
+        loaded++;
+    }
+
+    /* Load wifi.timeout_sec */
+    if (nvs_get_u16(handle, NVS_KEY_TIMEOUT_SEC, &u16_val) == ESP_OK) {
+        atomic_store_explicit(&g_config.wifi.timeout_sec, u16_val, memory_order_relaxed);
+        loaded++;
+    }
+
+    /* Load wifi.use_static_ip */
+    if (nvs_get_u8(handle, NVS_KEY_USE_STATIC_IP, &u8_val) == ESP_OK) {
+        atomic_store_explicit(&g_config.wifi.use_static_ip, u8_val != 0, memory_order_relaxed);
+        loaded++;
+    }
+
+    /* Load wifi.ip_address (string) */
+    str_len = sizeof(str_buf);
+    if (nvs_get_str(handle, NVS_KEY_IP_ADDRESS, str_buf, &str_len) == ESP_OK) {
+        strncpy(g_config.wifi.ip_address, str_buf, 16);
+        g_config.wifi.ip_address[16] = '\0';
+        loaded++;
+    }
+
+    /* Load wifi.netmask (string) */
+    str_len = sizeof(str_buf);
+    if (nvs_get_str(handle, NVS_KEY_NETMASK, str_buf, &str_len) == ESP_OK) {
+        strncpy(g_config.wifi.netmask, str_buf, 16);
+        g_config.wifi.netmask[16] = '\0';
+        loaded++;
+    }
+
+    /* Load wifi.gateway (string) */
+    str_len = sizeof(str_buf);
+    if (nvs_get_str(handle, NVS_KEY_GATEWAY, str_buf, &str_len) == ESP_OK) {
+        strncpy(g_config.wifi.gateway, str_buf, 16);
+        g_config.wifi.gateway[16] = '\0';
+        loaded++;
+    }
+
+    /* Load wifi.dns (string) */
+    str_len = sizeof(str_buf);
+    if (nvs_get_str(handle, NVS_KEY_DNS, str_buf, &str_len) == ESP_OK) {
+        strncpy(g_config.wifi.dns, str_buf, 16);
+        g_config.wifi.dns[16] = '\0';
         loaded++;
     }
 
@@ -283,9 +370,75 @@ int config_save_to_nvs(void) {
         saved++;
     }
 
-    /* Save system.led_brightness */
-    if (nvs_set_u8(handle, NVS_KEY_LED_BRIGHTNESS,
-            (uint8_t)atomic_load_explicit(&g_config.system.led_brightness, memory_order_relaxed)) == ESP_OK) {
+    /* Save leds.gpio_data */
+    if (nvs_set_u8(handle, NVS_KEY_GPIO_DATA,
+            (uint8_t)atomic_load_explicit(&g_config.leds.gpio_data, memory_order_relaxed)) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save leds.count */
+    if (nvs_set_u8(handle, NVS_KEY_COUNT,
+            (uint8_t)atomic_load_explicit(&g_config.leds.count, memory_order_relaxed)) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save leds.brightness */
+    if (nvs_set_u8(handle, NVS_KEY_BRIGHTNESS,
+            (uint8_t)atomic_load_explicit(&g_config.leds.brightness, memory_order_relaxed)) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save leds.brightness_dim */
+    if (nvs_set_u8(handle, NVS_KEY_BRIGHTNESS_DIM,
+            (uint8_t)atomic_load_explicit(&g_config.leds.brightness_dim, memory_order_relaxed)) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save wifi.enabled */
+    if (nvs_set_u8(handle, NVS_KEY_ENABLED,
+            atomic_load_explicit(&g_config.wifi.enabled, memory_order_relaxed) ? 1 : 0) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save wifi.ssid (string) */
+    if (nvs_set_str(handle, NVS_KEY_SSID, g_config.wifi.ssid) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save wifi.password (string) */
+    if (nvs_set_str(handle, NVS_KEY_PASSWORD, g_config.wifi.password) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save wifi.timeout_sec */
+    if (nvs_set_u16(handle, NVS_KEY_TIMEOUT_SEC,
+            (uint16_t)atomic_load_explicit(&g_config.wifi.timeout_sec, memory_order_relaxed)) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save wifi.use_static_ip */
+    if (nvs_set_u8(handle, NVS_KEY_USE_STATIC_IP,
+            atomic_load_explicit(&g_config.wifi.use_static_ip, memory_order_relaxed) ? 1 : 0) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save wifi.ip_address (string) */
+    if (nvs_set_str(handle, NVS_KEY_IP_ADDRESS, g_config.wifi.ip_address) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save wifi.netmask (string) */
+    if (nvs_set_str(handle, NVS_KEY_NETMASK, g_config.wifi.netmask) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save wifi.gateway (string) */
+    if (nvs_set_str(handle, NVS_KEY_GATEWAY, g_config.wifi.gateway) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save wifi.dns (string) */
+    if (nvs_set_str(handle, NVS_KEY_DNS, g_config.wifi.dns) == ESP_OK) {
         saved++;
     }
 

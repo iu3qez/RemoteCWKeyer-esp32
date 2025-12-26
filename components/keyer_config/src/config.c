@@ -25,7 +25,25 @@ void config_init_defaults(keyer_config_t *cfg) {
     atomic_init(&cfg->timing.ptt_tail_ms, 100);
     atomic_init(&cfg->timing.tick_rate_hz, 10000);
     atomic_init(&cfg->system.debug_logging, false);
-    atomic_init(&cfg->system.led_brightness, 50);
+    atomic_init(&cfg->leds.gpio_data, 38);
+    atomic_init(&cfg->leds.count, 7);
+    atomic_init(&cfg->leds.brightness, 50);
+    atomic_init(&cfg->leds.brightness_dim, 10);
+    atomic_init(&cfg->wifi.enabled, false);
+    strncpy(cfg->wifi.ssid, "", 32);
+    cfg->wifi.ssid[32] = '\0';
+    strncpy(cfg->wifi.password, "", 64);
+    cfg->wifi.password[64] = '\0';
+    atomic_init(&cfg->wifi.timeout_sec, 30);
+    atomic_init(&cfg->wifi.use_static_ip, false);
+    strncpy(cfg->wifi.ip_address, "0.0.0.0", 16);
+    cfg->wifi.ip_address[16] = '\0';
+    strncpy(cfg->wifi.netmask, "255.255.255.0", 16);
+    cfg->wifi.netmask[16] = '\0';
+    strncpy(cfg->wifi.gateway, "0.0.0.0", 16);
+    cfg->wifi.gateway[16] = '\0';
+    strncpy(cfg->wifi.dns, "0.0.0.0", 16);
+    cfg->wifi.dns[16] = '\0';
     atomic_init(&cfg->generation, 0);
 }
 

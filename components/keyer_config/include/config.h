@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdatomic.h>
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,8 +53,28 @@ typedef struct {
 /** @brief System configuration */
 typedef struct {
     atomic_bool debug_logging;  /**< Debug Logging */
-    atomic_uchar led_brightness;  /**< LED Brightness (%) (0-100) */
 } config_system_t;
+
+/** @brief Leds configuration */
+typedef struct {
+    atomic_uchar gpio_data;  /**< LED Data GPIO (0-48) */
+    atomic_uchar count;  /**< Number of LEDs (0-32) */
+    atomic_uchar brightness;  /**< LED Brightness (%) (0-100) */
+    atomic_uchar brightness_dim;  /**< Idle Brightness (%) (0-50) */
+} config_leds_t;
+
+/** @brief Wifi configuration */
+typedef struct {
+    atomic_bool enabled;  /**< WiFi Enabled */
+    char ssid[33];  /**< Network Name */
+    char password[65];  /**< Network Password */
+    atomic_ushort timeout_sec;  /**< Connection Timeout (s) (5-120) */
+    atomic_bool use_static_ip;  /**< Use Static IP */
+    char ip_address[17];  /**< Static IP Address */
+    char netmask[17];  /**< Subnet Mask */
+    char gateway[17];  /**< Default Gateway */
+    char dns[17];  /**< DNS Server */
+} config_wifi_t;
 
 /** @brief Complete keyer configuration */
 typedef struct {
@@ -62,6 +83,8 @@ typedef struct {
     config_hardware_t hardware;
     config_timing_t timing;
     config_system_t system;
+    config_leds_t leds;
+    config_wifi_t wifi;
     atomic_ushort generation;  /**< Config change counter */
 } keyer_config_t;
 
@@ -212,11 +235,113 @@ void config_bump_generation(keyer_config_t *cfg);
     config_bump_generation(&g_config); \
 } while(0)
 
-#define CONFIG_GET_LED_BRIGHTNESS() \
-    atomic_load_explicit(&g_config.system.led_brightness, memory_order_relaxed)
+#define CONFIG_GET_GPIO_DATA() \
+    atomic_load_explicit(&g_config.leds.gpio_data, memory_order_relaxed)
 
-#define CONFIG_SET_LED_BRIGHTNESS(v) do { \
-    atomic_store_explicit(&g_config.system.led_brightness, (v), memory_order_relaxed); \
+#define CONFIG_SET_GPIO_DATA(v) do { \
+    atomic_store_explicit(&g_config.leds.gpio_data, (v), memory_order_relaxed); \
+    config_bump_generation(&g_config); \
+} while(0)
+
+#define CONFIG_GET_COUNT() \
+    atomic_load_explicit(&g_config.leds.count, memory_order_relaxed)
+
+#define CONFIG_SET_COUNT(v) do { \
+    atomic_store_explicit(&g_config.leds.count, (v), memory_order_relaxed); \
+    config_bump_generation(&g_config); \
+} while(0)
+
+#define CONFIG_GET_BRIGHTNESS() \
+    atomic_load_explicit(&g_config.leds.brightness, memory_order_relaxed)
+
+#define CONFIG_SET_BRIGHTNESS(v) do { \
+    atomic_store_explicit(&g_config.leds.brightness, (v), memory_order_relaxed); \
+    config_bump_generation(&g_config); \
+} while(0)
+
+#define CONFIG_GET_BRIGHTNESS_DIM() \
+    atomic_load_explicit(&g_config.leds.brightness_dim, memory_order_relaxed)
+
+#define CONFIG_SET_BRIGHTNESS_DIM(v) do { \
+    atomic_store_explicit(&g_config.leds.brightness_dim, (v), memory_order_relaxed); \
+    config_bump_generation(&g_config); \
+} while(0)
+
+#define CONFIG_GET_ENABLED() \
+    atomic_load_explicit(&g_config.wifi.enabled, memory_order_relaxed)
+
+#define CONFIG_SET_ENABLED(v) do { \
+    atomic_store_explicit(&g_config.wifi.enabled, (v), memory_order_relaxed); \
+    config_bump_generation(&g_config); \
+} while(0)
+
+#define CONFIG_GET_SSID() \
+    (g_config.wifi.ssid)
+
+#define CONFIG_SET_SSID(v) do { \
+    strncpy(g_config.wifi.ssid, (v), 32); \
+    g_config.wifi.ssid[32] = '\0'; \
+    config_bump_generation(&g_config); \
+} while(0)
+
+#define CONFIG_GET_PASSWORD() \
+    (g_config.wifi.password)
+
+#define CONFIG_SET_PASSWORD(v) do { \
+    strncpy(g_config.wifi.password, (v), 64); \
+    g_config.wifi.password[64] = '\0'; \
+    config_bump_generation(&g_config); \
+} while(0)
+
+#define CONFIG_GET_TIMEOUT_SEC() \
+    atomic_load_explicit(&g_config.wifi.timeout_sec, memory_order_relaxed)
+
+#define CONFIG_SET_TIMEOUT_SEC(v) do { \
+    atomic_store_explicit(&g_config.wifi.timeout_sec, (v), memory_order_relaxed); \
+    config_bump_generation(&g_config); \
+} while(0)
+
+#define CONFIG_GET_USE_STATIC_IP() \
+    atomic_load_explicit(&g_config.wifi.use_static_ip, memory_order_relaxed)
+
+#define CONFIG_SET_USE_STATIC_IP(v) do { \
+    atomic_store_explicit(&g_config.wifi.use_static_ip, (v), memory_order_relaxed); \
+    config_bump_generation(&g_config); \
+} while(0)
+
+#define CONFIG_GET_IP_ADDRESS() \
+    (g_config.wifi.ip_address)
+
+#define CONFIG_SET_IP_ADDRESS(v) do { \
+    strncpy(g_config.wifi.ip_address, (v), 16); \
+    g_config.wifi.ip_address[16] = '\0'; \
+    config_bump_generation(&g_config); \
+} while(0)
+
+#define CONFIG_GET_NETMASK() \
+    (g_config.wifi.netmask)
+
+#define CONFIG_SET_NETMASK(v) do { \
+    strncpy(g_config.wifi.netmask, (v), 16); \
+    g_config.wifi.netmask[16] = '\0'; \
+    config_bump_generation(&g_config); \
+} while(0)
+
+#define CONFIG_GET_GATEWAY() \
+    (g_config.wifi.gateway)
+
+#define CONFIG_SET_GATEWAY(v) do { \
+    strncpy(g_config.wifi.gateway, (v), 16); \
+    g_config.wifi.gateway[16] = '\0'; \
+    config_bump_generation(&g_config); \
+} while(0)
+
+#define CONFIG_GET_DNS() \
+    (g_config.wifi.dns)
+
+#define CONFIG_SET_DNS(v) do { \
+    strncpy(g_config.wifi.dns, (v), 16); \
+    g_config.wifi.dns[16] = '\0'; \
     config_bump_generation(&g_config); \
 } while(0)
 

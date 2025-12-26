@@ -111,8 +111,23 @@ def main():
     print(f"✓ Code generation complete: {output_dir}")
 
 
+def is_string_type(param: Dict) -> bool:
+    """Check if parameter is a string type"""
+    return param['type'] == 'string'
+
+
+def get_string_max_length(param: Dict) -> int:
+    """Get max_length for string parameter (includes null terminator space)"""
+    return param.get('max_length', 32)
+
+
 def get_c_atomic_type(param: Dict) -> str:
-    """Map parameter type to C11 atomic type"""
+    """Map parameter type to C11 atomic type (or char[] for strings)"""
+    if is_string_type(param):
+        # Strings use char array, not atomic
+        max_len = get_string_max_length(param)
+        return f"char[{max_len + 1}]"  # +1 for null terminator
+
     type_map = {
         'u8': 'atomic_uchar',
         'u16': 'atomic_ushort',
@@ -125,6 +140,9 @@ def get_c_atomic_type(param: Dict) -> str:
 
 def get_c_storage_type(param: Dict) -> str:
     """Map parameter type to C storage type"""
+    if is_string_type(param):
+        return 'const char *'
+
     type_map = {
         'u8': 'uint8_t',
         'u16': 'uint16_t',
@@ -144,6 +162,9 @@ def get_default_value(param: Dict) -> tuple:
         default_enum = param['default']
         idx = enum_values.index(default_enum)
         return (str(idx), default_enum)
+    elif param['type'] == 'string':
+        default_str = param.get('default', '')
+        return (f'"{default_str}"', None)
     else:
         return (str(param['default']), None)
 
@@ -184,6 +205,7 @@ def generate_config_h(params: List[Dict], families: List[Dict], output_dir: Path
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdatomic.h>
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -202,9 +224,13 @@ extern "C" {
             code += f"/** @brief {fname.title()} configuration */\n"
             code += f"typedef struct {{\n"
             for p in fparams:
-                atomic_type = get_c_atomic_type(p)
                 comment = get_field_comment(p)
-                code += f"    {atomic_type} {p['name']};  /**< {comment} */\n"
+                if is_string_type(p):
+                    max_len = get_string_max_length(p)
+                    code += f"    char {p['name']}[{max_len + 1}];  /**< {comment} */\n"
+                else:
+                    atomic_type = get_c_atomic_type(p)
+                    code += f"    {atomic_type} {p['name']};  /**< {comment} */\n"
             code += f"}} config_{fname}_t;\n\n"
 
         # Generate composite struct
@@ -224,9 +250,13 @@ extern "C" {
 typedef struct {
 """
         for p in params:
-            atomic_type = get_c_atomic_type(p)
             comment = get_field_comment(p)
-            code += f"    {atomic_type} {p['name']};  /**< {comment} */\n"
+            if is_string_type(p):
+                max_len = get_string_max_length(p)
+                code += f"    char {p['name']}[{max_len + 1}];  /**< {comment} */\n"
+            else:
+                atomic_type = get_c_atomic_type(p)
+                code += f"    {atomic_type} {p['name']};  /**< {comment} */\n"
         code += "    atomic_ushort generation;  /**< Config generation counter */\n"
         code += "} keyer_config_t;\n\n"
 
@@ -257,22 +287,43 @@ void config_bump_generation(keyer_config_t *cfg);
         family = p.get('family', None)
         upper = name.upper()
 
-        if families and family:
-            # V2: nested access
-            code += f"#define CONFIG_GET_{upper}() \\\n"
-            code += f"    atomic_load_explicit(&g_config.{family}.{name}, memory_order_relaxed)\n\n"
-            code += f"#define CONFIG_SET_{upper}(v) do {{ \\\n"
-            code += f"    atomic_store_explicit(&g_config.{family}.{name}, (v), memory_order_relaxed); \\\n"
-            code += f"    config_bump_generation(&g_config); \\\n"
-            code += f"}} while(0)\n\n"
+        if is_string_type(p):
+            max_len = get_string_max_length(p)
+            if families and family:
+                # V2: nested access for strings
+                code += f"#define CONFIG_GET_{upper}() \\\n"
+                code += f"    (g_config.{family}.{name})\n\n"
+                code += f"#define CONFIG_SET_{upper}(v) do {{ \\\n"
+                code += f"    strncpy(g_config.{family}.{name}, (v), {max_len}); \\\n"
+                code += f"    g_config.{family}.{name}[{max_len}] = '\\0'; \\\n"
+                code += f"    config_bump_generation(&g_config); \\\n"
+                code += f"}} while(0)\n\n"
+            else:
+                # V1: flat access for strings
+                code += f"#define CONFIG_GET_{upper}() \\\n"
+                code += f"    (g_config.{name})\n\n"
+                code += f"#define CONFIG_SET_{upper}(v) do {{ \\\n"
+                code += f"    strncpy(g_config.{name}, (v), {max_len}); \\\n"
+                code += f"    g_config.{name}[{max_len}] = '\\0'; \\\n"
+                code += f"    config_bump_generation(&g_config); \\\n"
+                code += f"}} while(0)\n\n"
         else:
-            # V1: flat access
-            code += f"#define CONFIG_GET_{upper}() \\\n"
-            code += f"    atomic_load_explicit(&g_config.{name}, memory_order_relaxed)\n\n"
-            code += f"#define CONFIG_SET_{upper}(v) do {{ \\\n"
-            code += f"    atomic_store_explicit(&g_config.{name}, (v), memory_order_relaxed); \\\n"
-            code += f"    config_bump_generation(&g_config); \\\n"
-            code += f"}} while(0)\n\n"
+            if families and family:
+                # V2: nested access
+                code += f"#define CONFIG_GET_{upper}() \\\n"
+                code += f"    atomic_load_explicit(&g_config.{family}.{name}, memory_order_relaxed)\n\n"
+                code += f"#define CONFIG_SET_{upper}(v) do {{ \\\n"
+                code += f"    atomic_store_explicit(&g_config.{family}.{name}, (v), memory_order_relaxed); \\\n"
+                code += f"    config_bump_generation(&g_config); \\\n"
+                code += f"}} while(0)\n\n"
+            else:
+                # V1: flat access
+                code += f"#define CONFIG_GET_{upper}() \\\n"
+                code += f"    atomic_load_explicit(&g_config.{name}, memory_order_relaxed)\n\n"
+                code += f"#define CONFIG_SET_{upper}(v) do {{ \\\n"
+                code += f"    atomic_store_explicit(&g_config.{name}, (v), memory_order_relaxed); \\\n"
+                code += f"    config_bump_generation(&g_config); \\\n"
+                code += f"}} while(0)\n\n"
 
     code += """#ifdef __cplusplus
 }
@@ -320,10 +371,18 @@ void config_init_defaults(keyer_config_t *cfg) {
             # V1: flat path
             path = name
 
-        if comment:
-            code += f"    atomic_init(&cfg->{path}, {default_val});  /* {comment} */\n"
+        if is_string_type(p):
+            max_len = get_string_max_length(p)
+            if comment:
+                code += f"    strncpy(cfg->{path}, {default_val}, {max_len});  /* {comment} */\n"
+            else:
+                code += f"    strncpy(cfg->{path}, {default_val}, {max_len});\n"
+            code += f"    cfg->{path}[{max_len}] = '\\0';\n"
         else:
-            code += f"    atomic_init(&cfg->{path}, {default_val});\n"
+            if comment:
+                code += f"    atomic_init(&cfg->{path}, {default_val});  /* {comment} */\n"
+            else:
+                code += f"    atomic_init(&cfg->{path}, {default_val});\n"
 
     code += """    atomic_init(&cfg->generation, 0);
 }
@@ -514,6 +573,7 @@ typedef enum {
     PARAM_TYPE_U32 = 2,
     PARAM_TYPE_BOOL = 3,
     PARAM_TYPE_ENUM = 4,
+    PARAM_TYPE_STRING = 5,
 } param_type_t;
 
 /** Family descriptor */
