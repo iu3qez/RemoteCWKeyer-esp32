@@ -20,6 +20,7 @@ static const char *LOG_TAGS[] = {
     "http_client",
     "main",
     "mqtt",
+    "text_mem",
     "usb_cdc",
     "usb_console",
     "usb_log",
