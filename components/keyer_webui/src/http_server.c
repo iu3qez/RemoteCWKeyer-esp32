@@ -12,6 +12,9 @@ extern esp_err_t api_config_schema_handler(httpd_req_t *req);
 extern esp_err_t api_config_get_handler(httpd_req_t *req);
 extern esp_err_t api_parameter_set_handler(httpd_req_t *req);
 extern esp_err_t api_config_save_handler(httpd_req_t *req);
+extern esp_err_t api_status_handler(httpd_req_t *req);
+extern esp_err_t api_system_stats_handler(httpd_req_t *req);
+extern esp_err_t api_system_reboot_handler(httpd_req_t *req);
 
 /* SPA routes that should serve index.html */
 static const char *SPA_ROUTES[] = {
@@ -120,6 +123,31 @@ static void register_api_routes(httpd_handle_t server) {
         .user_ctx = NULL,
     };
     httpd_register_uri_handler(server, &config_save);
+
+    /* System API */
+    httpd_uri_t status = {
+        .uri = "/api/status",
+        .method = HTTP_GET,
+        .handler = api_status_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &status);
+
+    httpd_uri_t stats = {
+        .uri = "/api/system/stats",
+        .method = HTTP_GET,
+        .handler = api_system_stats_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &stats);
+
+    httpd_uri_t reboot = {
+        .uri = "/api/system/reboot",
+        .method = HTTP_POST,
+        .handler = api_system_reboot_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &reboot);
 }
 
 esp_err_t webui_init(void) {
