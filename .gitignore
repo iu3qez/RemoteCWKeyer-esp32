@@ -30,10 +30,11 @@ scripts/__pycache__/
 .claude/skills/
 sdkconfig.defaults.generated
 build/
- /
 old/
 tmp/
 managed_components/
 dependencies.lock
 .gitignore
 .vscode/settings.json
+sdkconfig
+
