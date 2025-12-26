@@ -268,6 +268,126 @@ static param_value_t get_wifi_use_static_ip(void) {
 }
 static void set_wifi_use_static_ip(param_value_t v) {
     atomic_store_explicit(&g_config.wifi.use_static_ip, v.b, memory_order_relaxed);
+    atomic_store_explicit(&g_config.leds.brightness, v.u8, memory_order_relaxed);
+    config_bump_generation(&g_config);
+}
+
+static param_value_t get_led_brightness_dim(void) {
+    param_value_t v;
+    v.u8 = atomic_load_explicit(&g_config.leds.brightness_dim, memory_order_relaxed);
+    return v;
+}
+static void set_led_brightness_dim(param_value_t v) {
+    atomic_store_explicit(&g_config.leds.brightness_dim, v.u8, memory_order_relaxed);
+    config_bump_generation(&g_config);
+}
+
+/* system family - callsign string */
+static param_value_t get_callsign(void) {
+    param_value_t v;
+    v.str = g_config.system.callsign;
+    return v;
+}
+static void set_callsign(param_value_t v) {
+    strncpy(g_config.system.callsign, v.str, 12);
+    g_config.system.callsign[12] = '\0';
+    config_bump_generation(&g_config);
+}
+
+/* wifi family */
+static param_value_t get_wifi_enabled(void) {
+    param_value_t v;
+    v.b = atomic_load_explicit(&g_config.wifi.enabled, memory_order_relaxed);
+    return v;
+}
+static void set_wifi_enabled(param_value_t v) {
+    atomic_store_explicit(&g_config.wifi.enabled, v.b, memory_order_relaxed);
+    config_bump_generation(&g_config);
+}
+
+static param_value_t get_wifi_ssid(void) {
+    param_value_t v;
+    v.str = g_config.wifi.ssid;
+    return v;
+}
+static void set_wifi_ssid(param_value_t v) {
+    strncpy(g_config.wifi.ssid, v.str, 32);
+    g_config.wifi.ssid[32] = '\0';
+    config_bump_generation(&g_config);
+}
+
+static param_value_t get_wifi_password(void) {
+    param_value_t v;
+    v.str = g_config.wifi.password;
+    return v;
+}
+static void set_wifi_password(param_value_t v) {
+    strncpy(g_config.wifi.password, v.str, 64);
+    g_config.wifi.password[64] = '\0';
+    config_bump_generation(&g_config);
+}
+
+static param_value_t get_wifi_timeout_sec(void) {
+    param_value_t v;
+    v.u16 = atomic_load_explicit(&g_config.wifi.timeout_sec, memory_order_relaxed);
+    return v;
+}
+static void set_wifi_timeout_sec(param_value_t v) {
+    atomic_store_explicit(&g_config.wifi.timeout_sec, v.u16, memory_order_relaxed);
+    config_bump_generation(&g_config);
+}
+
+static param_value_t get_wifi_use_static_ip(void) {
+    param_value_t v;
+    v.b = atomic_load_explicit(&g_config.wifi.use_static_ip, memory_order_relaxed);
+    return v;
+}
+static void set_wifi_use_static_ip(param_value_t v) {
+    atomic_store_explicit(&g_config.wifi.use_static_ip, v.b, memory_order_relaxed);
+    config_bump_generation(&g_config);
+}
+
+static param_value_t get_wifi_ip_address(void) {
+    param_value_t v;
+    v.str = g_config.wifi.ip_address;
+    return v;
+}
+static void set_wifi_ip_address(param_value_t v) {
+    strncpy(g_config.wifi.ip_address, v.str, 16);
+    g_config.wifi.ip_address[16] = '\0';
+    config_bump_generation(&g_config);
+}
+
+static param_value_t get_wifi_netmask(void) {
+    param_value_t v;
+    v.str = g_config.wifi.netmask;
+    return v;
+}
+static void set_wifi_netmask(param_value_t v) {
+    strncpy(g_config.wifi.netmask, v.str, 16);
+    g_config.wifi.netmask[16] = '\0';
+    config_bump_generation(&g_config);
+}
+
+static param_value_t get_wifi_gateway(void) {
+    param_value_t v;
+    v.str = g_config.wifi.gateway;
+    return v;
+}
+static void set_wifi_gateway(param_value_t v) {
+    strncpy(g_config.wifi.gateway, v.str, 16);
+    g_config.wifi.gateway[16] = '\0';
+    config_bump_generation(&g_config);
+}
+
+static param_value_t get_wifi_dns(void) {
+    param_value_t v;
+    v.str = g_config.wifi.dns;
+    return v;
+}
+static void set_wifi_dns(param_value_t v) {
+    strncpy(g_config.wifi.dns, v.str, 16);
+    g_config.wifi.dns[16] = '\0';
     config_bump_generation(&g_config);
 }
 
@@ -378,6 +498,23 @@ void config_set_wifi_dns(const char *value) {
         config_bump_generation(&g_config);
     }
 }
+    { "callsign", "system", "system.callsign", PARAM_TYPE_STRING, 0, 12, get_callsign, set_callsign },
+    /* leds family */
+    { "gpio_data", "leds", "leds.gpio_data", PARAM_TYPE_U8, 0, 48, get_led_gpio_data, set_led_gpio_data },
+    { "count", "leds", "leds.count", PARAM_TYPE_U8, 0, 32, get_led_count, set_led_count },
+    { "brightness", "leds", "leds.brightness", PARAM_TYPE_U8, 0, 100, get_led_brightness, set_led_brightness },
+    { "brightness_dim", "leds", "leds.brightness_dim", PARAM_TYPE_U8, 0, 50, get_led_brightness_dim, set_led_brightness_dim },
+    /* wifi family */
+    { "enabled", "wifi", "wifi.enabled", PARAM_TYPE_BOOL, 0, 1, get_wifi_enabled, set_wifi_enabled },
+    { "ssid", "wifi", "wifi.ssid", PARAM_TYPE_STRING, 0, 32, get_wifi_ssid, set_wifi_ssid },
+    { "password", "wifi", "wifi.password", PARAM_TYPE_STRING, 0, 64, get_wifi_password, set_wifi_password },
+    { "timeout_sec", "wifi", "wifi.timeout_sec", PARAM_TYPE_U16, 5, 120, get_wifi_timeout_sec, set_wifi_timeout_sec },
+    { "use_static_ip", "wifi", "wifi.use_static_ip", PARAM_TYPE_BOOL, 0, 1, get_wifi_use_static_ip, set_wifi_use_static_ip },
+    { "ip_address", "wifi", "wifi.ip_address", PARAM_TYPE_STRING, 0, 16, get_wifi_ip_address, set_wifi_ip_address },
+    { "netmask", "wifi", "wifi.netmask", PARAM_TYPE_STRING, 0, 16, get_wifi_netmask, set_wifi_netmask },
+    { "gateway", "wifi", "wifi.gateway", PARAM_TYPE_STRING, 0, 16, get_wifi_gateway, set_wifi_gateway },
+    { "dns", "wifi", "wifi.dns", PARAM_TYPE_STRING, 0, 16, get_wifi_dns, set_wifi_dns },
+};
 
 const family_descriptor_t *config_find_family(const char *name) {
     if (name == NULL) {
@@ -522,7 +659,7 @@ int config_get_param_str(const char *name, char *buf, size_t len) {
             snprintf(buf, len, "%u", v.u8);
             break;
         case PARAM_TYPE_STRING:
-            /* Handled above */
+            snprintf(buf, len, "%s", v.str ? v.str : "");
             break;
     }
     return 0;
@@ -611,6 +748,14 @@ int config_set_param_str(const char *name, const char *value) {
         case PARAM_TYPE_STRING:
             /* Handled above */
             return -2;
+
+        case PARAM_TYPE_STRING:
+            /* For strings, max field is max length */
+            if (strlen(value) > p->max) {
+                return -4;  /* Too long */
+            }
+            v.str = value;
+            break;
     }
 
     p->set_fn(v);

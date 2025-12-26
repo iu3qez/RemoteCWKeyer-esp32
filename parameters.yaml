@@ -599,6 +599,84 @@ families:
           advanced: false
 
       brightness:
+      callsign:
+        type: string
+        max_length: 12
+        default: "N0CALL"
+        nvs_key: "callsign"
+        runtime_change: immediate
+        priority: 31
+        gui:
+          label_short:
+            en: "Call"
+            it: "Nominativo"
+          label_long:
+            en: "Callsign"
+            it: "Nominativo"
+          description:
+            en: "Your amateur radio callsign"
+            it: "Il tuo nominativo radioamatoriale"
+          widget: text
+          advanced: false
+
+  leds:
+    order: 6
+    icon: "lightbulb"
+    label:
+      en: "LEDs"
+      it: "LED"
+    description:
+      en: "RGB LED strip configuration"
+      it: "Configurazione striscia LED RGB"
+    aliases: [led, l]
+
+    parameters:
+      gpio_data:
+        type: u8
+        default: 38
+        range: [0, 48]
+        nvs_key: "led_gpio"
+        runtime_change: reboot
+        priority: 40
+        gui:
+          label_short:
+            en: "Data Pin"
+            it: "Pin Dati"
+          label_long:
+            en: "LED Data GPIO"
+            it: "GPIO Dati LED"
+          description:
+            en: "GPIO pin for WS2812B data line"
+            it: "Pin GPIO per linea dati WS2812B"
+          widget: spinbox
+          widget_config:
+            step: 1
+            prefix: "GPIO "
+          advanced: true
+
+      count:
+        type: u8
+        default: 7
+        range: [0, 32]
+        nvs_key: "led_count"
+        runtime_change: reboot
+        priority: 41
+        gui:
+          label_short:
+            en: "Count"
+            it: "Numero"
+          label_long:
+            en: "Number of LEDs"
+            it: "Numero di LED"
+          description:
+            en: "Number of WS2812B LEDs in strip (0 to disable)"
+            it: "Numero di LED WS2812B nella striscia (0 per disabilitare)"
+          widget: spinbox
+          widget_config:
+            step: 1
+          advanced: false
+
+      brightness:
         type: u8
         default: 50
         range: [0, 100]
