@@ -23,6 +23,7 @@
 #include "hal_audio.h"
 #include "usb_cdc.h"
 #include "usb_log.h"
+#include "webui.h"
 
 static const char *TAG = "main";
 
@@ -108,6 +109,11 @@ void app_main(void) {
 
     /* Initialize console */
     console_init();
+
+    /* Initialize WebUI (TODO: add WiFi check when WiFi is implemented) */
+    ESP_LOGI(TAG, "Initializing WebUI...");
+    webui_init();
+    webui_start();
 
     ESP_LOGI(TAG, "Creating tasks...");
 
