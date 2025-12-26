@@ -51,16 +51,104 @@ static size_t get_matching_commands(const char *prefix, size_t len,
 }
 
 /**
- * @brief Get all matching parameters
+ * @brief Expand family alias to canonical name
+ * @param alias Alias to expand (e.g., "k", "hw")
+ * @param out Output buffer for canonical name
+ * @param out_len Output buffer length
+ * @return true if alias was expanded
+ */
+static bool expand_family_alias(const char *alias, size_t alias_len,
+                                char *out, size_t out_len) {
+    for (size_t i = 0; i < FAMILY_COUNT; i++) {
+        const family_descriptor_t *f = &CONSOLE_FAMILIES[i];
+        /* Check canonical name */
+        if (strlen(f->name) == alias_len &&
+            strncmp(f->name, alias, alias_len) == 0) {
+            strncpy(out, f->name, out_len - 1);
+            out[out_len - 1] = '\0';
+            return true;
+        }
+        /* Check aliases */
+        if (f->aliases != NULL) {
+            const char *p = f->aliases;
+            while (*p) {
+                const char *comma = strchr(p, ',');
+                size_t a_len = comma ? (size_t)(comma - p) : strlen(p);
+                if (a_len == alias_len && strncmp(p, alias, alias_len) == 0) {
+                    strncpy(out, f->name, out_len - 1);
+                    out[out_len - 1] = '\0';
+                    return true;
+                }
+                p = comma ? comma + 1 : p + a_len;
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * @brief Get all matching parameters (supports dot notation paths)
+ *
+ * Matches against:
+ * - Full paths: keyer.wpm, audio.sidetone_freq_hz
+ * - Short names: wpm, sidetone_freq_hz (backwards compatible)
+ * - Family prefixes: keyer. → shows all keyer.* params
+ * - Alias expansion: k. → keyer., hw. → hardware.
  */
 static size_t get_matching_params(const char *prefix, size_t len,
                                   const char **matches, size_t max_matches) {
     size_t count = 0;
-    for (size_t i = 0; i < CONSOLE_PARAM_COUNT && count < max_matches; i++) {
-        if (strncmp(CONSOLE_PARAMS[i].name, prefix, len) == 0) {
-            matches[count++] = CONSOLE_PARAMS[i].name;
+    char expanded[64];
+    const char *match_prefix = prefix;
+    size_t match_len = len;
+
+    /* Check for alias expansion (e.g., "k." → "keyer.") */
+    const char *dot = memchr(prefix, '.', len);
+    if (dot != NULL) {
+        size_t alias_len = (size_t)(dot - prefix);
+        char canonical[32];
+        if (expand_family_alias(prefix, alias_len, canonical, sizeof(canonical))) {
+            /* Build expanded prefix: canonical + rest */
+            size_t rest_len = len - alias_len;
+            snprintf(expanded, sizeof(expanded), "%s%.*s",
+                     canonical, (int)rest_len, dot);
+            match_prefix = expanded;
+            match_len = strlen(expanded);
         }
     }
+
+    /* Match full paths first */
+    for (size_t i = 0; i < CONSOLE_PARAM_COUNT && count < max_matches; i++) {
+        if (strncmp(CONSOLE_PARAMS[i].full_path, match_prefix, match_len) == 0) {
+            matches[count++] = CONSOLE_PARAMS[i].full_path;
+        }
+    }
+
+    /* If no path matches, try short names for backwards compatibility */
+    if (count == 0) {
+        for (size_t i = 0; i < CONSOLE_PARAM_COUNT && count < max_matches; i++) {
+            if (strncmp(CONSOLE_PARAMS[i].name, prefix, len) == 0) {
+                matches[count++] = CONSOLE_PARAMS[i].full_path;
+            }
+        }
+    }
+
+    /* If prefix is empty or just a family start, add family suggestions */
+    if (count == 0 && len > 0 && dot == NULL) {
+        for (size_t i = 0; i < FAMILY_COUNT && count < max_matches; i++) {
+            const family_descriptor_t *f = &CONSOLE_FAMILIES[i];
+            if (strncmp(f->name, prefix, len) == 0) {
+                /* Return family.* pattern hint - use static strings */
+                static const char *family_hints[5] = {
+                    "keyer.*", "audio.*", "hardware.*", "timing.*", "system.*"
+                };
+                if (i < 5) {
+                    matches[count++] = family_hints[i];
+                }
+            }
+        }
+    }
+
     return count;
 }
 

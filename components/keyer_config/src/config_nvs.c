@@ -70,105 +70,105 @@ int config_load_from_nvs(void) {
     uint16_t u16_val;
     uint32_t u32_val;
 
-    /* Load wpm */
+    /* Load keyer.wpm */
     if (nvs_get_u16(handle, NVS_KEY_WPM, &u16_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.wpm, u16_val, memory_order_relaxed);
+        atomic_store_explicit(&g_config.keyer.wpm, u16_val, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load iambic_mode */
+    /* Load keyer.iambic_mode */
     if (nvs_get_u8(handle, NVS_KEY_IAMBIC_MODE, &u8_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.iambic_mode, u8_val, memory_order_relaxed);
+        atomic_store_explicit(&g_config.keyer.iambic_mode, u8_val, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load memory_mode */
+    /* Load keyer.memory_mode */
     if (nvs_get_u8(handle, NVS_KEY_MEMORY_MODE, &u8_val) == ESP_OK && u8_val <= 3) {
-        atomic_store_explicit(&g_config.memory_mode, u8_val, memory_order_relaxed);
+        atomic_store_explicit(&g_config.keyer.memory_mode, u8_val, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load squeeze_mode */
+    /* Load keyer.squeeze_mode */
     if (nvs_get_u8(handle, NVS_KEY_SQUEEZE_MODE, &u8_val) == ESP_OK && u8_val <= 1) {
-        atomic_store_explicit(&g_config.squeeze_mode, u8_val, memory_order_relaxed);
+        atomic_store_explicit(&g_config.keyer.squeeze_mode, u8_val, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load mem_window_start_pct */
+    /* Load keyer.mem_window_start_pct */
     if (nvs_get_u8(handle, NVS_KEY_MEM_WINDOW_START_PCT, &u8_val) == ESP_OK && u8_val <= 100) {
-        atomic_store_explicit(&g_config.mem_window_start_pct, u8_val, memory_order_relaxed);
+        atomic_store_explicit(&g_config.keyer.mem_window_start_pct, u8_val, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load mem_window_end_pct */
+    /* Load keyer.mem_window_end_pct */
     if (nvs_get_u8(handle, NVS_KEY_MEM_WINDOW_END_PCT, &u8_val) == ESP_OK && u8_val <= 100) {
-        atomic_store_explicit(&g_config.mem_window_end_pct, u8_val, memory_order_relaxed);
+        atomic_store_explicit(&g_config.keyer.mem_window_end_pct, u8_val, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load weight */
+    /* Load keyer.weight */
     if (nvs_get_u8(handle, NVS_KEY_WEIGHT, &u8_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.weight, u8_val, memory_order_relaxed);
+        atomic_store_explicit(&g_config.keyer.weight, u8_val, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load sidetone_freq_hz */
+    /* Load audio.sidetone_freq_hz */
     if (nvs_get_u16(handle, NVS_KEY_SIDETONE_FREQ_HZ, &u16_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.sidetone_freq_hz, u16_val, memory_order_relaxed);
+        atomic_store_explicit(&g_config.audio.sidetone_freq_hz, u16_val, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load sidetone_volume */
+    /* Load audio.sidetone_volume */
     if (nvs_get_u8(handle, NVS_KEY_SIDETONE_VOLUME, &u8_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.sidetone_volume, u8_val, memory_order_relaxed);
+        atomic_store_explicit(&g_config.audio.sidetone_volume, u8_val, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load fade_duration_ms */
+    /* Load audio.fade_duration_ms */
     if (nvs_get_u8(handle, NVS_KEY_FADE_DURATION_MS, &u8_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.fade_duration_ms, u8_val, memory_order_relaxed);
+        atomic_store_explicit(&g_config.audio.fade_duration_ms, u8_val, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load gpio_dit */
+    /* Load hardware.gpio_dit */
     if (nvs_get_u8(handle, NVS_KEY_GPIO_DIT, &u8_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.gpio_dit, u8_val, memory_order_relaxed);
+        atomic_store_explicit(&g_config.hardware.gpio_dit, u8_val, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load gpio_dah */
+    /* Load hardware.gpio_dah */
     if (nvs_get_u8(handle, NVS_KEY_GPIO_DAH, &u8_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.gpio_dah, u8_val, memory_order_relaxed);
+        atomic_store_explicit(&g_config.hardware.gpio_dah, u8_val, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load gpio_tx */
+    /* Load hardware.gpio_tx */
     if (nvs_get_u8(handle, NVS_KEY_GPIO_TX, &u8_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.gpio_tx, u8_val, memory_order_relaxed);
+        atomic_store_explicit(&g_config.hardware.gpio_tx, u8_val, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load ptt_tail_ms */
+    /* Load timing.ptt_tail_ms */
     if (nvs_get_u32(handle, NVS_KEY_PTT_TAIL_MS, &u32_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.ptt_tail_ms, u32_val, memory_order_relaxed);
+        atomic_store_explicit(&g_config.timing.ptt_tail_ms, u32_val, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load tick_rate_hz */
+    /* Load timing.tick_rate_hz */
     if (nvs_get_u32(handle, NVS_KEY_TICK_RATE_HZ, &u32_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.tick_rate_hz, u32_val, memory_order_relaxed);
+        atomic_store_explicit(&g_config.timing.tick_rate_hz, u32_val, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load debug_logging */
+    /* Load system.debug_logging */
     if (nvs_get_u8(handle, NVS_KEY_DEBUG_LOGGING, &u8_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.debug_logging, u8_val != 0, memory_order_relaxed);
+        atomic_store_explicit(&g_config.system.debug_logging, u8_val != 0, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load led_brightness */
+    /* Load system.led_brightness */
     if (nvs_get_u8(handle, NVS_KEY_LED_BRIGHTNESS, &u8_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.led_brightness, u8_val, memory_order_relaxed);
+        atomic_store_explicit(&g_config.system.led_brightness, u8_val, memory_order_relaxed);
         loaded++;
     }
 
@@ -187,105 +187,105 @@ int config_save_to_nvs(void) {
 
     int saved = 0;
 
-    /* Save wpm */
+    /* Save keyer.wpm */
     if (nvs_set_u16(handle, NVS_KEY_WPM,
-            (uint16_t)atomic_load_explicit(&g_config.wpm, memory_order_relaxed)) == ESP_OK) {
+            (uint16_t)atomic_load_explicit(&g_config.keyer.wpm, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
-    /* Save iambic_mode */
+    /* Save keyer.iambic_mode */
     if (nvs_set_u8(handle, NVS_KEY_IAMBIC_MODE,
-            (uint8_t)atomic_load_explicit(&g_config.iambic_mode, memory_order_relaxed)) == ESP_OK) {
+            (uint8_t)atomic_load_explicit(&g_config.keyer.iambic_mode, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
-    /* Save memory_mode */
+    /* Save keyer.memory_mode */
     if (nvs_set_u8(handle, NVS_KEY_MEMORY_MODE,
-            (uint8_t)atomic_load_explicit(&g_config.memory_mode, memory_order_relaxed)) == ESP_OK) {
+            (uint8_t)atomic_load_explicit(&g_config.keyer.memory_mode, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
-    /* Save squeeze_mode */
+    /* Save keyer.squeeze_mode */
     if (nvs_set_u8(handle, NVS_KEY_SQUEEZE_MODE,
-            (uint8_t)atomic_load_explicit(&g_config.squeeze_mode, memory_order_relaxed)) == ESP_OK) {
+            (uint8_t)atomic_load_explicit(&g_config.keyer.squeeze_mode, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
-    /* Save mem_window_start_pct */
+    /* Save keyer.mem_window_start_pct */
     if (nvs_set_u8(handle, NVS_KEY_MEM_WINDOW_START_PCT,
-            (uint8_t)atomic_load_explicit(&g_config.mem_window_start_pct, memory_order_relaxed)) == ESP_OK) {
+            (uint8_t)atomic_load_explicit(&g_config.keyer.mem_window_start_pct, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
-    /* Save mem_window_end_pct */
+    /* Save keyer.mem_window_end_pct */
     if (nvs_set_u8(handle, NVS_KEY_MEM_WINDOW_END_PCT,
-            (uint8_t)atomic_load_explicit(&g_config.mem_window_end_pct, memory_order_relaxed)) == ESP_OK) {
+            (uint8_t)atomic_load_explicit(&g_config.keyer.mem_window_end_pct, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
-    /* Save weight */
+    /* Save keyer.weight */
     if (nvs_set_u8(handle, NVS_KEY_WEIGHT,
-            (uint8_t)atomic_load_explicit(&g_config.weight, memory_order_relaxed)) == ESP_OK) {
+            (uint8_t)atomic_load_explicit(&g_config.keyer.weight, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
-    /* Save sidetone_freq_hz */
+    /* Save audio.sidetone_freq_hz */
     if (nvs_set_u16(handle, NVS_KEY_SIDETONE_FREQ_HZ,
-            (uint16_t)atomic_load_explicit(&g_config.sidetone_freq_hz, memory_order_relaxed)) == ESP_OK) {
+            (uint16_t)atomic_load_explicit(&g_config.audio.sidetone_freq_hz, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
-    /* Save sidetone_volume */
+    /* Save audio.sidetone_volume */
     if (nvs_set_u8(handle, NVS_KEY_SIDETONE_VOLUME,
-            (uint8_t)atomic_load_explicit(&g_config.sidetone_volume, memory_order_relaxed)) == ESP_OK) {
+            (uint8_t)atomic_load_explicit(&g_config.audio.sidetone_volume, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
-    /* Save fade_duration_ms */
+    /* Save audio.fade_duration_ms */
     if (nvs_set_u8(handle, NVS_KEY_FADE_DURATION_MS,
-            (uint8_t)atomic_load_explicit(&g_config.fade_duration_ms, memory_order_relaxed)) == ESP_OK) {
+            (uint8_t)atomic_load_explicit(&g_config.audio.fade_duration_ms, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
-    /* Save gpio_dit */
+    /* Save hardware.gpio_dit */
     if (nvs_set_u8(handle, NVS_KEY_GPIO_DIT,
-            (uint8_t)atomic_load_explicit(&g_config.gpio_dit, memory_order_relaxed)) == ESP_OK) {
+            (uint8_t)atomic_load_explicit(&g_config.hardware.gpio_dit, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
-    /* Save gpio_dah */
+    /* Save hardware.gpio_dah */
     if (nvs_set_u8(handle, NVS_KEY_GPIO_DAH,
-            (uint8_t)atomic_load_explicit(&g_config.gpio_dah, memory_order_relaxed)) == ESP_OK) {
+            (uint8_t)atomic_load_explicit(&g_config.hardware.gpio_dah, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
-    /* Save gpio_tx */
+    /* Save hardware.gpio_tx */
     if (nvs_set_u8(handle, NVS_KEY_GPIO_TX,
-            (uint8_t)atomic_load_explicit(&g_config.gpio_tx, memory_order_relaxed)) == ESP_OK) {
+            (uint8_t)atomic_load_explicit(&g_config.hardware.gpio_tx, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
-    /* Save ptt_tail_ms */
+    /* Save timing.ptt_tail_ms */
     if (nvs_set_u32(handle, NVS_KEY_PTT_TAIL_MS,
-            (uint32_t)atomic_load_explicit(&g_config.ptt_tail_ms, memory_order_relaxed)) == ESP_OK) {
+            (uint32_t)atomic_load_explicit(&g_config.timing.ptt_tail_ms, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
-    /* Save tick_rate_hz */
+    /* Save timing.tick_rate_hz */
     if (nvs_set_u32(handle, NVS_KEY_TICK_RATE_HZ,
-            (uint32_t)atomic_load_explicit(&g_config.tick_rate_hz, memory_order_relaxed)) == ESP_OK) {
+            (uint32_t)atomic_load_explicit(&g_config.timing.tick_rate_hz, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
-    /* Save debug_logging */
+    /* Save system.debug_logging */
     if (nvs_set_u8(handle, NVS_KEY_DEBUG_LOGGING,
-            atomic_load_explicit(&g_config.debug_logging, memory_order_relaxed) ? 1 : 0) == ESP_OK) {
+            atomic_load_explicit(&g_config.system.debug_logging, memory_order_relaxed) ? 1 : 0) == ESP_OK) {
         saved++;
     }
 
-    /* Save led_brightness */
+    /* Save system.led_brightness */
     if (nvs_set_u8(handle, NVS_KEY_LED_BRIGHTNESS,
-            (uint8_t)atomic_load_explicit(&g_config.led_brightness, memory_order_relaxed)) == ESP_OK) {
+            (uint8_t)atomic_load_explicit(&g_config.system.led_brightness, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
