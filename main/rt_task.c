@@ -35,6 +35,9 @@
 extern keying_stream_t g_keying_stream;
 extern fault_state_t g_fault_state;
 
+/* Paddle state for text keyer abort (Core 1 reads this) */
+atomic_bool g_paddle_active = ATOMIC_VAR_INIT(false);
+
 /* ============================================================================
  * Diagnostic State Tracking
  * ============================================================================ */
@@ -192,6 +195,10 @@ void rt_task(void *arg) {
 
         /* 1. Poll GPIO paddles */
         gpio_state_t gpio = hal_gpio_read_paddles();
+
+        /* Update paddle active flag for text keyer abort (Core 1) */
+        bool paddle_active = !gpio_is_idle(gpio);
+        atomic_store_explicit(&g_paddle_active, paddle_active, memory_order_release);
 
         /* 2. Tick iambic FSM */
         stream_sample_t sample = iambic_tick(&iambic, now_us, gpio);
