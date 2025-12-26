@@ -79,6 +79,46 @@ void test_diag_enable_disable(void);
 void test_diag_macro_does_not_crash_when_disabled(void);
 void test_diag_macro_logs_when_enabled(void);
 
+/* Morse table tests */
+void test_morse_lookup_letters(void);
+void test_morse_lookup_numbers(void);
+void test_morse_lookup_punctuation(void);
+void test_morse_lookup_prosigns(void);
+void test_morse_lookup_invalid(void);
+void test_morse_reverse_lookup(void);
+void test_morse_table_count(void);
+
+/* Timing classifier tests */
+void test_timing_init(void);
+void test_timing_classify_dit(void);
+void test_timing_classify_dah(void);
+void test_timing_classify_gaps(void);
+void test_timing_warmup(void);
+void test_timing_ema_adaptation(void);
+void test_timing_ratio(void);
+void test_timing_ignore_short_durations(void);
+void test_timing_ignore_long_durations(void);
+void test_timing_reset(void);
+void test_timing_null_safety(void);
+void test_key_event_str(void);
+
+/* Decoder tests */
+void test_decoder_init(void);
+void test_decoder_decode_letter_a(void);
+void test_decoder_decode_letter_e(void);
+void test_decoder_decode_letter_t(void);
+void test_decoder_decode_sos(void);
+void test_decoder_word_gap_adds_space(void);
+void test_decoder_get_current_pattern(void);
+void test_decoder_unknown_pattern(void);
+void test_decoder_enable_disable(void);
+void test_decoder_reset(void);
+void test_decoder_stats(void);
+void test_decoder_timing_access(void);
+void test_decoder_state_str(void);
+void test_decoder_buffer_circular(void);
+void test_decoder_get_text_with_timestamps(void);
+
 void setUp(void) {
     /* Called before each test */
 }
@@ -181,6 +221,49 @@ int main(void) {
     RUN_TEST(test_diag_enable_disable);
     RUN_TEST(test_diag_macro_does_not_crash_when_disabled);
     RUN_TEST(test_diag_macro_logs_when_enabled);
+
+    /* Morse table tests */
+    printf("\n=== Morse Table Tests ===\n");
+    RUN_TEST(test_morse_lookup_letters);
+    RUN_TEST(test_morse_lookup_numbers);
+    RUN_TEST(test_morse_lookup_punctuation);
+    RUN_TEST(test_morse_lookup_prosigns);
+    RUN_TEST(test_morse_lookup_invalid);
+    RUN_TEST(test_morse_reverse_lookup);
+    RUN_TEST(test_morse_table_count);
+
+    /* Timing classifier tests */
+    printf("\n=== Timing Classifier Tests ===\n");
+    RUN_TEST(test_timing_init);
+    RUN_TEST(test_timing_classify_dit);
+    RUN_TEST(test_timing_classify_dah);
+    RUN_TEST(test_timing_classify_gaps);
+    RUN_TEST(test_timing_warmup);
+    RUN_TEST(test_timing_ema_adaptation);
+    RUN_TEST(test_timing_ratio);
+    RUN_TEST(test_timing_ignore_short_durations);
+    RUN_TEST(test_timing_ignore_long_durations);
+    RUN_TEST(test_timing_reset);
+    RUN_TEST(test_timing_null_safety);
+    RUN_TEST(test_key_event_str);
+
+    /* Decoder tests */
+    printf("\n=== Decoder Tests ===\n");
+    RUN_TEST(test_decoder_init);
+    RUN_TEST(test_decoder_decode_letter_a);
+    RUN_TEST(test_decoder_decode_letter_e);
+    RUN_TEST(test_decoder_decode_letter_t);
+    RUN_TEST(test_decoder_decode_sos);
+    RUN_TEST(test_decoder_word_gap_adds_space);
+    RUN_TEST(test_decoder_get_current_pattern);
+    RUN_TEST(test_decoder_unknown_pattern);
+    RUN_TEST(test_decoder_enable_disable);
+    RUN_TEST(test_decoder_reset);
+    RUN_TEST(test_decoder_stats);
+    RUN_TEST(test_decoder_timing_access);
+    RUN_TEST(test_decoder_state_str);
+    RUN_TEST(test_decoder_buffer_circular);
+    RUN_TEST(test_decoder_get_text_with_timestamps);
 
     return UNITY_END();
 }
