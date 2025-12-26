@@ -376,3 +376,93 @@ int config_set_param_str(const char *name, const char *value) {
     p->set_fn(v);
     return 0;
 }
+
+/**
+ * @brief Check if path matches pattern
+ *
+ * Patterns:
+ * - "keyer.wpm"     exact match
+ * - "keyer.*"       all direct params in keyer
+ * - "keyer.**"      all params in keyer and subfamilies
+ * - "**"            all params
+ */
+static bool path_matches(const char *path, const char *pattern) {
+    size_t pat_len = strlen(pattern);
+
+    /* "**" matches everything */
+    if (strcmp(pattern, "**") == 0) {
+        return true;
+    }
+
+    /* Check for ** (recursive) */
+    if (pat_len >= 2 && strcmp(pattern + pat_len - 2, "**") == 0) {
+        /* Match family prefix */
+        return strncmp(path, pattern, pat_len - 2) == 0;
+    }
+
+    /* Check for * (single level) */
+    if (pat_len >= 1 && pattern[pat_len - 1] == '*') {
+        /* Match family.* */
+        size_t prefix_len = pat_len - 1;
+        if (strncmp(path, pattern, prefix_len) != 0) {
+            return false;
+        }
+        /* Ensure no more dots after prefix (single level only) */
+        const char *rest = path + prefix_len;
+        return strchr(rest, '.') == NULL;
+    }
+
+    /* Exact match */
+    return strcmp(path, pattern) == 0;
+}
+
+/**
+ * @brief Expand alias in pattern
+ *
+ * "hw.*" -> "hardware.*"
+ */
+static void expand_pattern(const char *pattern, char *expanded, size_t len) {
+    /* Find dot position */
+    const char *dot = strchr(pattern, '.');
+    if (dot == NULL) {
+        strncpy(expanded, pattern, len);
+        expanded[len - 1] = '\0';
+        return;
+    }
+
+    /* Extract family part */
+    size_t family_len = (size_t)(dot - pattern);
+    char family_buf[32];
+    if (family_len >= sizeof(family_buf)) {
+        family_len = sizeof(family_buf) - 1;
+    }
+    memcpy(family_buf, pattern, family_len);
+    family_buf[family_len] = '\0';
+
+    /* Try to expand alias */
+    const family_descriptor_t *f = config_find_family(family_buf);
+    if (f != NULL) {
+        snprintf(expanded, len, "%s%s", f->name, dot);
+    } else {
+        strncpy(expanded, pattern, len);
+        expanded[len - 1] = '\0';
+    }
+}
+
+void config_foreach_matching(const char *pattern, param_visitor_fn visitor, void *ctx) {
+    if (pattern == NULL || visitor == NULL) {
+        return;
+    }
+
+    /* Expand aliases */
+    char expanded[64];
+    expand_pattern(pattern, expanded, sizeof(expanded));
+
+    /* Visit matching params */
+    for (size_t i = 0; i < CONSOLE_PARAM_COUNT; i++) {
+        const param_descriptor_t *p = &CONSOLE_PARAMS[i];
+        if (path_matches(p->full_path, expanded)) {
+            visitor(p, ctx);
+        }
+    }
+}
