@@ -20,6 +20,50 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Any
 
+def parse_v2_schema(schema: Dict) -> tuple:
+    """Parse v2 hierarchical schema into flat params list and family metadata."""
+    params = []
+    families = []
+
+    for family_name, family_data in schema.get('families', {}).items():
+        # Extract family metadata
+        family_meta = {
+            'name': family_name,
+            'order': family_data.get('order', 0),
+            'icon': family_data.get('icon', ''),
+            'label': family_data.get('label', {'en': family_name}),
+            'description': family_data.get('description', {'en': ''}),
+            'aliases': family_data.get('aliases', []),
+        }
+        families.append(family_meta)
+
+        # Extract parameters with family path
+        for param_name, param_data in family_data.get('parameters', {}).items():
+            param = dict(param_data)
+            param['name'] = param_name
+            param['family'] = family_name
+            param['full_path'] = f"{family_name}.{param_name}"
+            params.append(param)
+
+        # Handle subfamilies (skip composites for now)
+        for sub_name, sub_data in family_data.get('subfamilies', {}).items():
+            if sub_data.get('is_composite'):
+                # Composite types handled separately
+                continue
+            for param_name, param_data in sub_data.get('parameters', {}).items():
+                param = dict(param_data)
+                param['name'] = param_name
+                param['family'] = family_name
+                param['subfamily'] = sub_name
+                param['full_path'] = f"{family_name}.{sub_name}.{param_name}"
+                params.append(param)
+
+    # Sort families by order
+    families.sort(key=lambda f: f['order'])
+
+    return params, families
+
+
 def main():
     """Main entry point"""
     if len(sys.argv) < 3:
@@ -39,11 +83,21 @@ def main():
     with open(params_file) as f:
         schema = yaml.safe_load(f)
 
-    params = schema['parameters']
+    version = schema.get('version', 1)
+    print(f"Schema version: {version}")
+
+    if version == 2:
+        params, families = parse_v2_schema(schema)
+    else:
+        params = schema['parameters']
+        families = None  # v1 has no family metadata
+
     print(f"Found {len(params)} parameters")
+    if families:
+        print(f"Found {len(families)} families: {[f['name'] for f in families]}")
 
     print("Generating config.h...")
-    generate_config_h(params, output_dir)
+    generate_config_h(params, families, output_dir)
 
     print("Generating config_meta.h...")
     generate_config_meta_h(params, output_dir)
@@ -52,7 +106,7 @@ def main():
     generate_config_nvs_h(params, output_dir)
 
     print("Generating config_console.h...")
-    generate_config_console_h(params, output_dir)
+    generate_config_console_h(params, families, output_dir)
 
     print(f"✓ Code generation complete: {output_dir}")
 
@@ -104,7 +158,7 @@ def get_field_comment(param: Dict) -> str:
     return f"{label}{range_str}"
 
 
-def generate_config_h(params: List[Dict], output_dir: Path):
+def generate_config_h(params: List[Dict], families: List[Dict], output_dir: Path):
     """Generate config.h - Atomic configuration struct"""
 
     code = """/* Auto-generated from parameters.yaml - DO NOT EDIT MANUALLY */
@@ -365,11 +419,14 @@ esp_err_t config_save_param(const char *name);
         f.write(code)
 
 
-def generate_config_console_h(params: List[Dict], output_dir: Path):
+def generate_config_console_h(params: List[Dict], families: List[Dict], output_dir: Path):
     """Generate config_console.h - Console parameter registry"""
 
-    # Get unique categories
-    categories = sorted(set(p['category'] for p in params))
+    # Get unique categories/families
+    if families:
+        categories = [f['name'] for f in families]
+    else:
+        categories = sorted(set(p.get('category', 'misc') for p in params))
 
     code = """/* Auto-generated from parameters.yaml - DO NOT EDIT MANUALLY */
 /**
