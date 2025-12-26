@@ -138,16 +138,16 @@ void test_decoder_get_current_pattern(void) {
 void test_decoder_unknown_pattern(void) {
     decoder_reset();
 
-    /* Invalid pattern (10 dits - no such letter) */
-    for (int i = 0; i < 10; i++) {
-        decoder_handle_event(KEY_EVENT_DIT, (int64_t)(1000 + i * 100));
-        if (i < 9) {
-            decoder_handle_event(KEY_EVENT_INTRA_GAP, (int64_t)(1050 + i * 100));
+    /* Invalid pattern: 7 dahs (no such letter in ITU morse) */
+    for (int i = 0; i < 7; i++) {
+        decoder_handle_event(KEY_EVENT_DAH, (int64_t)(1000 + i * 200));
+        if (i < 6) {
+            decoder_handle_event(KEY_EVENT_INTRA_GAP, (int64_t)(1100 + i * 200));
         }
     }
-    decoder_handle_event(KEY_EVENT_CHAR_GAP, 2000);
+    decoder_handle_event(KEY_EVENT_CHAR_GAP, 3000);
 
-    /* Should not have added a character (or added error marker) */
+    /* Should have recorded an error (unrecognized pattern) */
     decoder_stats_t stats;
     decoder_get_stats(&stats);
     TEST_ASSERT_GREATER_THAN(0, stats.errors);
