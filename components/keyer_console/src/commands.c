@@ -268,14 +268,35 @@ static console_error_t cmd_show(const console_parsed_cmd_t *cmd) {
 }
 
 /**
- * @brief set <param> <value> - Set parameter value
+ * @brief set <path> <value> - Set parameter by path
+ *
+ * Examples:
+ *   set keyer.wpm 25
+ *   set audio.sidetone_freq_hz 700
+ *   set wpm 25  (legacy, still works)
  */
 static console_error_t cmd_set(const console_parsed_cmd_t *cmd) {
     if (cmd->argc < 2) {
         return CONSOLE_ERR_MISSING_ARG;
     }
 
-    int ret = config_set_param_str(cmd->args[0], cmd->args[1]);
+    const char *path = cmd->args[0];
+    const char *value = cmd->args[1];
+
+    /* Try full path first (config_find_param handles both path and name) */
+    int ret = config_set_param_str(path, value);
+
+    /* If not found and no dot, try legacy name lookup */
+    if (ret == -1 && strchr(path, '.') == NULL) {
+        /* Search all params for matching name */
+        for (size_t i = 0; i < CONSOLE_PARAM_COUNT; i++) {
+            if (strcmp(CONSOLE_PARAMS[i].name, path) == 0) {
+                ret = config_set_param_str(CONSOLE_PARAMS[i].full_path, value);
+                break;
+            }
+        }
+    }
+
     switch (ret) {
         case 0:
             return CONSOLE_OK;
@@ -781,11 +802,12 @@ static const char USAGE_SHOW[] =
     "  system (sys)   Debug, LED";
 
 static const char USAGE_SET[] =
-    "  set <param> <value> Set parameter value\r\n"
+    "  set <path> <value>  Set parameter value\r\n"
     "\r\n"
     "Examples:\r\n"
-    "  set wpm 25\r\n"
-    "  set sidetone_freq_hz 700";
+    "  set keyer.wpm 25\r\n"
+    "  set audio.sidetone_freq_hz 700\r\n"
+    "  set wpm 25              (legacy shorthand)";
 
 static const char USAGE_DEBUG[] =
     "  debug               Show RT log status\r\n"
