@@ -159,7 +159,15 @@ def get_field_comment(param: Dict) -> str:
 
 
 def generate_config_h(params: List[Dict], families: List[Dict], output_dir: Path):
-    """Generate config.h - Atomic configuration struct"""
+    """Generate config.h with per-family structs (v2) or flat struct (v1)"""
+
+    # Group params by family
+    by_family = {}
+    for p in params:
+        family = p.get('family', 'misc')
+        if family not in by_family:
+            by_family[family] = []
+        by_family[family].append(p)
 
     code = """/* Auto-generated from parameters.yaml - DO NOT EDIT MANUALLY */
 /**
@@ -181,26 +189,48 @@ def generate_config_h(params: List[Dict], families: List[Dict], output_dir: Path
 extern "C" {
 #endif
 
-/**
+"""
+
+    if families:
+        # V2: Generate per-family structs
+        for family in families:
+            fname = family['name']
+            fparams = by_family.get(fname, [])
+            if not fparams:
+                continue
+
+            code += f"/** @brief {fname.title()} configuration */\n"
+            code += f"typedef struct {{\n"
+            for p in fparams:
+                atomic_type = get_c_atomic_type(p)
+                comment = get_field_comment(p)
+                code += f"    {atomic_type} {p['name']};  /**< {comment} */\n"
+            code += f"}} config_{fname}_t;\n\n"
+
+        # Generate composite struct
+        code += "/** @brief Complete keyer configuration */\n"
+        code += "typedef struct {\n"
+        for family in families:
+            fname = family['name']
+            if fname in by_family and by_family[fname]:
+                code += f"    config_{fname}_t {fname};\n"
+        code += "    atomic_ushort generation;  /**< Config change counter */\n"
+        code += "} keyer_config_t;\n\n"
+    else:
+        # V1: Flat struct
+        code += """/**
  * @brief Global keyer configuration with atomic access
- *
- * Change detection via `generation` counter:
- * - Increment `generation` when any parameter changes
- * - Consumers check `generation` to detect updates
  */
 typedef struct {
 """
+        for p in params:
+            atomic_type = get_c_atomic_type(p)
+            comment = get_field_comment(p)
+            code += f"    {atomic_type} {p['name']};  /**< {comment} */\n"
+        code += "    atomic_ushort generation;  /**< Config generation counter */\n"
+        code += "} keyer_config_t;\n\n"
 
-    # Add fields
-    for p in params:
-        atomic_type = get_c_atomic_type(p)
-        comment = get_field_comment(p)
-        code += f"    {atomic_type} {p['name']};  /**< {comment} */\n"
-
-    code += """    atomic_ushort generation;  /**< Config generation counter */
-} keyer_config_t;
-
-/** Global configuration instance */
+    code += """/** Global configuration instance */
 extern keyer_config_t g_config;
 
 /**
@@ -221,16 +251,28 @@ void config_bump_generation(keyer_config_t *cfg);
 
 """
 
-    # Add accessor macros
+    # Add accessor macros with family path for v2
     for p in params:
         name = p['name']
+        family = p.get('family', None)
         upper = name.upper()
-        code += f"#define CONFIG_GET_{upper}() \\\n"
-        code += f"    atomic_load_explicit(&g_config.{name}, memory_order_relaxed)\n\n"
-        code += f"#define CONFIG_SET_{upper}(v) do {{ \\\n"
-        code += f"    atomic_store_explicit(&g_config.{name}, (v), memory_order_relaxed); \\\n"
-        code += f"    config_bump_generation(&g_config); \\\n"
-        code += f"}} while(0)\n\n"
+
+        if families and family:
+            # V2: nested access
+            code += f"#define CONFIG_GET_{upper}() \\\n"
+            code += f"    atomic_load_explicit(&g_config.{family}.{name}, memory_order_relaxed)\n\n"
+            code += f"#define CONFIG_SET_{upper}(v) do {{ \\\n"
+            code += f"    atomic_store_explicit(&g_config.{family}.{name}, (v), memory_order_relaxed); \\\n"
+            code += f"    config_bump_generation(&g_config); \\\n"
+            code += f"}} while(0)\n\n"
+        else:
+            # V1: flat access
+            code += f"#define CONFIG_GET_{upper}() \\\n"
+            code += f"    atomic_load_explicit(&g_config.{name}, memory_order_relaxed)\n\n"
+            code += f"#define CONFIG_SET_{upper}(v) do {{ \\\n"
+            code += f"    atomic_store_explicit(&g_config.{name}, (v), memory_order_relaxed); \\\n"
+            code += f"    config_bump_generation(&g_config); \\\n"
+            code += f"}} while(0)\n\n"
 
     code += """#ifdef __cplusplus
 }
@@ -243,11 +285,11 @@ void config_bump_generation(keyer_config_t *cfg);
         f.write(code)
 
     # Also generate config.c with initialization
-    generate_config_c(params, output_dir)
+    generate_config_c(params, families, output_dir)
 
 
-def generate_config_c(params: List[Dict], output_dir: Path):
-    """Generate config.c - Default initialization (goes to src/)"""
+def generate_config_c(params: List[Dict], families: List[Dict], output_dir: Path):
+    """Generate config.c with nested initialization (v2) or flat (v1)"""
 
     # Output to parent's src directory
     src_dir = output_dir.parent / "src"
@@ -268,11 +310,20 @@ void config_init_defaults(keyer_config_t *cfg) {
 
     for p in params:
         name = p['name']
+        family = p.get('family', None)
         default_val, comment = get_default_value(p)
-        if comment:
-            code += f"    atomic_init(&cfg->{name}, {default_val});  /* {comment} */\n"
+
+        if families and family:
+            # V2: nested path
+            path = f"{family}.{name}"
         else:
-            code += f"    atomic_init(&cfg->{name}, {default_val});\n"
+            # V1: flat path
+            path = name
+
+        if comment:
+            code += f"    atomic_init(&cfg->{path}, {default_val});  /* {comment} */\n"
+        else:
+            code += f"    atomic_init(&cfg->{path}, {default_val});\n"
 
     code += """    atomic_init(&cfg->generation, 0);
 }
