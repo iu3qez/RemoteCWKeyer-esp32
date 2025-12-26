@@ -7,6 +7,12 @@
 static const char *TAG = "webui";
 static httpd_handle_t s_server = NULL;
 
+/* API handlers (implemented in api_*.c) */
+extern esp_err_t api_config_schema_handler(httpd_req_t *req);
+extern esp_err_t api_config_get_handler(httpd_req_t *req);
+extern esp_err_t api_parameter_set_handler(httpd_req_t *req);
+extern esp_err_t api_config_save_handler(httpd_req_t *req);
+
 /* SPA routes that should serve index.html */
 static const char *SPA_ROUTES[] = {
     "/",
@@ -81,6 +87,41 @@ static void register_static_routes(httpd_handle_t server) {
     httpd_register_uri_handler(server, &assets_uri);
 }
 
+static void register_api_routes(httpd_handle_t server) {
+    /* Config API */
+    httpd_uri_t schema = {
+        .uri = "/api/config/schema",
+        .method = HTTP_GET,
+        .handler = api_config_schema_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &schema);
+
+    httpd_uri_t config_get = {
+        .uri = "/api/config",
+        .method = HTTP_GET,
+        .handler = api_config_get_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &config_get);
+
+    httpd_uri_t param_set = {
+        .uri = "/api/parameter",
+        .method = HTTP_POST,
+        .handler = api_parameter_set_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &param_set);
+
+    httpd_uri_t config_save = {
+        .uri = "/api/config/save",
+        .method = HTTP_POST,
+        .handler = api_config_save_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &config_save);
+}
+
 esp_err_t webui_init(void) {
     ESP_LOGI(TAG, "WebUI initialized (%zu assets)", webui_get_asset_count());
     return ESP_OK;
@@ -103,6 +144,7 @@ esp_err_t webui_start(void) {
     }
 
     register_static_routes(s_server);
+    register_api_routes(s_server);
 
     ESP_LOGI(TAG, "HTTP server started on port %d", config.server_port);
     return ESP_OK;
