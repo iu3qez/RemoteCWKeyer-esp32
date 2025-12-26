@@ -9,23 +9,23 @@
 keyer_config_t g_config;
 
 void config_init_defaults(keyer_config_t *cfg) {
-    atomic_init(&cfg->wpm, 25);
-    atomic_init(&cfg->iambic_mode, 0);  /* ModeA */
-    atomic_init(&cfg->memory_mode, 3);  /* DOT_AND_DAH */
-    atomic_init(&cfg->squeeze_mode, 0);  /* LATCH_OFF */
-    atomic_init(&cfg->mem_window_start_pct, 0);
-    atomic_init(&cfg->mem_window_end_pct, 100);
-    atomic_init(&cfg->weight, 50);
-    atomic_init(&cfg->sidetone_freq_hz, 600);
-    atomic_init(&cfg->sidetone_volume, 70);
-    atomic_init(&cfg->fade_duration_ms, 5);
-    atomic_init(&cfg->gpio_dit, 4);
-    atomic_init(&cfg->gpio_dah, 5);
-    atomic_init(&cfg->gpio_tx, 6);
-    atomic_init(&cfg->ptt_tail_ms, 100);
-    atomic_init(&cfg->tick_rate_hz, 10000);
-    atomic_init(&cfg->debug_logging, false);
-    atomic_init(&cfg->led_brightness, 50);
+    atomic_init(&cfg->keyer.wpm, 25);
+    atomic_init(&cfg->keyer.iambic_mode, 0);  /* ModeA */
+    atomic_init(&cfg->keyer.memory_mode, 3);  /* DOT_AND_DAH */
+    atomic_init(&cfg->keyer.squeeze_mode, 0);  /* LATCH_OFF */
+    atomic_init(&cfg->keyer.weight, 50);
+    atomic_init(&cfg->keyer.mem_window_start_pct, 0);
+    atomic_init(&cfg->keyer.mem_window_end_pct, 100);
+    atomic_init(&cfg->audio.sidetone_freq_hz, 600);
+    atomic_init(&cfg->audio.sidetone_volume, 70);
+    atomic_init(&cfg->audio.fade_duration_ms, 5);
+    atomic_init(&cfg->hardware.gpio_dit, 4);
+    atomic_init(&cfg->hardware.gpio_dah, 5);
+    atomic_init(&cfg->hardware.gpio_tx, 6);
+    atomic_init(&cfg->timing.ptt_tail_ms, 100);
+    atomic_init(&cfg->timing.tick_rate_hz, 10000);
+    atomic_init(&cfg->system.debug_logging, false);
+    atomic_init(&cfg->system.led_brightness, 50);
     atomic_init(&cfg->generation, 0);
 }
 

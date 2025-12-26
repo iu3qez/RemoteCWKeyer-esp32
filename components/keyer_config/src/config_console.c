@@ -22,182 +22,188 @@ const family_descriptor_t CONSOLE_FAMILIES[FAMILY_COUNT] = {
     { "system", "sys", "Debug and system settings", 5 },
 };
 
-/* Get/set function implementations */
+/* Get/set function implementations - using nested family paths */
+
+/* keyer family */
 static param_value_t get_wpm(void) {
     param_value_t v;
-    v.u16 = atomic_load_explicit(&g_config.wpm, memory_order_relaxed);
+    v.u16 = atomic_load_explicit(&g_config.keyer.wpm, memory_order_relaxed);
     return v;
 }
 static void set_wpm(param_value_t v) {
-    atomic_store_explicit(&g_config.wpm, v.u16, memory_order_relaxed);
+    atomic_store_explicit(&g_config.keyer.wpm, v.u16, memory_order_relaxed);
     config_bump_generation(&g_config);
 }
 
 static param_value_t get_iambic_mode(void) {
     param_value_t v;
-    v.u8 = atomic_load_explicit(&g_config.iambic_mode, memory_order_relaxed);
+    v.u8 = atomic_load_explicit(&g_config.keyer.iambic_mode, memory_order_relaxed);
     return v;
 }
 static void set_iambic_mode(param_value_t v) {
-    atomic_store_explicit(&g_config.iambic_mode, v.u8, memory_order_relaxed);
+    atomic_store_explicit(&g_config.keyer.iambic_mode, v.u8, memory_order_relaxed);
     config_bump_generation(&g_config);
 }
 
 static param_value_t get_memory_mode(void) {
     param_value_t v;
-    v.u8 = atomic_load_explicit(&g_config.memory_mode, memory_order_relaxed);
+    v.u8 = atomic_load_explicit(&g_config.keyer.memory_mode, memory_order_relaxed);
     return v;
 }
 static void set_memory_mode(param_value_t v) {
     if (v.u8 <= 3) {  /* 0=NONE, 1=DOT_ONLY, 2=DAH_ONLY, 3=DOT_AND_DAH */
-        atomic_store_explicit(&g_config.memory_mode, v.u8, memory_order_relaxed);
+        atomic_store_explicit(&g_config.keyer.memory_mode, v.u8, memory_order_relaxed);
         config_bump_generation(&g_config);
     }
 }
 
 static param_value_t get_squeeze_mode(void) {
     param_value_t v;
-    v.u8 = atomic_load_explicit(&g_config.squeeze_mode, memory_order_relaxed);
+    v.u8 = atomic_load_explicit(&g_config.keyer.squeeze_mode, memory_order_relaxed);
     return v;
 }
 static void set_squeeze_mode(param_value_t v) {
     if (v.u8 <= 1) {  /* 0=LATCH_OFF, 1=LATCH_ON */
-        atomic_store_explicit(&g_config.squeeze_mode, v.u8, memory_order_relaxed);
-        config_bump_generation(&g_config);
-    }
-}
-
-static param_value_t get_mem_window_start_pct(void) {
-    param_value_t v;
-    v.u8 = atomic_load_explicit(&g_config.mem_window_start_pct, memory_order_relaxed);
-    return v;
-}
-static void set_mem_window_start_pct(param_value_t v) {
-    if (v.u8 <= 100) {
-        atomic_store_explicit(&g_config.mem_window_start_pct, v.u8, memory_order_relaxed);
-        config_bump_generation(&g_config);
-    }
-}
-
-static param_value_t get_mem_window_end_pct(void) {
-    param_value_t v;
-    v.u8 = atomic_load_explicit(&g_config.mem_window_end_pct, memory_order_relaxed);
-    return v;
-}
-static void set_mem_window_end_pct(param_value_t v) {
-    if (v.u8 <= 100) {
-        atomic_store_explicit(&g_config.mem_window_end_pct, v.u8, memory_order_relaxed);
+        atomic_store_explicit(&g_config.keyer.squeeze_mode, v.u8, memory_order_relaxed);
         config_bump_generation(&g_config);
     }
 }
 
 static param_value_t get_weight(void) {
     param_value_t v;
-    v.u8 = atomic_load_explicit(&g_config.weight, memory_order_relaxed);
+    v.u8 = atomic_load_explicit(&g_config.keyer.weight, memory_order_relaxed);
     return v;
 }
 static void set_weight(param_value_t v) {
-    atomic_store_explicit(&g_config.weight, v.u8, memory_order_relaxed);
+    atomic_store_explicit(&g_config.keyer.weight, v.u8, memory_order_relaxed);
     config_bump_generation(&g_config);
 }
 
+static param_value_t get_mem_window_start_pct(void) {
+    param_value_t v;
+    v.u8 = atomic_load_explicit(&g_config.keyer.mem_window_start_pct, memory_order_relaxed);
+    return v;
+}
+static void set_mem_window_start_pct(param_value_t v) {
+    if (v.u8 <= 100) {
+        atomic_store_explicit(&g_config.keyer.mem_window_start_pct, v.u8, memory_order_relaxed);
+        config_bump_generation(&g_config);
+    }
+}
+
+static param_value_t get_mem_window_end_pct(void) {
+    param_value_t v;
+    v.u8 = atomic_load_explicit(&g_config.keyer.mem_window_end_pct, memory_order_relaxed);
+    return v;
+}
+static void set_mem_window_end_pct(param_value_t v) {
+    if (v.u8 <= 100) {
+        atomic_store_explicit(&g_config.keyer.mem_window_end_pct, v.u8, memory_order_relaxed);
+        config_bump_generation(&g_config);
+    }
+}
+
+/* audio family */
 static param_value_t get_sidetone_freq_hz(void) {
     param_value_t v;
-    v.u16 = atomic_load_explicit(&g_config.sidetone_freq_hz, memory_order_relaxed);
+    v.u16 = atomic_load_explicit(&g_config.audio.sidetone_freq_hz, memory_order_relaxed);
     return v;
 }
 static void set_sidetone_freq_hz(param_value_t v) {
-    atomic_store_explicit(&g_config.sidetone_freq_hz, v.u16, memory_order_relaxed);
+    atomic_store_explicit(&g_config.audio.sidetone_freq_hz, v.u16, memory_order_relaxed);
     config_bump_generation(&g_config);
 }
 
 static param_value_t get_sidetone_volume(void) {
     param_value_t v;
-    v.u8 = atomic_load_explicit(&g_config.sidetone_volume, memory_order_relaxed);
+    v.u8 = atomic_load_explicit(&g_config.audio.sidetone_volume, memory_order_relaxed);
     return v;
 }
 static void set_sidetone_volume(param_value_t v) {
-    atomic_store_explicit(&g_config.sidetone_volume, v.u8, memory_order_relaxed);
+    atomic_store_explicit(&g_config.audio.sidetone_volume, v.u8, memory_order_relaxed);
     config_bump_generation(&g_config);
 }
 
 static param_value_t get_fade_duration_ms(void) {
     param_value_t v;
-    v.u8 = atomic_load_explicit(&g_config.fade_duration_ms, memory_order_relaxed);
+    v.u8 = atomic_load_explicit(&g_config.audio.fade_duration_ms, memory_order_relaxed);
     return v;
 }
 static void set_fade_duration_ms(param_value_t v) {
-    atomic_store_explicit(&g_config.fade_duration_ms, v.u8, memory_order_relaxed);
+    atomic_store_explicit(&g_config.audio.fade_duration_ms, v.u8, memory_order_relaxed);
     config_bump_generation(&g_config);
 }
 
+/* hardware family */
 static param_value_t get_gpio_dit(void) {
     param_value_t v;
-    v.u8 = atomic_load_explicit(&g_config.gpio_dit, memory_order_relaxed);
+    v.u8 = atomic_load_explicit(&g_config.hardware.gpio_dit, memory_order_relaxed);
     return v;
 }
 static void set_gpio_dit(param_value_t v) {
-    atomic_store_explicit(&g_config.gpio_dit, v.u8, memory_order_relaxed);
+    atomic_store_explicit(&g_config.hardware.gpio_dit, v.u8, memory_order_relaxed);
     config_bump_generation(&g_config);
 }
 
 static param_value_t get_gpio_dah(void) {
     param_value_t v;
-    v.u8 = atomic_load_explicit(&g_config.gpio_dah, memory_order_relaxed);
+    v.u8 = atomic_load_explicit(&g_config.hardware.gpio_dah, memory_order_relaxed);
     return v;
 }
 static void set_gpio_dah(param_value_t v) {
-    atomic_store_explicit(&g_config.gpio_dah, v.u8, memory_order_relaxed);
+    atomic_store_explicit(&g_config.hardware.gpio_dah, v.u8, memory_order_relaxed);
     config_bump_generation(&g_config);
 }
 
 static param_value_t get_gpio_tx(void) {
     param_value_t v;
-    v.u8 = atomic_load_explicit(&g_config.gpio_tx, memory_order_relaxed);
+    v.u8 = atomic_load_explicit(&g_config.hardware.gpio_tx, memory_order_relaxed);
     return v;
 }
 static void set_gpio_tx(param_value_t v) {
-    atomic_store_explicit(&g_config.gpio_tx, v.u8, memory_order_relaxed);
+    atomic_store_explicit(&g_config.hardware.gpio_tx, v.u8, memory_order_relaxed);
     config_bump_generation(&g_config);
 }
 
+/* timing family */
 static param_value_t get_ptt_tail_ms(void) {
     param_value_t v;
-    v.u32 = atomic_load_explicit(&g_config.ptt_tail_ms, memory_order_relaxed);
+    v.u32 = atomic_load_explicit(&g_config.timing.ptt_tail_ms, memory_order_relaxed);
     return v;
 }
 static void set_ptt_tail_ms(param_value_t v) {
-    atomic_store_explicit(&g_config.ptt_tail_ms, v.u32, memory_order_relaxed);
+    atomic_store_explicit(&g_config.timing.ptt_tail_ms, v.u32, memory_order_relaxed);
     config_bump_generation(&g_config);
 }
 
 static param_value_t get_tick_rate_hz(void) {
     param_value_t v;
-    v.u32 = atomic_load_explicit(&g_config.tick_rate_hz, memory_order_relaxed);
+    v.u32 = atomic_load_explicit(&g_config.timing.tick_rate_hz, memory_order_relaxed);
     return v;
 }
 static void set_tick_rate_hz(param_value_t v) {
-    atomic_store_explicit(&g_config.tick_rate_hz, v.u32, memory_order_relaxed);
+    atomic_store_explicit(&g_config.timing.tick_rate_hz, v.u32, memory_order_relaxed);
     config_bump_generation(&g_config);
 }
 
+/* system family */
 static param_value_t get_debug_logging(void) {
     param_value_t v;
-    v.b = atomic_load_explicit(&g_config.debug_logging, memory_order_relaxed);
+    v.b = atomic_load_explicit(&g_config.system.debug_logging, memory_order_relaxed);
     return v;
 }
 static void set_debug_logging(param_value_t v) {
-    atomic_store_explicit(&g_config.debug_logging, v.b, memory_order_relaxed);
+    atomic_store_explicit(&g_config.system.debug_logging, v.b, memory_order_relaxed);
     config_bump_generation(&g_config);
 }
 
 static param_value_t get_led_brightness(void) {
     param_value_t v;
-    v.u8 = atomic_load_explicit(&g_config.led_brightness, memory_order_relaxed);
+    v.u8 = atomic_load_explicit(&g_config.system.led_brightness, memory_order_relaxed);
     return v;
 }
 static void set_led_brightness(param_value_t v) {
-    atomic_store_explicit(&g_config.led_brightness, v.u8, memory_order_relaxed);
+    atomic_store_explicit(&g_config.system.led_brightness, v.u8, memory_order_relaxed);
     config_bump_generation(&g_config);
 }
 
