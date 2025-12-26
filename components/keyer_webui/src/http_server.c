@@ -15,6 +15,8 @@ extern esp_err_t api_config_save_handler(httpd_req_t *req);
 extern esp_err_t api_status_handler(httpd_req_t *req);
 extern esp_err_t api_system_stats_handler(httpd_req_t *req);
 extern esp_err_t api_system_reboot_handler(httpd_req_t *req);
+extern esp_err_t api_decoder_status_handler(httpd_req_t *req);
+extern esp_err_t api_decoder_enable_handler(httpd_req_t *req);
 
 /* SPA routes that should serve index.html */
 static const char *SPA_ROUTES[] = {
@@ -148,6 +150,23 @@ static void register_api_routes(httpd_handle_t server) {
         .user_ctx = NULL,
     };
     httpd_register_uri_handler(server, &reboot);
+
+    /* Decoder API */
+    httpd_uri_t decoder_status = {
+        .uri = "/api/decoder/status",
+        .method = HTTP_GET,
+        .handler = api_decoder_status_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &decoder_status);
+
+    httpd_uri_t decoder_enable = {
+        .uri = "/api/decoder/enable",
+        .method = HTTP_POST,
+        .handler = api_decoder_enable_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &decoder_enable);
 }
 
 esp_err_t webui_init(void) {
