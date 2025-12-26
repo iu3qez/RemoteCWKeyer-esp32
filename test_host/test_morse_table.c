@@ -52,7 +52,7 @@ void test_morse_reverse_lookup(void) {
     TEST_ASSERT_EQUAL_STRING(".-", morse_table_reverse('a'));  /* Lowercase */
     TEST_ASSERT_EQUAL_STRING("...", morse_table_reverse('S'));
     TEST_ASSERT_EQUAL_STRING("-----", morse_table_reverse('0'));
-    TEST_ASSERT_NULL(morse_table_reverse('@' + 100));  /* Invalid char */
+    TEST_ASSERT_NULL(morse_table_reverse('\x7F'));  /* Invalid char (DEL) */
 }
 
 void test_morse_table_count(void) {
