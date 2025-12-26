@@ -16,6 +16,7 @@ idf_component_register(
         keyer_config
         keyer_hal
         keyer_decoder
+        keyer_text
         freertos
         esp_timer
 )
