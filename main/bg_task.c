@@ -17,6 +17,7 @@
 
 #include "keyer_core.h"
 #include "rt_log.h"
+#include "decoder.h"
 
 /* External globals */
 extern keying_stream_t g_keying_stream;
@@ -25,9 +26,8 @@ extern fault_state_t g_fault_state;
 void bg_task(void *arg) {
     (void)arg;
 
-    /* Initialize best-effort consumer */
-    best_effort_consumer_t consumer;
-    best_effort_consumer_init(&consumer, &g_keying_stream, 100);  /* Skip if >100 behind */
+    /* Initialize decoder (creates its own stream consumer) */
+    decoder_init();
 
     /* Log startup */
     int64_t now_us = esp_timer_get_time();
@@ -38,20 +38,20 @@ void bg_task(void *arg) {
     for (;;) {
         now_us = esp_timer_get_time();
 
-        /* Process stream samples (best-effort) */
-        stream_sample_t sample;
-        while (best_effort_consumer_tick(&consumer, &sample)) {
-            /* TODO: Process sample for remote/decoder */
-            (void)sample;
-        }
+        /* Process decoder (reads from keying_stream) */
+        decoder_process();
 
         /* Periodic stats logging */
         stats_counter++;
         if (stats_counter >= 10000) {  /* Every ~10 seconds at 1ms tick */
-            size_t dropped = best_effort_consumer_dropped(&consumer);
-            if (dropped > 0) {
-                RT_WARN(&g_bg_log_stream, now_us, "BG consumer dropped: %u", (unsigned)dropped);
-                best_effort_consumer_reset_dropped(&consumer);
+            /* Log decoder stats if active */
+            if (decoder_is_enabled()) {
+                decoder_stats_t stats;
+                decoder_get_stats(&stats);
+                if (stats.samples_dropped > 0) {
+                    RT_WARN(&g_bg_log_stream, now_us, "Decoder dropped: %u samples",
+                            (unsigned)stats.samples_dropped);
+                }
             }
 
             /* Check fault state */
@@ -64,6 +64,6 @@ void bg_task(void *arg) {
             stats_counter = 0;
         }
 
-        vTaskDelay(pdMS_TO_TICKS(1));
+        vTaskDelay(pdMS_TO_TICKS(10));  /* 100Hz - decoder doesn't need 1kHz */
     }
 }

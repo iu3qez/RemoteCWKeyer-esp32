@@ -10,6 +10,7 @@
 #include "config_nvs.h"
 #include "rt_log.h"
 #include "hal_gpio.h"
+#include "decoder.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -792,6 +793,118 @@ static console_error_t cmd_test(const console_parsed_cmd_t *cmd) {
 #endif
 }
 
+/**
+ * @brief decoder - CW decoder control and status
+ */
+static console_error_t cmd_decoder(const console_parsed_cmd_t *cmd) {
+    if (cmd->argc == 0) {
+        /* Show status and last decoded text */
+        bool enabled = decoder_is_enabled();
+        uint32_t wpm = decoder_get_wpm();
+        size_t buf_count = decoder_get_buffer_count();
+        size_t buf_cap = decoder_get_buffer_capacity();
+
+        printf("Decoder: %s", enabled ? "ON" : "OFF");
+        if (wpm > 0) {
+            printf(", WPM: %lu", (unsigned long)wpm);
+        }
+        printf(", buffer: %u/%u chars\r\n", (unsigned)buf_count, (unsigned)buf_cap);
+
+        if (buf_count > 0) {
+            char text[65];
+            size_t len = decoder_get_text(text, sizeof(text));
+            if (len > 0) {
+                printf("Last: \"%s\"\r\n", text);
+            }
+        }
+
+        /* Show current pattern if receiving */
+        if (decoder_get_state() == DECODER_STATE_RECEIVING) {
+            char pattern[16];
+            decoder_get_current_pattern(pattern, sizeof(pattern));
+            printf("Pattern: %s\r\n", pattern);
+        }
+
+        return CONSOLE_OK;
+    }
+
+    const char *arg = cmd->args[0];
+
+    /* decoder on|off */
+    if (strcmp(arg, "on") == 0) {
+        decoder_set_enabled(true);
+        printf("Decoder: ON\r\n");
+        return CONSOLE_OK;
+    }
+    if (strcmp(arg, "off") == 0) {
+        decoder_set_enabled(false);
+        printf("Decoder: OFF\r\n");
+        return CONSOLE_OK;
+    }
+
+    /* decoder clear */
+    if (strcmp(arg, "clear") == 0) {
+        decoder_reset();
+        printf("Decoder reset\r\n");
+        return CONSOLE_OK;
+    }
+
+    /* decoder text - show full buffer with timestamps */
+    if (strcmp(arg, "text") == 0) {
+        size_t count = decoder_get_buffer_count();
+        if (count == 0) {
+            printf("(empty)\r\n");
+            return CONSOLE_OK;
+        }
+
+        decoded_char_t chars[128];
+        size_t n = decoder_get_text_with_timestamps(chars, 128);
+        for (size_t i = 0; i < n; i++) {
+            int64_t ts = chars[i].timestamp_us;
+            int secs = (int)(ts / 1000000);
+            int ms = (int)((ts / 1000) % 1000);
+            char c = chars[i].character;
+            if (c == ' ') {
+                printf("[%d.%03d] (space)\r\n", secs, ms);
+            } else {
+                printf("[%d.%03d] %c\r\n", secs, ms, c);
+            }
+        }
+        return CONSOLE_OK;
+    }
+
+    /* decoder stats - show timing statistics */
+    if (strcmp(arg, "stats") == 0) {
+        const timing_classifier_t *tc = decoder_get_timing();
+        decoder_stats_t stats;
+        decoder_get_stats(&stats);
+
+        uint32_t wpm = decoder_get_wpm();
+        float ratio = timing_classifier_get_ratio(tc);
+
+        printf("WPM: %lu (dit: %lldms, dah: %lldms, ratio: %.2f)\r\n",
+               (unsigned long)wpm,
+               (long long)(tc->dit_avg_us / 1000),
+               (long long)(tc->dah_avg_us / 1000),
+               (double)ratio);
+        printf("Samples: dit=%lu, dah=%lu\r\n",
+               (unsigned long)tc->dit_count,
+               (unsigned long)tc->dah_count);
+        printf("Decoded: %lu chars, %lu words, %lu errors\r\n",
+               (unsigned long)stats.chars_decoded,
+               (unsigned long)stats.words_decoded,
+               (unsigned long)stats.errors);
+        printf("Buffer: %u/%u chars\r\n",
+               (unsigned)decoder_get_buffer_count(),
+               (unsigned)decoder_get_buffer_capacity());
+        printf("State: %s\r\n", decoder_state_str(decoder_get_state()));
+
+        return CONSOLE_OK;
+    }
+
+    return CONSOLE_ERR_INVALID_VALUE;
+}
+
 /* ============================================================================
  * Command registry
  * ============================================================================ */
@@ -844,6 +957,13 @@ static const char USAGE_DIAG[] =
     "  diag on             Enable RT diagnostic logging\r\n"
     "  diag off            Disable RT diagnostic logging";
 
+static const char USAGE_DECODER[] =
+    "  decoder             Show status and last decoded text\r\n"
+    "  decoder on|off      Enable/disable decoder\r\n"
+    "  decoder text        Show buffer with timestamps\r\n"
+    "  decoder stats       Show timing statistics\r\n"
+    "  decoder clear       Clear buffer and reset timing";
+
 static const console_cmd_t s_commands[] = {
     { "help",          "List commands or show help",   NULL,        cmd_help },
     { "?",             "Alias for help",               NULL,        cmd_question },
@@ -860,6 +980,7 @@ static const console_cmd_t s_commands[] = {
     { "flash",         "Enter bootloader mode",        NULL,        cmd_uf2 },
     { "factory-reset", "Erase NVS and reboot",         NULL,        cmd_factory_reset },
     { "diag",          "RT diagnostic logging",        USAGE_DIAG,  cmd_diag },
+    { "decoder",       "CW decoder control",           USAGE_DECODER, cmd_decoder },
     { "test",          "Diagnostic tests",             NULL,        cmd_test },
     { "gpio",          "Read raw GPIO state",          NULL,        cmd_gpio },
 };
