@@ -235,37 +235,35 @@ static console_error_t cmd_save(const console_parsed_cmd_t *cmd) {
     return CONSOLE_OK;
 }
 
+/* Visitor callback for show command */
+static void show_param_visitor(const param_descriptor_t *p, void *ctx) {
+    (void)ctx;
+    char buf[32];
+    config_get_param_str(p->full_path, buf, sizeof(buf));
+    printf("%s=%s\r\n", p->full_path, buf);
+}
+
 /**
- * @brief show [pattern] - Show parameters
+ * @brief show [pattern] - Show parameters matching pattern
+ *
+ * Patterns:
+ *   show                  All parameters
+ *   show keyer.wpm        Single parameter
+ *   show keyer.*          All keyer parameters
+ *   show keyer.**         Keyer + subfamilies
+ *   show hw.*             Alias for hardware.*
  */
 static console_error_t cmd_show(const console_parsed_cmd_t *cmd) {
-    const char *pattern = (cmd->argc > 0) ? cmd->args[0] : NULL;
-    size_t pattern_len = pattern ? strlen(pattern) : 0;
-    bool has_wildcard = pattern && pattern[pattern_len - 1] == '*';
+    const char *pattern = (cmd->argc > 0) ? cmd->args[0] : "**";
 
-    if (has_wildcard) {
-        pattern_len--;  /* Exclude the wildcard */
+    /* Handle "show" with no args as "show **" (all params) */
+    if (pattern[0] == '\0') {
+        pattern = "**";
     }
 
-    for (size_t i = 0; i < CONSOLE_PARAM_COUNT; i++) {
-        const param_descriptor_t *p = &CONSOLE_PARAMS[i];
-        bool match = false;
+    /* Use pattern matching */
+    config_foreach_matching(pattern, show_param_visitor, NULL);
 
-        if (pattern == NULL) {
-            match = true;
-        } else if (has_wildcard) {
-            match = (strncmp(p->name, pattern, pattern_len) == 0) ||
-                    (strncmp(p->category, pattern, pattern_len) == 0);
-        } else {
-            match = (strcmp(p->name, pattern) == 0);
-        }
-
-        if (match) {
-            char buf[32];
-            config_get_param_str(p->name, buf, sizeof(buf));
-            printf("%s=%s\r\n", p->name, buf);
-        }
-    }
     return CONSOLE_OK;
 }
 
@@ -769,9 +767,18 @@ static const char USAGE_STATS[] =
     "  stats rt            RT task statistics";
 
 static const char USAGE_SHOW[] =
-    "  show                Show all parameters\r\n"
-    "  show <name>         Show specific parameter\r\n"
-    "  show <prefix>*      Show params starting with prefix";
+    "  show                  All parameters\r\n"
+    "  show keyer.*          All keyer parameters\r\n"
+    "  show keyer.**         Keyer + subfamilies\r\n"
+    "  show keyer.wpm        Single parameter\r\n"
+    "  show hw.*             Alias for hardware.*\r\n"
+    "\r\n"
+    "Families:\r\n"
+    "  keyer (k)      Keying behavior\r\n"
+    "  audio (a,snd)  Sidetone output\r\n"
+    "  hardware (hw)  GPIO pins\r\n"
+    "  timing (t)     RT loop, PTT\r\n"
+    "  system (sys)   Debug, LED";
 
 static const char USAGE_SET[] =
     "  set <param> <value> Set parameter value\r\n"
