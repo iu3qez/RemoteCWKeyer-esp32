@@ -87,6 +87,8 @@ void test_morse_lookup_prosigns(void);
 void test_morse_lookup_invalid(void);
 void test_morse_reverse_lookup(void);
 void test_morse_table_count(void);
+void test_morse_match_prosign(void);
+void test_morse_get_prosign_tag(void);
 
 /* Timing classifier tests */
 void test_timing_init(void);
@@ -231,6 +233,8 @@ int main(void) {
     RUN_TEST(test_morse_lookup_invalid);
     RUN_TEST(test_morse_reverse_lookup);
     RUN_TEST(test_morse_table_count);
+    RUN_TEST(test_morse_match_prosign);
+    RUN_TEST(test_morse_get_prosign_tag);
 
     /* Timing classifier tests */
     printf("\n=== Timing Classifier Tests ===\n");

@@ -62,3 +62,39 @@ void test_morse_table_count(void) {
     /* Verify it's reasonable (not absurdly large) */
     TEST_ASSERT_LESS_THAN(100, count);
 }
+
+void test_morse_match_prosign(void) {
+    const char *pattern = NULL;
+
+    /* Match at start */
+    TEST_ASSERT_EQUAL(4, morse_match_prosign("<SK>", &pattern));
+    TEST_ASSERT_EQUAL_STRING("...-.-", pattern);
+
+    /* Match with text after */
+    TEST_ASSERT_EQUAL(4, morse_match_prosign("<AR> K", &pattern));
+    TEST_ASSERT_EQUAL_STRING(".-.-.", pattern);
+
+    /* No match */
+    TEST_ASSERT_EQUAL(0, morse_match_prosign("HELLO", &pattern));
+    TEST_ASSERT_EQUAL(0, morse_match_prosign("<XX>", &pattern));
+
+    /* Partial tag */
+    TEST_ASSERT_EQUAL(0, morse_match_prosign("<SK", NULL));
+
+    /* NULL input */
+    TEST_ASSERT_EQUAL(0, morse_match_prosign(NULL, NULL));
+}
+
+void test_morse_get_prosign_tag(void) {
+    const char *tag = morse_get_prosign_tag("...-.-");
+    TEST_ASSERT_EQUAL_STRING("<SK>", tag);
+
+    tag = morse_get_prosign_tag(".-.-.");
+    TEST_ASSERT_EQUAL_STRING("<AR>", tag);
+
+    /* Not a prosign */
+    TEST_ASSERT_NULL(morse_get_prosign_tag(".-"));
+
+    /* NULL input */
+    TEST_ASSERT_NULL(morse_get_prosign_tag(NULL));
+}

@@ -93,6 +93,27 @@ static const morse_entry_t MORSE_TABLE[] = {
 #define MORSE_TABLE_SIZE (sizeof(MORSE_TABLE) / sizeof(MORSE_TABLE[0]))
 
 /* ============================================================================
+ * Prosign Table for Text Keyer
+ * ============================================================================ */
+
+typedef struct {
+    const char *tag;      /* e.g., "<SK>" */
+    const char *pattern;  /* e.g., "...-.-" */
+} prosign_entry_t;
+
+static const prosign_entry_t PROSIGN_TABLE[] = {
+    { "<SK>", "...-.-" },   /* End of contact */
+    { "<AR>", ".-.-." },    /* End of message */
+    { "<BT>", "-...-" },    /* Break/Pause */
+    { "<KN>", "-.--." },    /* Specific station only */
+    { "<AS>", ".-..." },    /* Wait */
+    { "<SN>", "...-." },    /* Understood (also VE) */
+    { "<KA>", "-.-.-" },    /* Starting signal */
+};
+
+#define PROSIGN_TABLE_SIZE (sizeof(PROSIGN_TABLE) / sizeof(PROSIGN_TABLE[0]))
+
+/* ============================================================================
  * Public API
  * ============================================================================ */
 
@@ -127,4 +148,36 @@ const char *morse_table_reverse(char c) {
 
 unsigned morse_table_count(void) {
     return (unsigned)MORSE_TABLE_SIZE;
+}
+
+size_t morse_match_prosign(const char *text, const char **pattern_out) {
+    if (text == NULL || text[0] != '<') {
+        return 0;
+    }
+
+    for (size_t i = 0; i < PROSIGN_TABLE_SIZE; i++) {
+        size_t len = strlen(PROSIGN_TABLE[i].tag);
+        if (strncmp(text, PROSIGN_TABLE[i].tag, len) == 0) {
+            if (pattern_out != NULL) {
+                *pattern_out = PROSIGN_TABLE[i].pattern;
+            }
+            return len;
+        }
+    }
+
+    return 0;
+}
+
+const char *morse_get_prosign_tag(const char *pattern) {
+    if (pattern == NULL) {
+        return NULL;
+    }
+
+    for (size_t i = 0; i < PROSIGN_TABLE_SIZE; i++) {
+        if (strcmp(PROSIGN_TABLE[i].pattern, pattern) == 0) {
+            return PROSIGN_TABLE[i].tag;
+        }
+    }
+
+    return NULL;
 }
