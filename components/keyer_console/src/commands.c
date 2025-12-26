@@ -79,10 +79,27 @@ static void show_command_help(const console_cmd_t *c) {
 }
 
 /**
- * @brief help [cmd] - List commands or show help for specific command
+ * @brief help [cmd|family] - List commands or show help for command/family
  */
 static console_error_t cmd_help(const console_parsed_cmd_t *cmd) {
     if (cmd->argc > 0 && cmd->args[0] != NULL) {
+        /* Check if asking about a family */
+        const family_descriptor_t *f = config_find_family(cmd->args[0]);
+        if (f != NULL) {
+            printf("Family: %s\r\n", f->name);
+            printf("Aliases: %s\r\n", f->aliases);
+            printf("%s\r\n\r\n", f->description);
+            printf("Parameters:\r\n");
+            for (size_t i = 0; i < CONSOLE_PARAM_COUNT; i++) {
+                if (strcmp(CONSOLE_PARAMS[i].family, f->name) == 0) {
+                    char buf[32];
+                    config_get_param_str(CONSOLE_PARAMS[i].full_path, buf, sizeof(buf));
+                    printf("  %s = %s\r\n", CONSOLE_PARAMS[i].full_path, buf);
+                }
+            }
+            return CONSOLE_OK;
+        }
+
         /* Help for specific command */
         const console_cmd_t *c = console_find_command(cmd->args[0]);
         if (c == NULL) {
@@ -93,11 +110,18 @@ static console_error_t cmd_help(const console_parsed_cmd_t *cmd) {
         /* List all commands */
         size_t count;
         const console_cmd_t *cmds = console_get_commands(&count);
-        printf("Available commands:\r\n");
+        printf("Commands:\r\n");
         for (size_t i = 0; i < count; i++) {
             printf("  %-14s %s\r\n", cmds[i].name, cmds[i].brief);
         }
-        printf("\r\nType 'help <cmd>' or '<cmd> ?' for details\r\n");
+        printf("\r\nFamilies (use 'help <family>'):\r\n");
+        for (size_t i = 0; i < FAMILY_COUNT; i++) {
+            printf("  %-14s (%s) %s\r\n",
+                   CONSOLE_FAMILIES[i].name,
+                   CONSOLE_FAMILIES[i].aliases,
+                   CONSOLE_FAMILIES[i].description);
+        }
+        printf("\r\nType 'help <cmd>' or 'help <family>' for details\r\n");
     }
     return CONSOLE_OK;
 }
