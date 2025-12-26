@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import System from './pages/System.svelte';
 
   let currentPage = $state('/');
 
@@ -28,12 +29,11 @@
   </nav>
 
   <main>
-    {#if currentPage === '/config'}
+    {#if currentPage === '/system'}
+      <System />
+    {:else if currentPage === '/config'}
       <h1>Configuration</h1>
       <p>Config page - coming soon</p>
-    {:else if currentPage === '/system'}
-      <h1>System</h1>
-      <p>System page - coming soon</p>
     {:else if currentPage === '/keyer'}
       <h1>Keyer</h1>
       <p>Keyer page - coming soon</p>
