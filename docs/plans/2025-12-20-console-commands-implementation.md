@@ -23,7 +23,7 @@
 Modify `build.rs` to emit version info:
 
 ```rust
-// RustRemoteCWKeyer - Build Script
+// RemoteCWKeyerV3 - Build Script
 //
 // Runs code generation from parameters.yaml before compilation.
 

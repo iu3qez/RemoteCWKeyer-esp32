@@ -27,6 +27,7 @@ static const char *LOG_TAGS[] = {
     "usb_log",
     "usb_uf2",
     "usb_winkeyer",
+    "webui",
     "wifi",
 };
 

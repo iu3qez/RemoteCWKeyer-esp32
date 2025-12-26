@@ -55,8 +55,8 @@ fn main() {
 ```json
 {
   "mounts": [
-    "source=rust-remote-cw-keyer-embuild-cache,target=/workspaces/RustRemoteCWKeyer/.embuild,type=volume",
-    "source=rust-remote-cw-keyer-target-cache,target=/workspaces/RustRemoteCWKeyer/target,type=volume"
+    "source=rust-remote-cw-keyer-embuild-cache,target=/workspaces/RemoteCWKeyerV3/.embuild,type=volume",
+    "source=rust-remote-cw-keyer-target-cache,target=/workspaces/RemoteCWKeyerV3/target,type=volume"
   ]
 }
 ```
@@ -249,7 +249,7 @@ Il progetto è stato migrato da Rust (esp-rs) a pure C (ESP-IDF nativo) per:
 ### Struttura Progetto
 
 ```
-RustRemoteCWKeyer/
+RemoteCWKeyerV3/
 ├── CMakeLists.txt          # ESP-IDF project root
 ├── sdkconfig.defaults      # ESP-IDF configuration
 ├── partitions.csv          # 16MB flash layout

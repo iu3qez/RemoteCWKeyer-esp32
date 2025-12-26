@@ -2,7 +2,7 @@
 
 ## Overview
 
-RustRemoteCWKeyer uses a **RT-safe logging system** that never blocks the real-time path.
+RemoteCWKeyerV3 uses a **RT-safe logging system** that never blocks the real-time path.
 
 ## Quick Start
 

@@ -1,4 +1,4 @@
-# RustRemoteCWKeyer
+# RemoteCWKeyerV3
 
 CW  keyer with remote operation capability, built in Rust for ESP32-S3/P4 platforms.
 

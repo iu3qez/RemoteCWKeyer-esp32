@@ -1267,7 +1267,7 @@ git commit -m "feat(console): add log and uf2 commands"
 **Step 1: Clean and reconfigure**
 
 ```bash
-cd /workspaces/RustRemoteCWKeyer
+cd /workspaces/RemoteCWKeyerV3
 rm -rf build
 idf.py set-target esp32s3
 ```

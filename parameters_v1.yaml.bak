@@ -1,4 +1,4 @@
-# RustRemoteCWKeyer - Configuration Parameters Schema
+# RemoteCWKeyerV3 - Configuration Parameters Schema
 #
 # This file defines all configurable parameters for the keyer.
 # Code generation script (scripts/gen_config.py) reads this file and generates:

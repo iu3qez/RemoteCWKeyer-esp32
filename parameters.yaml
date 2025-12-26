@@ -1,4 +1,4 @@
-# RustRemoteCWKeyer - Configuration Parameters Schema V2
+# RemoteCWKeyerV3 - Configuration Parameters Schema V2
 #
 # Hierarchical family structure with dot-notation paths.
 # Code generation script reads this file and generates:

@@ -1,6 +1,6 @@
-# RustRemoteCWKeyer — Architecture Principles
+# RemoteCWKeyerV3 — Architecture Principles
 
-**Project**: RustRemoteCWKeyer  
+**Project**: RemoteCWKeyerV3  
 **Version**: 1.0  
 **Status**: IMMUTABLE  
 **Date**: 2025-01-XX
@@ -9,9 +9,9 @@
 
 ## Preface
 
-This document defines the fundamental architectural principles for RustRemoteCWKeyer.
+This document defines the fundamental architectural principles for RemoteCWKeyerV3.
 
-RustRemoteCWKeyer is a professional-grade CW (Morse code) keyer with remote operation capability, built in Rust for ESP32-S3/P4 platforms. It implements iambic keying, sidetone generation, and network-transparent remote CW operation.
+RemoteCWKeyerV3 is a professional-grade CW (Morse code) keyer with remote operation capability, built in Rust for ESP32-S3/P4 platforms. It implements iambic keying, sidetone generation, and network-transparent remote CW operation.
 
 These rules are **immutable**. Every implementation decision, every line of code, every review must conform to these principles.
 
@@ -27,7 +27,7 @@ Violations are not technical debt. They are defects.
 ┌─────────────────────────────────────────────────────────────┐
 │                     KeyingStream                            │
 │                                                             │
-│   The heart of RustRemoteCWKeyer.                          │
+│   The heart of RemoteCWKeyerV3.                          │
 │                                                             │
 │   All events flow through the stream.                       │
 │   The stream is the only shared state.                      │
@@ -563,7 +563,7 @@ In case of conflict, higher-ranked principles take precedence.
 
 ## Appendix: Project Identity
 
-**Name**: RustRemoteCWKeyer
+**Name**: RemoteCWKeyerV3
 
 **Mission**: A CW keyer that is correct, testable, and maintainable. Remote operation is a first-class feature, not an afterthought.
 
@@ -574,7 +574,7 @@ In case of conflict, higher-ranked principles take precedence.
 
 **Repository structure**:
 ```
-RustRemoteCWKeyer/
+RemoteCWKeyerV3/
 ├── ARCHITECTURE.md          # This document (immutable)
 ├──  /                 # C implementation (ESP-IDF)
 │   ├── components/

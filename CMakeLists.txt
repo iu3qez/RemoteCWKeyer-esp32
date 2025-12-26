@@ -1,4 +1,4 @@
-# RustRemoteCWKeyer - Pure C Implementation
+# RemoteCWKeyerV3 - Pure C Implementation
 # ESP-IDF Project CMakeLists.txt
 #
 # Build: idf.py build

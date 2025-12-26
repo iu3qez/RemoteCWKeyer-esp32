@@ -1,4 +1,4 @@
-# RustRemoteCWKeyer - Core Implementation Design
+# RemoteCWKeyerV3 - Core Implementation Design
 
 **Date:** 2025-01-19
 **Status:** Approved
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-This document consolidates the architectural design decisions for the RustRemoteCWKeyer core implementation. It covers the threading model, configuration system, audio architecture, state machine, and testing strategy that will guide the initial Rust implementation.
+This document consolidates the architectural design decisions for the RemoteCWKeyerV3 core implementation. It covers the threading model, configuration system, audio architecture, state machine, and testing strategy that will guide the initial Rust implementation.
 
 **Key Design Principles:**
 - Lock-free SPMC architecture (ARCHITECTURE.md foundation)

@@ -36,7 +36,7 @@ atomic_bool g_rt_diag_enabled = false;
 
 **Step 3: Build to verify no errors**
 
-Run: `cd /workspaces/RustRemoteCWKeyer && idf.py build 2>&1 | head -50`
+Run: `cd /workspaces/RemoteCWKeyerV3 && idf.py build 2>&1 | head -50`
 Expected: Build succeeds (or partial success showing no errors in keyer_logging)
 
 **Step 4: Commit**
@@ -86,7 +86,7 @@ git commit -m "feat(logging): add g_rt_diag_enabled atomic flag"
 
 **Step 2: Build to verify**
 
-Run: `cd /workspaces/RustRemoteCWKeyer && idf.py build 2>&1 | head -50`
+Run: `cd /workspaces/RemoteCWKeyerV3 && idf.py build 2>&1 | head -50`
 Expected: Build succeeds
 
 **Step 3: Commit**
@@ -228,7 +228,7 @@ After line 119 (`ptt_tick(&ptt, (uint64_t)now_us);`), add:
 
 **Step 3: Build to verify**
 
-Run: `cd /workspaces/RustRemoteCWKeyer && idf.py build 2>&1 | tail -20`
+Run: `cd /workspaces/RemoteCWKeyerV3 && idf.py build 2>&1 | tail -20`
 Expected: Build succeeds
 
 **Step 4: Commit**
@@ -293,7 +293,7 @@ In `s_commands[]` array (around line 458), add after the `factory-reset` entry:
 
 **Step 4: Build to verify**
 
-Run: `cd /workspaces/RustRemoteCWKeyer && idf.py build 2>&1 | tail -20`
+Run: `cd /workspaces/RemoteCWKeyerV3 && idf.py build 2>&1 | tail -20`
 Expected: Build succeeds
 
 **Step 5: Commit**
@@ -383,7 +383,7 @@ Replace the match finding code (lines 80-97) with:
 
 **Step 4: Build to verify**
 
-Run: `cd /workspaces/RustRemoteCWKeyer && idf.py build 2>&1 | tail -20`
+Run: `cd /workspaces/RemoteCWKeyerV3 && idf.py build 2>&1 | tail -20`
 Expected: Build succeeds
 
 **Step 5: Commit**
@@ -507,7 +507,7 @@ extern void run_rt_diag_tests(void);
 
 **Step 4: Build and run tests**
 
-Run: `cd /workspaces/RustRemoteCWKeyer/test_host && cmake -B build && cmake --build build && ./build/test_runner`
+Run: `cd /workspaces/RemoteCWKeyerV3/test_host && cmake -B build && cmake --build build && ./build/test_runner`
 Expected: All tests pass
 
 **Step 5: Commit**
@@ -525,12 +525,12 @@ git commit -m "test: add RT diagnostic logging tests"
 
 **Step 1: Full build**
 
-Run: `cd /workspaces/RustRemoteCWKeyer && idf.py fullclean && idf.py build`
+Run: `cd /workspaces/RemoteCWKeyerV3 && idf.py fullclean && idf.py build`
 Expected: Build succeeds with no warnings
 
 **Step 2: Run all host tests**
 
-Run: `cd /workspaces/RustRemoteCWKeyer/test_host && cmake -B build && cmake --build build && ./build/test_runner`
+Run: `cd /workspaces/RemoteCWKeyerV3/test_host && cmake -B build && cmake --build build && ./build/test_runner`
 Expected: All tests pass
 
 **Step 3: Commit final state**
