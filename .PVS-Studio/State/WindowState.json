@@ -16,6 +16,7 @@
     "isGroupFiltersVisible": true,
     "type": [
       "General",
+      "64-bit",
       "Optimization"
     ]
   },

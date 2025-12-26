@@ -78,8 +78,16 @@ void app_main(void) {
         ESP_LOGI(TAG, "Using default configuration");
     }
 
-    /* Initialize HAL GPIO (includes force_gpio_reset for JTAG-claimed pins) */
-    hal_gpio_config_t gpio_cfg = HAL_GPIO_CONFIG_DEFAULT;
+    /* Initialize HAL GPIO using values from g_config (loaded from NVS or defaults) */
+    hal_gpio_config_t gpio_cfg = {
+        .dit_pin = CONFIG_GET_GPIO_DIT(),
+        .dah_pin = CONFIG_GET_GPIO_DAH(),
+        .tx_pin = CONFIG_GET_GPIO_TX(),
+        .active_low = true,        /* Paddles are active low (internal pull-up) */
+        .tx_active_high = true,    /* TX output is active high */
+    };
+    ESP_LOGI(TAG, "GPIO config from g_config: DIT=%d, DAH=%d, TX=%d",
+             gpio_cfg.dit_pin, gpio_cfg.dah_pin, gpio_cfg.tx_pin);
     hal_gpio_init(&gpio_cfg);
 
     /* Initialize USB CDC (before console) */

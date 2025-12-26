@@ -19,9 +19,9 @@ void config_init_defaults(keyer_config_t *cfg) {
     atomic_init(&cfg->sidetone_freq_hz, 600);
     atomic_init(&cfg->sidetone_volume, 70);
     atomic_init(&cfg->fade_duration_ms, 5);
-    atomic_init(&cfg->gpio_dit, 3);
-    atomic_init(&cfg->gpio_dah, 4);
-    atomic_init(&cfg->gpio_tx, 15);
+    atomic_init(&cfg->gpio_dit, 4);
+    atomic_init(&cfg->gpio_dah, 5);
+    atomic_init(&cfg->gpio_tx, 6);
     atomic_init(&cfg->ptt_tail_ms, 100);
     atomic_init(&cfg->tick_rate_hz, 10000);
     atomic_init(&cfg->debug_logging, false);

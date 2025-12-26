@@ -29,9 +29,9 @@ typedef struct {
  * @brief Default GPIO configuration
  */
 #define HAL_GPIO_CONFIG_DEFAULT { \
-    .dit_pin = 3, \
-    .dah_pin = 4, \
-    .tx_pin = 15, \
+    .dit_pin = 4, \
+    .dah_pin = 5, \
+    .tx_pin = 6, \
     .active_low = true, \
     .tx_active_high = true \
 }

@@ -296,7 +296,7 @@ parameters:
   # ========================================
   - name: gpio_dit
     type: u8
-    default: 3
+    default: 4
     range: [0, 45]  # ESP32-S3 max GPIO
     nvs_key: "gpio_dit"
     runtime_change: reboot
@@ -320,7 +320,7 @@ parameters:
 
   - name: gpio_dah
     type: u8
-    default: 4
+    default: 5
     range: [0, 45]
     nvs_key: "gpio_dah"
     runtime_change: reboot
@@ -344,7 +344,7 @@ parameters:
 
   - name: gpio_tx
     type: u8
-    default: 15
+    default: 6
     range: [0, 45]
     nvs_key: "gpio_tx"
     runtime_change: reboot
