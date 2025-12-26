@@ -20,6 +20,7 @@
 #include "decoder.h"
 #include "text_keyer.h"
 #include "text_memory.h"
+#include "webui.h"
 
 /* External globals */
 extern keying_stream_t g_keying_stream;
@@ -47,12 +48,25 @@ void bg_task(void *arg) {
     RT_INFO(&g_bg_log_stream, now_us, "BG task started (text keyer ready)");
 
     uint32_t stats_counter = 0;
+    static char prev_decoded_char = '\0';
+    static int64_t prev_char_timestamp = 0;
 
     for (;;) {
         now_us = esp_timer_get_time();
 
         /* Process decoder (reads from keying_stream) */
         decoder_process();
+
+        /* Push decoded characters to WebUI SSE */
+        decoded_char_t last = decoder_get_last_char();
+        if (last.character != '\0' && last.timestamp_us != prev_char_timestamp) {
+            webui_decoder_push_char(last.character, (uint8_t)decoder_get_wpm());
+            if (last.character == ' ') {
+                webui_decoder_push_word();
+            }
+            prev_decoded_char = last.character;
+            prev_char_timestamp = last.timestamp_us;
+        }
 
         /* Tick text keyer (produces samples on keying_stream) */
         text_keyer_tick(now_us);
