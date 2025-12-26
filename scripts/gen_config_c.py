@@ -471,7 +471,7 @@ esp_err_t config_save_param(const char *name);
 
 
 def generate_config_console_h(params: List[Dict], families: List[Dict], output_dir: Path):
-    """Generate config_console.h - Console parameter registry"""
+    """Generate config_console.h with family metadata for v2"""
 
     # Get unique categories/families
     if families:
@@ -479,10 +479,12 @@ def generate_config_console_h(params: List[Dict], families: List[Dict], output_d
     else:
         categories = sorted(set(p.get('category', 'misc') for p in params))
 
+    family_count = len(families) if families else 0
+
     code = """/* Auto-generated from parameters.yaml - DO NOT EDIT MANUALLY */
 /**
  * @file config_console.h
- * @brief Console command parameter registry
+ * @brief Console command parameter registry with family support
  */
 
 #ifndef KEYER_CONFIG_CONSOLE_H
@@ -514,10 +516,19 @@ typedef enum {
     PARAM_TYPE_ENUM = 4,
 } param_type_t;
 
+/** Family descriptor */
+typedef struct {
+    const char *name;
+    const char *aliases;      /**< Comma-separated: "k" or "a,snd" */
+    const char *description;
+    uint8_t order;
+} family_descriptor_t;
+
 /** Parameter descriptor */
 typedef struct {
     const char *name;
-    const char *category;
+    const char *family;
+    const char *full_path;    /**< "keyer.wpm" */
     param_type_t type;
     uint32_t min;
     uint32_t max;
@@ -525,19 +536,20 @@ typedef struct {
     void (*set_fn)(param_value_t);
 } param_descriptor_t;
 
-/** Number of parameters */
-#define CONSOLE_PARAM_COUNT """ + str(len(params)) + """
+"""
 
-/** All parameter descriptors */
-extern const param_descriptor_t CONSOLE_PARAMS[CONSOLE_PARAM_COUNT];
+    code += f"#define FAMILY_COUNT {family_count}\n"
+    code += f"#define CONSOLE_PARAM_COUNT {len(params)}\n\n"
 
-/** Number of categories */
-#define CATEGORY_COUNT """ + str(len(categories)) + """
+    if families:
+        code += "extern const family_descriptor_t CONSOLE_FAMILIES[FAMILY_COUNT];\n"
 
-/** All categories */
-extern const char *CATEGORIES[CATEGORY_COUNT];
+    code += """extern const param_descriptor_t CONSOLE_PARAMS[CONSOLE_PARAM_COUNT];
 
-/** Find parameter by name */
+/** Find family by name or alias */
+const family_descriptor_t *config_find_family(const char *name);
+
+/** Find parameter by name or full path */
 const param_descriptor_t *config_find_param(const char *name);
 
 /** Get parameter value as string */
@@ -545,6 +557,20 @@ int config_get_param_str(const char *name, char *buf, size_t len);
 
 /** Set parameter from string */
 int config_set_param_str(const char *name, const char *value);
+
+/** Pattern matching visitor callback */
+typedef void (*param_visitor_fn)(const param_descriptor_t *param, void *ctx);
+
+/**
+ * @brief Visit all parameters matching pattern
+ *
+ * Patterns:
+ * - "keyer.wpm"     exact match
+ * - "keyer.*"       all direct params in keyer
+ * - "keyer.**"      all params in keyer and subfamilies
+ * - "hw.*"          alias expansion + wildcard
+ */
+void config_foreach_matching(const char *pattern, param_visitor_fn visitor, void *ctx);
 
 #ifdef __cplusplus
 }
