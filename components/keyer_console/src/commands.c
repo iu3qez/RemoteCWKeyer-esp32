@@ -11,6 +11,8 @@
 #include "rt_log.h"
 #include "hal_gpio.h"
 #include "decoder.h"
+#include "text_keyer.h"
+#include "text_memory.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -906,6 +908,163 @@ static console_error_t cmd_decoder(const console_parsed_cmd_t *cmd) {
 }
 
 /* ============================================================================
+ * Text Keyer Commands
+ * ============================================================================ */
+
+/**
+ * @brief send <text> - Send text as CW
+ */
+static console_error_t cmd_send(const console_parsed_cmd_t *cmd) {
+    if (cmd->argc == 0) {
+        return CONSOLE_ERR_MISSING_ARG;
+    }
+
+    /* Concatenate all arguments with spaces */
+    static char text[TEXT_KEYER_MAX_LEN];
+    text[0] = '\0';
+
+    for (int i = 0; i < cmd->argc && cmd->args[i] != NULL; i++) {
+        if (i > 0) {
+            strncat(text, " ", sizeof(text) - strlen(text) - 1);
+        }
+        strncat(text, cmd->args[i], sizeof(text) - strlen(text) - 1);
+    }
+
+    if (text_keyer_send(text) != 0) {
+        printf("Error: already sending or invalid text\r\n");
+        return CONSOLE_ERR_INVALID_VALUE;
+    }
+
+    printf("Sending: %s\r\n", text);
+    return CONSOLE_OK;
+}
+
+/**
+ * @brief m1-m8 - Send memory slot
+ */
+static console_error_t cmd_memory_send(const console_parsed_cmd_t *cmd) {
+    /* Extract slot number from command name (m1 -> 0, m8 -> 7) */
+    const char *name = cmd->command;
+    if (name[0] != 'm' || name[1] < '1' || name[1] > '8') {
+        return CONSOLE_ERR_UNKNOWN_CMD;
+    }
+
+    uint8_t slot = (uint8_t)(name[1] - '1');
+
+    text_memory_slot_t mem;
+    if (text_memory_get(slot, &mem) != 0) {
+        printf("Slot %d is empty\r\n", slot + 1);
+        return CONSOLE_ERR_INVALID_VALUE;
+    }
+
+    if (text_keyer_send(mem.text) != 0) {
+        printf("Error: already sending\r\n");
+        return CONSOLE_ERR_INVALID_VALUE;
+    }
+
+    printf("Sending M%d [%s]: %s\r\n", slot + 1, mem.label, mem.text);
+    return CONSOLE_OK;
+}
+
+/**
+ * @brief abort - Abort current transmission
+ */
+static console_error_t cmd_abort(const console_parsed_cmd_t *cmd) {
+    (void)cmd;
+    text_keyer_abort();
+    printf("Aborted\r\n");
+    return CONSOLE_OK;
+}
+
+/**
+ * @brief pause - Pause transmission
+ */
+static console_error_t cmd_pause(const console_parsed_cmd_t *cmd) {
+    (void)cmd;
+    text_keyer_pause();
+    printf("Paused\r\n");
+    return CONSOLE_OK;
+}
+
+/**
+ * @brief resume - Resume transmission
+ */
+static console_error_t cmd_resume(const console_parsed_cmd_t *cmd) {
+    (void)cmd;
+    text_keyer_resume();
+    printf("Resumed\r\n");
+    return CONSOLE_OK;
+}
+
+/**
+ * @brief mem [slot] [text|clear|label <label>] - Memory slot management
+ */
+static console_error_t cmd_mem(const console_parsed_cmd_t *cmd) {
+    /* No args - list all slots */
+    if (cmd->argc == 0) {
+        for (uint8_t i = 0; i < TEXT_MEMORY_SLOTS; i++) {
+            text_memory_slot_t slot;
+            if (text_memory_get(i, &slot) == 0) {
+                printf("M%d [%s]: %s\r\n", i + 1, slot.label, slot.text);
+            } else {
+                printf("M%d: (empty)\r\n", i + 1);
+            }
+        }
+        return CONSOLE_OK;
+    }
+
+    /* Parse slot number */
+    int slot_num = atoi(cmd->args[0]);
+    if (slot_num < 1 || slot_num > 8) {
+        printf("Error: slot must be 1-8\r\n");
+        return CONSOLE_ERR_OUT_OF_RANGE;
+    }
+    uint8_t slot = (uint8_t)(slot_num - 1);
+
+    /* Just slot number - show that slot */
+    if (cmd->argc == 1) {
+        text_memory_slot_t mem;
+        if (text_memory_get(slot, &mem) == 0) {
+            printf("M%d [%s]: %s\r\n", slot + 1, mem.label, mem.text);
+        } else {
+            printf("M%d: (empty)\r\n", slot + 1);
+        }
+        return CONSOLE_OK;
+    }
+
+    /* Check for subcommands */
+    if (strcmp(cmd->args[1], "clear") == 0) {
+        text_memory_clear(slot);
+        printf("M%d cleared\r\n", slot + 1);
+        return CONSOLE_OK;
+    }
+
+    if (strcmp(cmd->args[1], "label") == 0) {
+        if (cmd->argc < 3 || cmd->args[2] == NULL) {
+            return CONSOLE_ERR_MISSING_ARG;
+        }
+        text_memory_set_label(slot, cmd->args[2]);
+        printf("M%d label set to '%s'\r\n", slot + 1, cmd->args[2]);
+        return CONSOLE_OK;
+    }
+
+    /* Remaining args are the text */
+    static char text[TEXT_KEYER_MAX_LEN];
+    text[0] = '\0';
+
+    for (int i = 1; i < cmd->argc && cmd->args[i] != NULL; i++) {
+        if (i > 1) {
+            strncat(text, " ", sizeof(text) - strlen(text) - 1);
+        }
+        strncat(text, cmd->args[i], sizeof(text) - strlen(text) - 1);
+    }
+
+    text_memory_set(slot, text, NULL);
+    printf("M%d saved\r\n", slot + 1);
+    return CONSOLE_OK;
+}
+
+/* ============================================================================
  * Command registry
  * ============================================================================ */
 
@@ -964,6 +1123,23 @@ static const char USAGE_DECODER[] =
     "  decoder stats       Show timing statistics\r\n"
     "  decoder clear       Clear buffer and reset timing";
 
+static const char USAGE_SEND[] =
+    "  send <text>         Send text as CW\r\n"
+    "\r\n"
+    "Supports A-Z, 0-9, punctuation, spaces, and prosigns.\r\n"
+    "Prosigns: <SK>, <AR>, <BT>, <KN>, <AS>, <SN>, <KA>\r\n"
+    "\r\n"
+    "Examples:\r\n"
+    "  send CQ CQ DE IU3QEZ K\r\n"
+    "  send 73 <SK>";
+
+static const char USAGE_MEM[] =
+    "  mem                 List all slots\r\n"
+    "  mem <slot>          Show slot (1-8)\r\n"
+    "  mem <slot> <text>   Save text to slot\r\n"
+    "  mem <slot> clear    Clear slot\r\n"
+    "  mem <slot> label X  Set slot label";
+
 static const console_cmd_t s_commands[] = {
     { "help",          "List commands or show help",   NULL,        cmd_help },
     { "?",             "Alias for help",               NULL,        cmd_question },
@@ -983,6 +1159,19 @@ static const console_cmd_t s_commands[] = {
     { "decoder",       "CW decoder control",           USAGE_DECODER, cmd_decoder },
     { "test",          "Diagnostic tests",             NULL,        cmd_test },
     { "gpio",          "Read raw GPIO state",          NULL,        cmd_gpio },
+    { "send",          "Send text as CW",              USAGE_SEND,  cmd_send },
+    { "m1",            "Send memory slot 1",           NULL,        cmd_memory_send },
+    { "m2",            "Send memory slot 2",           NULL,        cmd_memory_send },
+    { "m3",            "Send memory slot 3",           NULL,        cmd_memory_send },
+    { "m4",            "Send memory slot 4",           NULL,        cmd_memory_send },
+    { "m5",            "Send memory slot 5",           NULL,        cmd_memory_send },
+    { "m6",            "Send memory slot 6",           NULL,        cmd_memory_send },
+    { "m7",            "Send memory slot 7",           NULL,        cmd_memory_send },
+    { "m8",            "Send memory slot 8",           NULL,        cmd_memory_send },
+    { "abort",         "Abort CW transmission",        NULL,        cmd_abort },
+    { "pause",         "Pause CW transmission",        NULL,        cmd_pause },
+    { "resume",        "Resume CW transmission",       NULL,        cmd_resume },
+    { "mem",           "Memory slot management",       USAGE_MEM,   cmd_mem },
 };
 
 #define NUM_COMMANDS (sizeof(s_commands) / sizeof(s_commands[0]))
