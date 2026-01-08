@@ -625,6 +625,7 @@ typedef union {
     uint16_t u16;
     uint32_t u32;
     bool     b;
+    const char *str;  /**< For string parameters (points to config buffer) */
 } param_value_t;
 
 /** Parameter type with validation */
@@ -659,8 +660,11 @@ typedef struct {
 
 """
 
+    # Count all parameters (including strings)
+    console_param_count = len(params)
+
     code += f"#define FAMILY_COUNT {family_count}\n"
-    code += f"#define CONSOLE_PARAM_COUNT {len(params)}\n\n"
+    code += f"#define CONSOLE_PARAM_COUNT {console_param_count}\n\n"
 
     if families:
         code += "extern const family_descriptor_t CONSOLE_FAMILIES[FAMILY_COUNT];\n"

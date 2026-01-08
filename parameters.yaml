@@ -541,6 +541,26 @@ families:
               it: "Disabilitato"
           advanced: true
 
+      callsign:
+        type: string
+        max_length: 12
+        default: "N0CALL"
+        nvs_key: "callsign"
+        runtime_change: immediate
+        priority: 31
+        gui:
+          label_short:
+            en: "Call"
+            it: "Nominativo"
+          label_long:
+            en: "Callsign"
+            it: "Nominativo"
+          description:
+            en: "Your amateur radio callsign"
+            it: "Il tuo nominativo radioamatoriale"
+          widget: text
+          advanced: false
+
   leds:
     order: 6
     icon: "lightbulb"
