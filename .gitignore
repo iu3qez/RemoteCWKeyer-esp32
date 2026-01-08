@@ -24,11 +24,12 @@ target
 
 # Auto-generated code (regenerated at build time)
 src/generated/*.rs
-components/keyer_config/include/config.h
-components/keyer_config/include/config_console.h
-components/keyer_config/include/config_meta.h
-components/keyer_config/include/config_nvs.h
-components/keyer_config/include/config_schema.h
+components/keyer_config/config.h
+components/keyer_config/config_console.h
+components/keyer_config/config_meta.h
+components/keyer_config/config_nvs.h
+components/keyer_config/config_schema.h
+components/keyer_config/include/
 components/keyer_config/src/config.c
 components/keyer_config/src/config_console.c
 components/keyer_config/src/config_nvs.c
