@@ -295,20 +295,71 @@ static console_error_t cmd_show(const console_parsed_cmd_t *cmd) {
 }
 
 /**
+ * @brief Strip quotes from value if present
+ */
+static const char *strip_quotes(const char *s, char *buf, size_t buflen) {
+    if (s == NULL || buflen == 0) return s;
+    size_t len = strlen(s);
+
+    /* Check for leading/trailing quotes */
+    if (len >= 2 && ((s[0] == '"' && s[len-1] == '"') ||
+                     (s[0] == '\'' && s[len-1] == '\''))) {
+        if (len - 2 < buflen) {
+            memcpy(buf, s + 1, len - 2);
+            buf[len - 2] = '\0';
+            return buf;
+        }
+    }
+    return s;
+}
+
+/**
  * @brief set <path> <value> - Set parameter by path
  *
  * Examples:
  *   set keyer.wpm 25
  *   set audio.sidetone_freq_hz 700
+ *   set wifi.ssid=MyNetwork
+ *   set wifi.ssid = "My Network"
  *   set wpm 25  (legacy, still works)
  */
 static console_error_t cmd_set(const console_parsed_cmd_t *cmd) {
-    if (cmd->argc < 2) {
+    if (cmd->argc < 1) {
         return CONSOLE_ERR_MISSING_ARG;
     }
 
-    const char *path = cmd->args[0];
-    const char *value = cmd->args[1];
+    static char path_buf[64];
+    static char value_buf[128];
+    const char *path = NULL;
+    const char *value = NULL;
+
+    /* Check for key=value format in first arg */
+    const char *eq = strchr(cmd->args[0], '=');
+    if (eq != NULL) {
+        /* key=value or key="value" format */
+        size_t path_len = (size_t)(eq - cmd->args[0]);
+        if (path_len >= sizeof(path_buf)) path_len = sizeof(path_buf) - 1;
+        memcpy(path_buf, cmd->args[0], path_len);
+        path_buf[path_len] = '\0';
+        path = path_buf;
+        value = strip_quotes(eq + 1, value_buf, sizeof(value_buf));
+    } else if (cmd->argc >= 2) {
+        path = cmd->args[0];
+        /* Check if args[1] is "=" */
+        if (strcmp(cmd->args[1], "=") == 0) {
+            if (cmd->argc < 3) {
+                return CONSOLE_ERR_MISSING_ARG;
+            }
+            value = strip_quotes(cmd->args[2], value_buf, sizeof(value_buf));
+        } else {
+            /* Skip leading = if present */
+            const char *v = cmd->args[1];
+            if (v[0] == '=') v++;
+            value = strip_quotes(v, value_buf, sizeof(value_buf));
+        }
+    } else {
+        return CONSOLE_ERR_MISSING_ARG;
+    }
 
     /* Try full path first (config_find_param handles both path and name) */
     int ret = config_set_param_str(path, value);
@@ -326,6 +377,13 @@ static console_error_t cmd_set(const console_parsed_cmd_t *cmd) {
 
     switch (ret) {
         case 0:
+            /* Show confirmation with new value */
+            {
+                char buf[128];
+                if (config_get_param_str(path, buf, sizeof(buf)) == 0) {
+                    printf("%s=%s\r\n", path, buf);
+                }
+            }
             return CONSOLE_OK;
         case -1:
             return CONSOLE_ERR_UNKNOWN_CMD;
