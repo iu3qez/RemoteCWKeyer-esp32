@@ -746,10 +746,6 @@ int config_set_param_str(const char *name, const char *value) {
             break;
 
         case PARAM_TYPE_STRING:
-            /* Handled above */
-            return -2;
-
-        case PARAM_TYPE_STRING:
             /* For strings, max field is max length */
             if (strlen(value) > p->max) {
                 return -4;  /* Too long */

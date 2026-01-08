@@ -7,6 +7,7 @@
  */
 
 #include "console.h"
+#include "config.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -45,7 +46,12 @@ void console_init(void) {
 }
 
 void console_print_prompt(void) {
-    printf("> ");
+    const char *callsign = g_config.system.callsign;
+    if (callsign[0] != '\0') {
+        printf("%s> ", callsign);
+    } else {
+        printf("> ");
+    }
     fflush(stdout);
 }
 
@@ -70,7 +76,8 @@ bool console_push_char(char c) {
                 s_line_pos = strlen(s_line_buf);
 
                 /* Clear and redraw line */
-                printf("\r> %s\033[K", s_line_buf);
+                const char *call1 = g_config.system.callsign;
+                printf("\r%s> %s\033[K", call1[0] ? call1 : "", s_line_buf);
                 fflush(stdout);
             }
             return false;
@@ -94,7 +101,8 @@ bool console_push_char(char c) {
             }
 
             /* Clear and redraw line */
-            printf("\r> %s\033[K", s_line_buf);
+            const char *call2 = g_config.system.callsign;
+            printf("\r%s> %s\033[K", call2[0] ? call2 : "", s_line_buf);
             fflush(stdout);
             return false;
         }
@@ -121,7 +129,8 @@ bool console_push_char(char c) {
         /* Tab character - try to complete */
         if (console_complete(s_line_buf, &s_line_pos, CONSOLE_LINE_MAX)) {
             /* Completion succeeded - redraw line */
-            printf("\r> %s", s_line_buf);
+            const char *call3 = g_config.system.callsign;
+            printf("\r%s> %s", call3[0] ? call3 : "", s_line_buf);
             fflush(stdout);
         }
         return false;
