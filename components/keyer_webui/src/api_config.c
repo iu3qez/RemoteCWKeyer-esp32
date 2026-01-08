@@ -51,6 +51,9 @@ esp_err_t api_config_get_handler(httpd_req_t *req) {
             case PARAM_TYPE_ENUM:
                 cJSON_AddNumberToObject(family_obj, p->name, val.u8);
                 break;
+            case PARAM_TYPE_STRING:
+                /* String params handled separately, not in CONSOLE_PARAMS */
+                break;
         }
     }
 
