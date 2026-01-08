@@ -152,6 +152,9 @@ def main():
     print("Generating config_nvs.h...")
     generate_config_nvs_h(params, output_dir)
 
+    print("Generating config_nvs.c...")
+    generate_config_nvs_c(params, families, output_dir)
+
     print("Generating config_console.h...")
     generate_config_console_h(params, families, output_dir)
 
@@ -587,6 +590,190 @@ esp_err_t config_save_param(const char *name);
 """
 
     with open(output_dir / "config_nvs.h", "w") as f:
+        f.write(code)
+
+
+def generate_config_nvs_c(params: List[Dict], families: List[Dict], output_dir: Path):
+    """Generate config_nvs.c - NVS persistence implementation"""
+
+    src_dir = output_dir / "src"
+    src_dir.mkdir(parents=True, exist_ok=True)
+
+    code = """/* Auto-generated from parameters.yaml - DO NOT EDIT MANUALLY */
+/**
+ * @file config_nvs.c
+ * @brief NVS persistence implementation
+ */
+
+#include "config_nvs.h"
+#include "config.h"
+#include "nvs_flash.h"
+#include "nvs.h"
+#include <string.h>
+
+int config_load_from_nvs(void) {
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(CONFIG_NVS_NAMESPACE, NVS_READONLY, &handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        return 0;  /* Namespace doesn't exist yet, use defaults */
+    }
+    if (err != ESP_OK) {
+        return -1;
+    }
+
+    int loaded = 0;
+    uint8_t u8_val;
+    uint16_t u16_val;
+    uint32_t u32_val;
+    size_t str_len;
+
+"""
+
+    # Generate load code for each parameter
+    for p in params:
+        family = p.get('family', '')
+        ptype = p['type']
+        pname = p['name']
+
+        # Build NVS key macro name
+        if family:
+            nvs_key = f"NVS_{family.upper()}_{pname.upper()}"
+            config_path = f"g_config.{family}.{pname}"
+        else:
+            nvs_key = f"NVS_{pname.upper()}"
+            config_path = f"g_config.{pname}"
+
+        if ptype == 'u8' or ptype == 'enum':
+            code += f"""    /* Load {family}.{pname} */
+    if (nvs_get_u8(handle, {nvs_key}, &u8_val) == ESP_OK) {{
+        atomic_store_explicit(&{config_path}, u8_val, memory_order_relaxed);
+        loaded++;
+    }}
+
+"""
+        elif ptype == 'u16':
+            code += f"""    /* Load {family}.{pname} */
+    if (nvs_get_u16(handle, {nvs_key}, &u16_val) == ESP_OK) {{
+        atomic_store_explicit(&{config_path}, u16_val, memory_order_relaxed);
+        loaded++;
+    }}
+
+"""
+        elif ptype == 'u32':
+            code += f"""    /* Load {family}.{pname} */
+    if (nvs_get_u32(handle, {nvs_key}, &u32_val) == ESP_OK) {{
+        atomic_store_explicit(&{config_path}, u32_val, memory_order_relaxed);
+        loaded++;
+    }}
+
+"""
+        elif ptype == 'bool':
+            code += f"""    /* Load {family}.{pname} */
+    if (nvs_get_u8(handle, {nvs_key}, &u8_val) == ESP_OK) {{
+        atomic_store_explicit(&{config_path}, u8_val != 0, memory_order_relaxed);
+        loaded++;
+    }}
+
+"""
+        elif ptype == 'string':
+            max_len = p.get('max_length', 32)
+            code += f"""    /* Load {family}.{pname} */
+    str_len = sizeof({config_path});
+    if (nvs_get_str(handle, {nvs_key}, {config_path}, &str_len) == ESP_OK) {{
+        loaded++;
+    }}
+
+"""
+
+    code += """    nvs_close(handle);
+    return loaded;
+}
+
+int config_save_to_nvs(void) {
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(CONFIG_NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) {
+        return -1;
+    }
+
+    int saved = 0;
+
+"""
+
+    # Generate save code for each parameter
+    for p in params:
+        family = p.get('family', '')
+        ptype = p['type']
+        pname = p['name']
+
+        # Build NVS key macro name
+        if family:
+            nvs_key = f"NVS_{family.upper()}_{pname.upper()}"
+            config_path = f"g_config.{family}.{pname}"
+        else:
+            nvs_key = f"NVS_{pname.upper()}"
+            config_path = f"g_config.{pname}"
+
+        if ptype == 'u8' or ptype == 'enum':
+            code += f"""    /* Save {family}.{pname} */
+    if (nvs_set_u8(handle, {nvs_key},
+            atomic_load_explicit(&{config_path}, memory_order_relaxed)) == ESP_OK) {{
+        saved++;
+    }}
+
+"""
+        elif ptype == 'u16':
+            code += f"""    /* Save {family}.{pname} */
+    if (nvs_set_u16(handle, {nvs_key},
+            atomic_load_explicit(&{config_path}, memory_order_relaxed)) == ESP_OK) {{
+        saved++;
+    }}
+
+"""
+        elif ptype == 'u32':
+            code += f"""    /* Save {family}.{pname} */
+    if (nvs_set_u32(handle, {nvs_key},
+            atomic_load_explicit(&{config_path}, memory_order_relaxed)) == ESP_OK) {{
+        saved++;
+    }}
+
+"""
+        elif ptype == 'bool':
+            code += f"""    /* Save {family}.{pname} */
+    if (nvs_set_u8(handle, {nvs_key},
+            atomic_load_explicit(&{config_path}, memory_order_relaxed) ? 1 : 0) == ESP_OK) {{
+        saved++;
+    }}
+
+"""
+        elif ptype == 'string':
+            code += f"""    /* Save {family}.{pname} */
+    if (nvs_set_str(handle, {nvs_key}, {config_path}) == ESP_OK) {{
+        saved++;
+    }}
+
+"""
+
+    code += """    err = nvs_commit(handle);
+    nvs_close(handle);
+
+    return (err == ESP_OK) ? saved : -1;
+}
+
+esp_err_t config_load_param(const char *name) {
+    /* TODO: Implement single parameter load */
+    (void)name;
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
+esp_err_t config_save_param(const char *name) {
+    /* TODO: Implement single parameter save */
+    (void)name;
+    return ESP_ERR_NOT_SUPPORTED;
+}
+"""
+
+    with open(src_dir / "config_nvs.c", "w") as f:
         f.write(code)
 
 

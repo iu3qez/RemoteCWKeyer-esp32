@@ -5,24 +5,48 @@
  */
 
 #include "config.h"
+#include <string.h>
 
 keyer_config_t g_config;
 
 void config_init_defaults(keyer_config_t *cfg) {
-    atomic_init(&cfg->wpm, 25);
-    atomic_init(&cfg->iambic_mode, 0);  /* ModeA */
-    atomic_init(&cfg->memory_window_us, 500);
-    atomic_init(&cfg->weight, 50);
-    atomic_init(&cfg->sidetone_freq_hz, 600);
-    atomic_init(&cfg->sidetone_volume, 70);
-    atomic_init(&cfg->fade_duration_ms, 5);
-    atomic_init(&cfg->gpio_dit, 3);
-    atomic_init(&cfg->gpio_dah, 4);
-    atomic_init(&cfg->gpio_tx, 15);
-    atomic_init(&cfg->ptt_tail_ms, 100);
-    atomic_init(&cfg->tick_rate_hz, 10000);
-    atomic_init(&cfg->debug_logging, false);
-    atomic_init(&cfg->led_brightness, 50);
+    atomic_init(&cfg->keyer.wpm, 25);
+    atomic_init(&cfg->keyer.iambic_mode, 0);  /* ModeA */
+    atomic_init(&cfg->keyer.memory_mode, 3);  /* DOT_AND_DAH */
+    atomic_init(&cfg->keyer.squeeze_mode, 0);  /* LATCH_OFF */
+    atomic_init(&cfg->keyer.weight, 50);
+    atomic_init(&cfg->keyer.mem_window_start_pct, 0);
+    atomic_init(&cfg->keyer.mem_window_end_pct, 100);
+    atomic_init(&cfg->audio.sidetone_freq_hz, 600);
+    atomic_init(&cfg->audio.sidetone_volume, 70);
+    atomic_init(&cfg->audio.fade_duration_ms, 5);
+    atomic_init(&cfg->hardware.gpio_dit, 4);
+    atomic_init(&cfg->hardware.gpio_dah, 5);
+    atomic_init(&cfg->hardware.gpio_tx, 6);
+    atomic_init(&cfg->timing.ptt_tail_ms, 100);
+    atomic_init(&cfg->timing.tick_rate_hz, 10000);
+    atomic_init(&cfg->system.debug_logging, false);
+    strncpy(cfg->system.callsign, "N0CALL", 12);
+    cfg->system.callsign[12] = '\0';
+    atomic_init(&cfg->leds.gpio_data, 38);
+    atomic_init(&cfg->leds.count, 7);
+    atomic_init(&cfg->leds.brightness, 50);
+    atomic_init(&cfg->leds.brightness_dim, 10);
+    atomic_init(&cfg->wifi.enabled, false);
+    strncpy(cfg->wifi.ssid, "", 32);
+    cfg->wifi.ssid[32] = '\0';
+    strncpy(cfg->wifi.password, "", 64);
+    cfg->wifi.password[64] = '\0';
+    atomic_init(&cfg->wifi.timeout_sec, 30);
+    atomic_init(&cfg->wifi.use_static_ip, false);
+    strncpy(cfg->wifi.ip_address, "0.0.0.0", 16);
+    cfg->wifi.ip_address[16] = '\0';
+    strncpy(cfg->wifi.netmask, "255.255.255.0", 16);
+    cfg->wifi.netmask[16] = '\0';
+    strncpy(cfg->wifi.gateway, "0.0.0.0", 16);
+    cfg->wifi.gateway[16] = '\0';
+    strncpy(cfg->wifi.dns, "0.0.0.0", 16);
+    cfg->wifi.dns[16] = '\0';
     atomic_init(&cfg->generation, 0);
 }
 
