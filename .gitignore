@@ -53,3 +53,4 @@ components/keyer_webui/frontend/dist/
 components/keyer_webui/frontend/node_modules/
 components/keyer_webui/scripts/__pycache__/embed_assets.cpython-313.pyc
 
+components/keyer_webui/src/assets.c
