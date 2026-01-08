@@ -47,11 +47,16 @@ keying_stream_t g_keying_stream;
 fault_state_t g_fault_state = FAULT_STATE_INIT;
 
 void app_main(void) {
+    /* Minimal early debug - use printf since ESP_LOG may not be ready */
+    printf("\n\n=== app_main() START ===\n");
+
     ESP_LOGI(TAG, "keyer_c starting...");
 
+    printf(">>> log_stream_init...\n");
     /* Initialize log streams FIRST (before any RT_* logging) */
     log_stream_init(&g_rt_log_stream);
     log_stream_init(&g_bg_log_stream);
+    printf(">>> log_stream_init OK\n");
 
     /* Enable RT diagnostics for boot debugging */
     atomic_store_explicit(&g_rt_diag_enabled, true, memory_order_relaxed);
