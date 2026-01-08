@@ -68,14 +68,16 @@ esp_err_t wifi_app_init(const wifi_config_app_t *config)
     /* Save configuration */
     memcpy(&s_wifi.config, config, sizeof(wifi_config_app_t));
 
-    /* Initialize TCP/IP stack */
+    /* TCP/IP stack and event loop are initialized in main.c unconditionally.
+     * These calls are safe to repeat - esp_netif_init() is idempotent and
+     * esp_event_loop_create_default() returns ESP_ERR_INVALID_STATE if already created.
+     */
     esp_err_t ret = esp_netif_init();
-    if (ret != ESP_OK) {
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, "Failed to init netif: %s", esp_err_to_name(ret));
         return ret;
     }
 
-    /* Create default event loop */
     ret = esp_event_loop_create_default();
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, "Failed to create event loop: %s", esp_err_to_name(ret));
@@ -89,7 +91,23 @@ esp_err_t wifi_app_init(const wifi_config_app_t *config)
         return ESP_ERR_NO_MEM;
     }
 
-    /* Initialize WiFi */
+    /* Create STA and AP netifs BEFORE esp_wifi_init (ESP-IDF requirement) */
+    s_wifi.sta_netif = esp_netif_create_default_wifi_sta();
+    if (s_wifi.sta_netif == NULL) {
+        ESP_LOGE(TAG, "Failed to create STA netif");
+        vEventGroupDelete(s_wifi.event_group);
+        return ESP_FAIL;
+    }
+
+    s_wifi.ap_netif = esp_netif_create_default_wifi_ap();
+    if (s_wifi.ap_netif == NULL) {
+        ESP_LOGE(TAG, "Failed to create AP netif");
+        esp_netif_destroy(s_wifi.sta_netif);
+        vEventGroupDelete(s_wifi.event_group);
+        return ESP_FAIL;
+    }
+
+    /* Initialize WiFi (AFTER creating netifs) */
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ret = esp_wifi_init(&cfg);
     if (ret != ESP_OK) {
@@ -319,14 +337,7 @@ static esp_err_t start_ap_mode(void)
 {
     ESP_LOGI(TAG, "Starting AP mode");
 
-    /* Create AP netif if needed */
-    if (s_wifi.ap_netif == NULL) {
-        s_wifi.ap_netif = esp_netif_create_default_wifi_ap();
-        if (s_wifi.ap_netif == NULL) {
-            ESP_LOGE(TAG, "Failed to create AP netif");
-            return ESP_FAIL;
-        }
-    }
+    /* AP netif already created in wifi_app_init() */
 
     /* Get MAC address for SSID suffix */
     uint8_t mac[6];
@@ -395,14 +406,7 @@ static void connection_task(void *pvParameters)
     ESP_LOGI(TAG, "Connection task started");
     atomic_store_explicit(&s_wifi.state, WIFI_STATE_CONNECTING, memory_order_relaxed);
 
-    /* Create STA netif */
-    s_wifi.sta_netif = esp_netif_create_default_wifi_sta();
-    if (s_wifi.sta_netif == NULL) {
-        ESP_LOGE(TAG, "Failed to create STA netif");
-        atomic_store_explicit(&s_wifi.state, WIFI_STATE_FAILED, memory_order_relaxed);
-        vTaskDelete(NULL);
-        return;
-    }
+    /* STA netif already created in wifi_app_init() */
 
     /* Configure static IP if requested */
     esp_err_t ret = configure_static_ip();

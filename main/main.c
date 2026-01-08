@@ -10,6 +10,8 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_netif.h"
+#include "esp_event.h"
 #include "nvs_flash.h"
 
 #include "keyer_core.h"
@@ -85,6 +87,10 @@ void app_main(void) {
     } else {
         ESP_LOGI(TAG, "Using default configuration");
     }
+
+    /* Initialize TCP/IP stack unconditionally (required for HTTP server even without WiFi) */
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     /* Initialize HAL GPIO using values from g_config (loaded from NVS or defaults) */
     hal_gpio_config_t gpio_cfg = {
