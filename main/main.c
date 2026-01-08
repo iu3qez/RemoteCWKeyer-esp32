@@ -23,6 +23,7 @@
 #include "hal_audio.h"
 #include "usb_cdc.h"
 #include "usb_log.h"
+#include "wifi.h"
 #include "webui.h"
 
 static const char *TAG = "main";
