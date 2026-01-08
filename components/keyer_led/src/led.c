@@ -15,14 +15,14 @@ static const char *TAG = "led";
 /* Maximum number of LEDs supported */
 #define MAX_LEDS 16
 
-/* WS2812B GRB color definitions */
+/* RGB color definitions (format: 0xRRGGBB) */
 #define COLOR_OFF       0x000000U
-#define COLOR_RED       0x00FF00U   /* G=0, R=FF, B=0 */
-#define COLOR_GREEN     0xFF0000U   /* G=FF, R=0, B=0 */
-#define COLOR_BLUE      0x0000FFU   /* G=0, R=0, B=FF */
-#define COLOR_ORANGE    0x80FF00U   /* G=80, R=FF, B=0 */
-#define COLOR_YELLOW    0xA0FF00U   /* G=A0, R=FF, B=0 */
-#define COLOR_MAGENTA   0x00FFFFU   /* G=0, R=FF, B=FF */
+#define COLOR_RED       0xFF0000U   /* R=FF, G=0, B=0 */
+#define COLOR_GREEN     0x00FF00U   /* R=0, G=FF, B=0 */
+#define COLOR_BLUE      0x0000FFU   /* R=0, G=0, B=FF */
+#define COLOR_ORANGE    0xFF8000U   /* R=FF, G=80, B=0 */
+#define COLOR_YELLOW    0xFFA000U   /* R=FF, G=A0, B=0 */
+#define COLOR_MAGENTA   0xFF00FFU   /* R=FF, G=0, B=FF */
 
 /* Animation timing constants */
 #define BREATH_PERIOD_US    2000000  /* 2s full breath cycle */
@@ -226,8 +226,8 @@ static uint32_t apply_brightness(uint32_t color, uint8_t brightness)
 static void set_all_leds(uint32_t color)
 {
     for (size_t i = 0; i < s_led.config.led_count; i++) {
-        s_led.pixel_buf[i * 3U + 0U] = (uint8_t)((color >> 16) & 0xFFU); /* G */
-        s_led.pixel_buf[i * 3U + 1U] = (uint8_t)((color >> 8) & 0xFFU);  /* R */
+        s_led.pixel_buf[i * 3U + 0U] = (uint8_t)((color >> 16) & 0xFFU); /* R */
+        s_led.pixel_buf[i * 3U + 1U] = (uint8_t)((color >> 8) & 0xFFU);  /* G */
         s_led.pixel_buf[i * 3U + 2U] = (uint8_t)(color & 0xFFU);         /* B */
     }
 }
@@ -241,8 +241,8 @@ static void set_led(size_t index, uint32_t color)
         return;
     }
 
-    s_led.pixel_buf[index * 3U + 0U] = (uint8_t)((color >> 16) & 0xFFU); /* G */
-    s_led.pixel_buf[index * 3U + 1U] = (uint8_t)((color >> 8) & 0xFFU);  /* R */
+    s_led.pixel_buf[index * 3U + 0U] = (uint8_t)((color >> 16) & 0xFFU); /* R */
+    s_led.pixel_buf[index * 3U + 1U] = (uint8_t)((color >> 8) & 0xFFU);  /* G */
     s_led.pixel_buf[index * 3U + 2U] = (uint8_t)(color & 0xFFU);         /* B */
 }
 

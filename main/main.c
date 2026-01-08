@@ -25,6 +25,7 @@
 #include "usb_log.h"
 #include "wifi.h"
 #include "webui.h"
+#include "led.h"
 
 static const char *TAG = "main";
 
@@ -100,6 +101,20 @@ void app_main(void) {
     /* Initialize USB CDC (before console) */
     ESP_ERROR_CHECK(usb_cdc_init());
 
+    /* Initialize LED strip */
+    led_config_t led_cfg = {
+        .gpio_data = atomic_load_explicit(&g_config.leds.gpio_data, memory_order_relaxed),
+        .led_count = atomic_load_explicit(&g_config.leds.count, memory_order_relaxed),
+        .brightness = atomic_load_explicit(&g_config.leds.brightness, memory_order_relaxed),
+        .brightness_dim = atomic_load_explicit(&g_config.leds.brightness_dim, memory_order_relaxed),
+    };
+    ret = led_init(&led_cfg);
+    if (ret == ESP_OK) {
+        led_set_state(LED_STATE_BOOT);
+    } else {
+        ESP_LOGW(TAG, "LED init failed (non-fatal): %s", esp_err_to_name(ret));
+    }
+
     /* Initialize WiFi if enabled */
     if (atomic_load_explicit(&g_config.wifi.enabled, memory_order_relaxed)) {
         ESP_LOGI(TAG, "WiFi enabled, initializing...");
@@ -117,12 +132,15 @@ void app_main(void) {
 
         ret = wifi_app_init(&wifi_cfg);
         if (ret == ESP_OK) {
+            led_set_state(LED_STATE_WIFI_CONNECTING);
             wifi_app_start();
         } else {
             ESP_LOGE(TAG, "WiFi init failed: %s", esp_err_to_name(ret));
+            led_set_state(LED_STATE_DEGRADED);
         }
     } else {
         ESP_LOGI(TAG, "WiFi disabled");
+        led_set_state(LED_STATE_IDLE);
     }
 
     /* Initialize stream */
