@@ -389,7 +389,7 @@ int config_save_to_nvs(void) {
     }
 
     /* Save leds.brightness */
-    if (nvs_set_u8(handle, NVS_KEY_BRIGHTNESS,
+    if (nvs_set_u8(handle, NVS_LEDS_BRIGHTNESS,
             (uint8_t)atomic_load_explicit(&g_config.leds.brightness, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
