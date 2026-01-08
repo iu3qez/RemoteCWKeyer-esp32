@@ -188,6 +188,11 @@ def get_c_atomic_type(param: Dict) -> str:
     return type_map.get(param['type'], 'atomic_uint')
 
 
+def is_string_type(param: Dict) -> bool:
+    """Check if parameter is a string type"""
+    return param.get('type') == 'string'
+
+
 def get_c_storage_type(param: Dict) -> str:
     """Map parameter type to C storage type"""
     if is_string_type(param):
@@ -403,6 +408,7 @@ def generate_config_c(params: List[Dict], families: List[Dict], output_dir: Path
  */
 
 #include "config.h"
+#include <string.h>
 
 keyer_config_t g_config;
 
@@ -565,7 +571,12 @@ esp_err_t config_save_param(const char *name);
 """
 
     for p in params:
-        code += f"#define NVS_KEY_{p['name'].upper()} \"{p['nvs_key']}\"\n"
+        family = p.get('family', '')
+        if family:
+            # Include family prefix: NVS_LEDS_BRIGHTNESS
+            code += f"#define NVS_{family.upper()}_{p['name'].upper()} \"{p['nvs_key']}\"\n"
+        else:
+            code += f"#define NVS_{p['name'].upper()} \"{p['nvs_key']}\"\n"
 
     code += """
 #ifdef __cplusplus

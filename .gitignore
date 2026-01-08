@@ -31,6 +31,12 @@ components/keyer_config/include/config_nvs.h
 components/keyer_config/src/config.c
 components/keyer_config/src/config_console.c
 components/keyer_config/src/config_nvs.c
+components/keyer_config/include/config.h
+components/keyer_config/include/config_meta.h
+components/keyer_config/include/config_nvs.h
+components/keyer_config/include/config_console.h
+components/keyer_config/src/config.c
+components/keyer_console/include/log_tags.h
 .devcontainer/Dockerfile.old
 .cargo/config.toml.old
 scripts/__pycache__/
@@ -44,5 +50,8 @@ dependencies.lock
 .gitignore
 .vscode/settings.json
 sdkconfig
+sdkconfig.old
 
 components/keyer_config/include/config_schema.h
+components/keyer_webui/frontend/dist/
+components/keyer_webui/frontend/node_modules/
