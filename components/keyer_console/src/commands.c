@@ -6,6 +6,7 @@
  */
 
 #include "console.h"
+#include "config.h"
 #include "config_console.h"
 #include "config_nvs.h"
 #include "rt_log.h"
@@ -31,6 +32,7 @@
 #include "usb_uf2.h"
 #include "usb_cdc.h"
 #include "tusb_cdc_acm.h"
+#include "wifi.h"
 /* Use USB console printf for command output (skip for IDE analyzers) */
 #if !defined(__INTELLISENSE__) && !defined(__clang_analyzer__) && !defined(__clangd__)
 #define printf usb_console_printf
@@ -171,6 +173,27 @@ static console_error_t cmd_stats(const console_parsed_cmd_t *cmd) {
         printf("heap: %lu bytes free (min: %lu)\r\n",
                (unsigned long)heap_free, (unsigned long)heap_min);
         printf("stream: ok\r\n");
+
+        /* WiFi status */
+        wifi_state_t wifi_state = wifi_get_state();
+        const char *state_str;
+        switch (wifi_state) {
+            case WIFI_STATE_DISABLED:   state_str = "disabled"; break;
+            case WIFI_STATE_CONNECTING: state_str = "connecting"; break;
+            case WIFI_STATE_CONNECTED:  state_str = "connected"; break;
+            case WIFI_STATE_FAILED:     state_str = "failed"; break;
+            case WIFI_STATE_AP_MODE:    state_str = "AP mode"; break;
+            default:                    state_str = "unknown"; break;
+        }
+        printf("wifi: %s\r\n", state_str);
+
+        if (wifi_state == WIFI_STATE_CONNECTED || wifi_state == WIFI_STATE_AP_MODE) {
+            printf("ssid: %s\r\n", g_config.wifi.ssid);
+            char ip_buf[16];
+            if (wifi_get_ip(ip_buf, sizeof(ip_buf))) {
+                printf("ip: %s\r\n", ip_buf);
+            }
+        }
     } else if (strcmp(cmd->args[0], "heap") == 0) {
         uint32_t heap_free = esp_get_free_heap_size();
         uint32_t heap_min = esp_get_minimum_free_heap_size();

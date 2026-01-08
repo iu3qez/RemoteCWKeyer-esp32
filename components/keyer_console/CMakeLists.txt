@@ -22,7 +22,7 @@ idf_component_register(
         "src/completion.c"
     INCLUDE_DIRS "include"
     REQUIRES keyer_config keyer_logging driver keyer_hal keyer_decoder keyer_text
-    PRIV_REQUIRES keyer_usb keyer_wifi
+    PRIV_REQUIRES keyer_usb keyer_wifi keyer_wifi
 )
 
 target_compile_options(${COMPONENT_LIB} PRIVATE

@@ -100,6 +100,31 @@ void app_main(void) {
     /* Initialize USB CDC (before console) */
     ESP_ERROR_CHECK(usb_cdc_init());
 
+    /* Initialize WiFi if enabled */
+    if (atomic_load_explicit(&g_config.wifi.enabled, memory_order_relaxed)) {
+        ESP_LOGI(TAG, "WiFi enabled, initializing...");
+        wifi_config_app_t wifi_cfg = {
+            .enabled = true,
+            .timeout_sec = atomic_load_explicit(&g_config.wifi.timeout_sec, memory_order_relaxed),
+            .use_static_ip = atomic_load_explicit(&g_config.wifi.use_static_ip, memory_order_relaxed),
+        };
+        strncpy(wifi_cfg.ssid, g_config.wifi.ssid, sizeof(wifi_cfg.ssid) - 1);
+        strncpy(wifi_cfg.password, g_config.wifi.password, sizeof(wifi_cfg.password) - 1);
+        strncpy(wifi_cfg.ip_address, g_config.wifi.ip_address, sizeof(wifi_cfg.ip_address) - 1);
+        strncpy(wifi_cfg.netmask, g_config.wifi.netmask, sizeof(wifi_cfg.netmask) - 1);
+        strncpy(wifi_cfg.gateway, g_config.wifi.gateway, sizeof(wifi_cfg.gateway) - 1);
+        strncpy(wifi_cfg.dns, g_config.wifi.dns, sizeof(wifi_cfg.dns) - 1);
+
+        ret = wifi_app_init(&wifi_cfg);
+        if (ret == ESP_OK) {
+            wifi_app_start();
+        } else {
+            ESP_LOGE(TAG, "WiFi init failed: %s", esp_err_to_name(ret));
+        }
+    } else {
+        ESP_LOGI(TAG, "WiFi disabled");
+    }
+
     /* Initialize stream */
     ESP_LOGI(TAG, "Initializing keying stream (%d samples)", STREAM_BUFFER_SIZE);
     stream_init(&g_keying_stream, s_stream_buffer, STREAM_BUFFER_SIZE);

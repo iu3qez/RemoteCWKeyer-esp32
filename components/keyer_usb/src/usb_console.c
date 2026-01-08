@@ -112,5 +112,5 @@ void usb_console_printf(const char *fmt, ...) {
 }
 
 void usb_console_prompt(void) {
-    usb_console_print("\r\n> ");
+    console_print_prompt();
 }

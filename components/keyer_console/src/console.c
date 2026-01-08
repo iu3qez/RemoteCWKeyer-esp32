@@ -141,6 +141,7 @@ bool console_push_char(char c) {
     console_complete_reset();
 
     if (c == '\r' || c == '\n') {
+        printf("\r\n");
         if (s_line_pos > 0) {
             s_line_buf[s_line_pos] = '\0';
 
@@ -157,12 +158,10 @@ bool console_push_char(char c) {
                        console_error_code(err),
                        console_error_message(err));
             }
-
-            s_line_pos = 0;
-            s_saved_pos = 0;
-            return true;
         }
-        return false;
+        s_line_pos = 0;
+        s_saved_pos = 0;
+        return true;  /* Always reprint prompt after Enter */
     } else if (c == '\b' || c == 0x7F) {
         /* Backspace */
         if (s_line_pos > 0) {
