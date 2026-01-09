@@ -52,7 +52,11 @@ esp_err_t api_config_get_handler(httpd_req_t *req) {
                 cJSON_AddNumberToObject(family_obj, p->name, val.u8);
                 break;
             case PARAM_TYPE_STRING:
-                /* String params handled separately, not in CONSOLE_PARAMS */
+                if (val.str != NULL) {
+                    cJSON_AddStringToObject(family_obj, p->name, val.str);
+                } else {
+                    cJSON_AddStringToObject(family_obj, p->name, "");
+                }
                 break;
         }
     }

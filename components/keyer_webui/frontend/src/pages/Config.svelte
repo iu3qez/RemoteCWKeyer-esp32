@@ -151,6 +151,14 @@
                     {Boolean(getValue(param)) ? 'ON' : 'OFF'}
                   </span>
                 </label>
+              {:else if param.type === 'string'}
+                <input
+                  type={param.widget === 'password' ? 'password' : 'text'}
+                  class="text-input"
+                  value={String(getValue(param) ?? '')}
+                  placeholder={param.description}
+                  onchange={(e) => handleChange(param, e.currentTarget.value)}
+                />
               {:else if param.values}
                 <select
                   value={getValue(param)}
@@ -448,6 +456,28 @@
     font-weight: 600;
     color: var(--text-secondary);
     min-width: 30px;
+  }
+
+  /* Text Input */
+  .text-input {
+    width: 100%;
+    padding: 0.5rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-dim);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-family: inherit;
+  }
+
+  .text-input:hover,
+  .text-input:focus {
+    border-color: var(--text-secondary);
+    outline: none;
+  }
+
+  .text-input::placeholder {
+    color: var(--text-dim);
+    opacity: 0.5;
   }
 
   /* Select */
