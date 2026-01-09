@@ -59,3 +59,18 @@ export interface ConfigSchema {
 }
 
 export type ConfigValues = Record<string, Record<string, number | boolean | string>>;
+
+export type TextKeyerState = 'IDLE' | 'SENDING' | 'PAUSED';
+
+export interface TextKeyerStatus {
+  state: TextKeyerState;
+  sent: number;
+  total: number;
+  progress: number;
+}
+
+export interface MemorySlot {
+  slot: number;
+  text: string;
+  label: string;
+}

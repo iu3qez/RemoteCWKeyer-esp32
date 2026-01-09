@@ -6,8 +6,20 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "cJSON.h"
+#include "wifi.h"
 
 static const char *TAG = "api_system";
+
+static const char *wifi_state_to_string(wifi_state_t state) {
+    switch (state) {
+        case WIFI_STATE_DISABLED:   return "DISABLED";
+        case WIFI_STATE_CONNECTING: return "CONNECTING";
+        case WIFI_STATE_CONNECTED:  return "CONNECTED";
+        case WIFI_STATE_FAILED:     return "FAILED";
+        case WIFI_STATE_AP_MODE:    return "AP_MODE";
+        default:                    return "UNKNOWN";
+    }
+}
 
 /* GET /api/status */
 esp_err_t api_status_handler(httpd_req_t *req) {
@@ -17,10 +29,16 @@ esp_err_t api_status_handler(httpd_req_t *req) {
         return ESP_FAIL;
     }
 
-    /* TODO: Integrate with wifi module when available */
-    cJSON_AddStringToObject(root, "mode", "UNKNOWN");
-    cJSON_AddStringToObject(root, "ip", "0.0.0.0");
-    cJSON_AddBoolToObject(root, "ready", false);
+    /* Get WiFi state */
+    wifi_state_t state = wifi_get_state();
+    char ip_buf[16] = "0.0.0.0";
+    wifi_get_ip(ip_buf, sizeof(ip_buf));
+
+    bool ready = (state == WIFI_STATE_CONNECTED || state == WIFI_STATE_AP_MODE);
+
+    cJSON_AddStringToObject(root, "mode", wifi_state_to_string(state));
+    cJSON_AddStringToObject(root, "ip", ip_buf);
+    cJSON_AddBoolToObject(root, "ready", ready);
 
     char *json_str = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);

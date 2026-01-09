@@ -16,6 +16,8 @@ idf_component_register(
         keyer_config
         keyer_core
         keyer_decoder
+        keyer_wifi
+        keyer_text
 )
 
 # Strict compiler flags

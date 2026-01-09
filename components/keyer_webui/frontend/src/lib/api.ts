@@ -4,7 +4,9 @@ import type {
   DecoderStatus,
   TimelineConfig,
   ConfigSchema,
-  ConfigValues
+  ConfigValues,
+  TextKeyerStatus,
+  MemorySlot
 } from './types';
 
 class ApiClient {
@@ -73,6 +75,51 @@ class ApiClient {
   // Timeline
   async getTimelineConfig(): Promise<TimelineConfig> {
     return this.fetchJson('/api/timeline/config');
+  }
+
+  // Text Keyer
+  async sendText(text: string): Promise<void> {
+    await this.fetchJson('/api/text/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+  }
+
+  async getTextStatus(): Promise<TextKeyerStatus> {
+    return this.fetchJson('/api/text/status');
+  }
+
+  async abortText(): Promise<void> {
+    await this.fetchJson('/api/text/abort', { method: 'POST' });
+  }
+
+  async pauseText(): Promise<void> {
+    await this.fetchJson('/api/text/pause', { method: 'POST' });
+  }
+
+  async resumeText(): Promise<void> {
+    await this.fetchJson('/api/text/resume', { method: 'POST' });
+  }
+
+  async getMemorySlots(): Promise<{ slots: MemorySlot[] }> {
+    return this.fetchJson('/api/text/memory');
+  }
+
+  async setMemorySlot(slot: number, text: string, label: string): Promise<void> {
+    await this.fetchJson('/api/text/memory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slot, text, label })
+    });
+  }
+
+  async playMemorySlot(slot: number): Promise<void> {
+    await this.fetchJson('/api/text/play', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slot })
+    });
   }
 
   // SSE helpers

@@ -21,6 +21,14 @@ extern esp_err_t api_decoder_enable_handler(httpd_req_t *req);
 extern esp_err_t api_decoder_stream_handler(httpd_req_t *req);
 extern esp_err_t api_timeline_config_handler(httpd_req_t *req);
 extern esp_err_t api_timeline_stream_handler(httpd_req_t *req);
+extern esp_err_t api_text_send_handler(httpd_req_t *req);
+extern esp_err_t api_text_status_handler(httpd_req_t *req);
+extern esp_err_t api_text_abort_handler(httpd_req_t *req);
+extern esp_err_t api_text_pause_handler(httpd_req_t *req);
+extern esp_err_t api_text_resume_handler(httpd_req_t *req);
+extern esp_err_t api_text_memory_list_handler(httpd_req_t *req);
+extern esp_err_t api_text_memory_set_handler(httpd_req_t *req);
+extern esp_err_t api_text_play_handler(httpd_req_t *req);
 
 /* SPA routes that should serve index.html */
 static const char *SPA_ROUTES[] = {
@@ -196,6 +204,71 @@ static void register_api_routes(httpd_handle_t server) {
         .user_ctx = NULL,
     };
     httpd_register_uri_handler(server, &timeline_stream);
+
+    /* Text Keyer API */
+    httpd_uri_t text_send = {
+        .uri = "/api/text/send",
+        .method = HTTP_POST,
+        .handler = api_text_send_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &text_send);
+
+    httpd_uri_t text_status = {
+        .uri = "/api/text/status",
+        .method = HTTP_GET,
+        .handler = api_text_status_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &text_status);
+
+    httpd_uri_t text_abort = {
+        .uri = "/api/text/abort",
+        .method = HTTP_POST,
+        .handler = api_text_abort_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &text_abort);
+
+    httpd_uri_t text_pause = {
+        .uri = "/api/text/pause",
+        .method = HTTP_POST,
+        .handler = api_text_pause_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &text_pause);
+
+    httpd_uri_t text_resume = {
+        .uri = "/api/text/resume",
+        .method = HTTP_POST,
+        .handler = api_text_resume_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &text_resume);
+
+    httpd_uri_t text_memory_list = {
+        .uri = "/api/text/memory",
+        .method = HTTP_GET,
+        .handler = api_text_memory_list_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &text_memory_list);
+
+    httpd_uri_t text_memory_set = {
+        .uri = "/api/text/memory",
+        .method = HTTP_POST,
+        .handler = api_text_memory_set_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &text_memory_set);
+
+    httpd_uri_t text_play = {
+        .uri = "/api/text/play",
+        .method = HTTP_POST,
+        .handler = api_text_play_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &text_play);
 }
 
 esp_err_t webui_init(void) {
