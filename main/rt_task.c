@@ -24,6 +24,7 @@
 #include "hal_gpio.h"
 #include "hal_audio.h"
 #include "config.h"
+#include "text_keyer.h"
 
 /* Drift threshold: 5% */
 #define DIAG_DRIFT_THRESHOLD_PCT 5
@@ -202,6 +203,11 @@ void rt_task(void *arg) {
 
         /* 2. Tick iambic FSM */
         stream_sample_t sample = iambic_tick(&iambic, now_us, gpio);
+
+        /* 2b. Override with text keyer state if active (mutually exclusive with paddle) */
+        if (text_keyer_is_key_down()) {
+            sample.local_key = 1;
+        }
 
         /* 3. Push to stream */
         if (!stream_push(&g_keying_stream, sample)) {

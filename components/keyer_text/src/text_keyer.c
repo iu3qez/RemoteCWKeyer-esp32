@@ -36,10 +36,12 @@ typedef struct {
  * Module State
  * ============================================================================ */
 
-static keying_stream_t *s_stream = NULL;
 static const atomic_bool *s_paddle_abort = NULL;
 static text_keyer_state_t s_state = TEXT_KEYER_IDLE;
 static send_state_t s_send = {0};
+
+/* Atomic key state for RT task polling (Core 0 reads, Core 1 writes) */
+static atomic_bool s_key_down = ATOMIC_VAR_INIT(false);
 
 /* ============================================================================
  * Timing Helpers
@@ -53,18 +55,11 @@ static int64_t dit_duration_us(void) {
 }
 
 /* ============================================================================
- * Sample Production
+ * Key State Management
  * ============================================================================ */
 
-static void emit_sample(bool key_down) {
-    if (s_stream == NULL) return;
-
-    stream_sample_t sample = STREAM_SAMPLE_EMPTY;
-    sample.local_key = key_down ? 1 : 0;
-    if (key_down) {
-        sample.flags |= FLAG_LOCAL_EDGE;
-    }
-    stream_push(s_stream, sample);
+static void set_key_down(bool key_down) {
+    atomic_store_explicit(&s_key_down, key_down, memory_order_release);
 }
 
 /* ============================================================================
@@ -116,7 +111,7 @@ static bool start_next_element(int64_t now_us) {
             s_send.element = ELEMENT_CHAR_GAP;
             s_send.element_end_us = now_us + (dit_us * 3);
             s_send.key_down = false;
-            emit_sample(false);
+            set_key_down(false);
         }
 
         s_send.current_pattern = get_next_pattern();
@@ -131,7 +126,7 @@ static bool start_next_element(int64_t now_us) {
             s_send.element = ELEMENT_WORD_GAP;
             s_send.element_end_us = now_us + (dit_us * 7);
             s_send.key_down = false;
-            emit_sample(false);
+            set_key_down(false);
             s_send.current_pattern = NULL;  /* Force get next pattern */
             return true;
         }
@@ -156,7 +151,7 @@ static bool start_next_element(int64_t now_us) {
     }
 
     s_send.key_down = true;
-    emit_sample(true);
+    set_key_down(true);
     return true;
 }
 
@@ -165,7 +160,7 @@ static void finish_element(int64_t now_us) {
 
     if (s_send.key_down) {
         s_send.key_down = false;
-        emit_sample(false);
+        set_key_down(false);
 
         /* Intra-element gap if more elements in pattern */
         if (s_send.current_pattern != NULL &&
@@ -184,13 +179,13 @@ static void finish_element(int64_t now_us) {
  * ============================================================================ */
 
 int text_keyer_init(const text_keyer_config_t *config) {
-    if (config == NULL || config->stream == NULL) {
+    if (config == NULL) {
         return -1;
     }
 
-    s_stream = config->stream;
     s_paddle_abort = config->paddle_abort;
     s_state = TEXT_KEYER_IDLE;
+    set_key_down(false);
     memset(&s_send, 0, sizeof(s_send));
 
     return 0;
@@ -225,9 +220,8 @@ int text_keyer_send(const char *text) {
 void text_keyer_abort(void) {
     if (s_state == TEXT_KEYER_IDLE) return;
 
-    if (s_send.key_down) {
-        emit_sample(false);
-    }
+    /* Always ensure key is released on abort */
+    set_key_down(false);
 
     s_state = TEXT_KEYER_IDLE;
     memset(&s_send, 0, sizeof(s_send));
@@ -237,7 +231,7 @@ void text_keyer_pause(void) {
     if (s_state != TEXT_KEYER_SENDING) return;
 
     if (s_send.key_down) {
-        emit_sample(false);
+        set_key_down(false);
         s_send.key_down = false;
     }
 
@@ -289,7 +283,12 @@ void text_keyer_tick(int64_t now_us) {
         if (s_send.element_end_us == 0) {
             if (!start_next_element(now_us)) {
                 s_state = TEXT_KEYER_IDLE;
+                set_key_down(false);  /* Ensure key released when done */
             }
         }
     }
+}
+
+bool text_keyer_is_key_down(void) {
+    return atomic_load_explicit(&s_key_down, memory_order_acquire);
 }

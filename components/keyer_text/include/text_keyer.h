@@ -19,7 +19,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdatomic.h>
-#include "stream.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -41,14 +40,13 @@ typedef enum {
  * @brief Text keyer configuration
  */
 typedef struct {
-    keying_stream_t *stream;          /**< Output stream (non-owning) */
     const atomic_bool *paddle_abort;  /**< Abort trigger (non-owning, can be NULL) */
 } text_keyer_config_t;
 
 /**
  * @brief Initialize text keyer
  *
- * @param config Configuration (stream is required)
+ * @param config Configuration
  * @return 0 on success, -1 on error
  */
 int text_keyer_init(const text_keyer_config_t *config);
@@ -97,6 +95,16 @@ void text_keyer_get_progress(size_t *sent, size_t *total);
  * @param now_us Current timestamp in microseconds
  */
 void text_keyer_tick(int64_t now_us);
+
+/**
+ * @brief Get current key-down state (RT-safe)
+ *
+ * Called from Core 0 RT task every 1ms to poll text keyer state.
+ * Uses atomic load for lock-free access across cores.
+ *
+ * @return true if text keyer has key down
+ */
+bool text_keyer_is_key_down(void);
 
 #ifdef __cplusplus
 }

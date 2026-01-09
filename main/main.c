@@ -192,7 +192,6 @@ void app_main(void) {
 
     /* Initialize text keyer */
     text_keyer_config_t text_cfg = {
-        .stream = &g_keying_stream,
         .paddle_abort = &g_paddle_active,
     };
     text_keyer_init(&text_cfg);
