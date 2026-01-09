@@ -157,9 +157,12 @@ void rt_task(void *arg) {
     hard_rt_consumer_t consumer;
     hard_rt_consumer_init(&consumer, &g_keying_stream, &g_fault_state, 2);
 
-    /* Initialize sidetone generator */
+    /* Initialize sidetone generator from config */
     sidetone_gen_t sidetone;
-    sidetone_init(&sidetone, 600, 8000, 40);  /* 600Hz, 8kHz sample rate, 5ms fade */
+    uint32_t sidetone_freq = CONFIG_GET_SIDETONE_FREQ_HZ();
+    uint16_t fade_samples = (uint16_t)(CONFIG_GET_FADE_DURATION_MS() * 8);  /* 8kHz sample rate */
+    if (fade_samples < 8) fade_samples = 8;  /* Minimum 1ms fade */
+    sidetone_init(&sidetone, sidetone_freq, 8000, fade_samples);
 
     /* Initialize PTT controller */
     ptt_controller_t ptt;
