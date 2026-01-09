@@ -151,7 +151,7 @@
                     {Boolean(getValue(param)) ? 'ON' : 'OFF'}
                   </span>
                 </label>
-              {:else if param.type === 'string'}
+              {:else if param.widget === 'text' || param.widget === 'password'}
                 <input
                   type={param.widget === 'password' ? 'password' : 'text'}
                   class="text-input"

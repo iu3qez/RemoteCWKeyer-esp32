@@ -100,7 +100,10 @@ esp_err_t api_parameter_set_handler(httpd_req_t *req) {
         return ESP_FAIL;
     }
 
-    const char *param_name = param_item->valuestring;
+    /* Copy param name before freeing json */
+    char param_name[64];
+    snprintf(param_name, sizeof(param_name), "%s", param_item->valuestring);
+
     char value_str[64];
 
     if (cJSON_IsBool(value_item)) {
@@ -120,8 +123,15 @@ esp_err_t api_parameter_set_handler(httpd_req_t *req) {
 
     int result = config_set_param_str(param_name, value_str);
     if (result != 0) {
-        ESP_LOGW(TAG, "Failed to set %s = %s", param_name, value_str);
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid parameter");
+        ESP_LOGW(TAG, "Failed to set %s = %s (error=%d)", param_name, value_str, result);
+        char err_msg[128];
+        switch (result) {
+            case -1: snprintf(err_msg, sizeof(err_msg), "Parameter not found: %.60s", param_name); break;
+            case -2: snprintf(err_msg, sizeof(err_msg), "Invalid value format"); break;
+            case -4: snprintf(err_msg, sizeof(err_msg), "Value out of range"); break;
+            default: snprintf(err_msg, sizeof(err_msg), "Unknown error: %d", result); break;
+        }
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, err_msg);
         return ESP_FAIL;
     }
 
