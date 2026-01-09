@@ -33,9 +33,6 @@
 extern keying_stream_t g_keying_stream;
 extern fault_state_t g_fault_state;
 
-/* Paddle state for text keyer abort (from rt_task.c) */
-extern atomic_bool g_paddle_active;
-
 /**
  * @brief Map WiFi state to LED state
  */
@@ -56,92 +53,10 @@ static led_state_t wifi_to_led_state(wifi_state_t ws) {
     }
 }
 
-/**
- * @brief Initialize LED from config
- */
-static void init_led_from_config(void) {
-    led_config_t led_cfg = {
-        .gpio_data = CONFIG_GET_GPIO_DATA(),
-        .led_count = CONFIG_GET_COUNT(),
-        .brightness = CONFIG_GET_BRIGHTNESS(),
-        .brightness_dim = CONFIG_GET_BRIGHTNESS_DIM()
-    };
-
-    if (led_cfg.led_count == 0) {
-        /* LEDs disabled */
-        return;
-    }
-
-    esp_err_t err = led_init(&led_cfg);
-    if (err == ESP_OK) {
-        led_set_state(LED_STATE_BOOT);
-    }
-    /* Non-fatal: continue without LEDs if init fails */
-}
-
-/**
- * @brief Initialize WiFi from config
- */
-static void init_wifi_from_config(void) {
-    if (!CONFIG_GET_ENABLED()) {
-        /* WiFi disabled */
-        return;
-    }
-
-    wifi_config_app_t wifi_cfg = {
-        .enabled = true,
-        .timeout_sec = CONFIG_GET_TIMEOUT_SEC(),
-        .use_static_ip = CONFIG_GET_USE_STATIC_IP()
-    };
-
-    /* Copy strings */
-    strncpy(wifi_cfg.ssid, CONFIG_GET_SSID(), sizeof(wifi_cfg.ssid) - 1);
-    wifi_cfg.ssid[sizeof(wifi_cfg.ssid) - 1] = '\0';
-
-    strncpy(wifi_cfg.password, CONFIG_GET_PASSWORD(), sizeof(wifi_cfg.password) - 1);
-    wifi_cfg.password[sizeof(wifi_cfg.password) - 1] = '\0';
-
-    strncpy(wifi_cfg.ip_address, CONFIG_GET_IP_ADDRESS(), sizeof(wifi_cfg.ip_address) - 1);
-    wifi_cfg.ip_address[sizeof(wifi_cfg.ip_address) - 1] = '\0';
-
-    strncpy(wifi_cfg.netmask, CONFIG_GET_NETMASK(), sizeof(wifi_cfg.netmask) - 1);
-    wifi_cfg.netmask[sizeof(wifi_cfg.netmask) - 1] = '\0';
-
-    strncpy(wifi_cfg.gateway, CONFIG_GET_GATEWAY(), sizeof(wifi_cfg.gateway) - 1);
-    wifi_cfg.gateway[sizeof(wifi_cfg.gateway) - 1] = '\0';
-
-    strncpy(wifi_cfg.dns, CONFIG_GET_DNS(), sizeof(wifi_cfg.dns) - 1);
-    wifi_cfg.dns[sizeof(wifi_cfg.dns) - 1] = '\0';
-
-    esp_err_t err = wifi_app_init(&wifi_cfg);
-    if (err == ESP_OK) {
-        /* Set LED to connecting state */
-        if (led_is_initialized()) {
-            led_set_state(LED_STATE_WIFI_CONNECTING);
-        }
-        wifi_app_start();
-    }
-}
-
 void bg_task(void *arg) {
     (void)arg;
 
-    /* Initialize LED driver */
-    init_led_from_config();
-
-    /* Initialize decoder (creates its own stream consumer) */
-    decoder_init();
-
-    /* Initialize text keyer */
-    text_keyer_config_t text_cfg = {
-        .stream = &g_keying_stream,
-        .paddle_abort = &g_paddle_active,
-    };
-    text_keyer_init(&text_cfg);
-    text_memory_init();
-
-    /* Initialize WiFi */
-    init_wifi_from_config();
+    /* Note: All initialization (LED, WiFi, decoder, text_keyer) is done in main.c */
 
     /* Log startup */
     int64_t now_us = esp_timer_get_time();
@@ -150,7 +65,6 @@ void bg_task(void *arg) {
     uint32_t stats_counter = 0;
     wifi_state_t prev_wifi_state = WIFI_STATE_DISABLED;
     bool wifi_connected_flash_done = false;
-    static char prev_decoded_char = '\0';
     static int64_t prev_char_timestamp = 0;
 
     for (;;) {
@@ -202,11 +116,10 @@ void bg_task(void *arg) {
             if (last.character == ' ') {
                 webui_decoder_push_word();
             }
-            prev_decoded_char = last.character;
             prev_char_timestamp = last.timestamp_us;
         }
 
-        /* Tick text keyer (produces samples on keying_stream) */
+        /* Tick text keyer */
         text_keyer_tick(now_us);
 
         /* Periodic stats logging */

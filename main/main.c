@@ -28,6 +28,9 @@
 #include "wifi.h"
 #include "webui.h"
 #include "led.h"
+#include "decoder.h"
+#include "text_keyer.h"
+#include "text_memory.h"
 
 static const char *TAG = "main";
 
@@ -35,6 +38,9 @@ static const char *TAG = "main";
 extern void rt_task(void *arg);
 extern void bg_task(void *arg);
 extern void start_audio_test(void);  /* Audio test task */
+
+/* Paddle state for text keyer abort (from rt_task.c) */
+extern atomic_bool g_paddle_active;
 
 /* UART logger task handle (for stopping after USB CDC ready) */
 static TaskHandle_t s_uart_log_task_handle = NULL;
@@ -72,16 +78,23 @@ void app_main(void) {
     vTaskDelay(pdMS_TO_TICKS(5000));
 
     /* Initialize NVS */
+    printf(">>> NVS init...\n");
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+    printf(">>> NVS init OK\n");
 
     /* Initialize config with defaults, then load from NVS */
+    printf(">>> config_init_defaults...\n");
     config_init_defaults(&g_config);
+    printf(">>> config_init_defaults OK\n");
+
+    printf(">>> config_load_from_nvs...\n");
     int loaded = config_load_from_nvs();
+    printf(">>> config_load_from_nvs OK (loaded=%d)\n", loaded);
     if (loaded > 0) {
         ESP_LOGI(TAG, "Loaded %d parameters from NVS", loaded);
     } else {
@@ -93,6 +106,7 @@ void app_main(void) {
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     /* Initialize HAL GPIO using values from g_config (loaded from NVS or defaults) */
+    printf(">>> hal_gpio_init...\n");
     hal_gpio_config_t gpio_cfg = {
         .dit_pin = CONFIG_GET_GPIO_DIT(),
         .dah_pin = CONFIG_GET_GPIO_DAH(),
@@ -103,9 +117,12 @@ void app_main(void) {
     ESP_LOGI(TAG, "GPIO config from g_config: DIT=%d, DAH=%d, TX=%d",
              gpio_cfg.dit_pin, gpio_cfg.dah_pin, gpio_cfg.tx_pin);
     hal_gpio_init(&gpio_cfg);
+    printf(">>> hal_gpio_init OK\n");
 
     /* Initialize USB CDC (before console) */
+    printf(">>> usb_cdc_init...\n");
     ESP_ERROR_CHECK(usb_cdc_init());
+    printf(">>> usb_cdc_init OK\n");
 
     /* Initialize LED strip */
     led_config_t led_cfg = {
@@ -165,10 +182,21 @@ void app_main(void) {
     /* Initialize console */
     console_init();
 
-    /* Initialize WebUI (TODO: add WiFi check when WiFi is implemented) */
+    /* Initialize WebUI (requires WiFi to be connected) */
     ESP_LOGI(TAG, "Initializing WebUI...");
     webui_init();
     webui_start();
+
+    /* Initialize decoder (creates its own stream consumer) */
+    decoder_init();
+
+    /* Initialize text keyer */
+    text_keyer_config_t text_cfg = {
+        .stream = &g_keying_stream,
+        .paddle_abort = &g_paddle_active,
+    };
+    text_keyer_init(&text_cfg);
+    text_memory_init();
 
     ESP_LOGI(TAG, "Creating tasks...");
 
