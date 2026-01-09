@@ -17,7 +17,8 @@
 				"espressif.esp-idf-web",
 				"Anthropic.claude-code",
 				"ms-vscode.cpptools-extension-pack",
-				"ms-vscode.cpptools"
+				"ms-vscode.cpptools",
+				"svelte.svelte-vscode"
 			]
 		}
 	},
