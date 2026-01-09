@@ -164,9 +164,9 @@ void rt_task(void *arg) {
     if (fade_samples < 8) fade_samples = 8;  /* Minimum 1ms fade */
     sidetone_init(&sidetone, sidetone_freq, 8000, fade_samples);
 
-    /* Initialize PTT controller */
+    /* Initialize PTT controller from config */
     ptt_controller_t ptt;
-    ptt_init(&ptt, 100);  /* 100ms tail */
+    ptt_init(&ptt, CONFIG_GET_PTT_TAIL_MS());
 
     TickType_t last_wake = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(1);  /* 1ms tick */
@@ -192,8 +192,19 @@ void rt_task(void *arg) {
             iambic_cfg.mem_window_start_pct = CONFIG_GET_MEM_WINDOW_START_PCT();
             iambic_cfg.mem_window_end_pct = CONFIG_GET_MEM_WINDOW_END_PCT();
             iambic_set_config(&iambic, &iambic_cfg);
-            RT_INFO(&g_rt_log_stream, now_us, "Config updated: WPM=%lu mode=%u",
-                    (unsigned long)iambic_cfg.wpm, (unsigned)iambic_cfg.mode);
+
+            /* Reload sidetone frequency */
+            uint32_t new_freq = CONFIG_GET_SIDETONE_FREQ_HZ();
+            if (new_freq != sidetone_freq) {
+                sidetone_set_frequency(&sidetone, new_freq);
+                sidetone_freq = new_freq;
+            }
+
+            /* Reload PTT tail */
+            ptt_set_tail(&ptt, CONFIG_GET_PTT_TAIL_MS());
+
+            RT_INFO(&g_rt_log_stream, now_us, "Config updated: WPM=%lu freq=%lu",
+                    (unsigned long)iambic_cfg.wpm, (unsigned long)sidetone_freq);
             last_config_gen = current_gen;
         }
 
@@ -245,8 +256,10 @@ void rt_task(void *arg) {
         /* Generate and write audio ALWAYS (even when stream empty) to maintain I2S sync */
         bool key_down = (out.local_key != 0);
         int16_t audio_samples[SAMPLES_PER_TICK];
+        uint8_t volume = CONFIG_GET_SIDETONE_VOLUME();  /* 1-100 */
         for (int i = 0; i < SAMPLES_PER_TICK; i++) {
-            audio_samples[i] = sidetone_next_sample(&sidetone, key_down);
+            int32_t sample = sidetone_next_sample(&sidetone, key_down);
+            audio_samples[i] = (int16_t)((sample * volume) / 100);
         }
 
         /* DEBUG: Log when key goes down and check ALL audio samples */
