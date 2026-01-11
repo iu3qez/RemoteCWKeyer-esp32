@@ -1,8 +1,11 @@
 {
 	"name": "ESP-IDF QEMU",
-	"build": {
-		"dockerfile": "Dockerfile"
-	},
+	// Use pre-built image from ghcr.io (faster startup)
+	// To build locally instead, comment "image" and uncomment "build"
+	"image": "ghcr.io/iu3qez/remotecwkeyer-devcontainer:latest",
+	// "build": {
+	// 	"dockerfile": "Dockerfile"
+	// },
 
 	"customizations": {
 		"vscode": {
@@ -34,6 +37,7 @@
 	"mounts": [
     "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind,consistency=cached",
-    "source=${localEnv:HOME}/.config/PVS-Studio,target=/home/vscode/.config/PVS-Studio,type=bind,consistency=cached"
+    "source=${localEnv:HOME}/.config/PVS-Studio,target=/home/vscode/.config/PVS-Studio,type=bind,consistency=cached",
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
   ]
 }

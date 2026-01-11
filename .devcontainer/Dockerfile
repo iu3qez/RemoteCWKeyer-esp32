@@ -4,7 +4,17 @@ FROM espressif/idf:${DOCKER_TAG}
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 
-RUN apt-get update -y && apt-get install udev curl wget gnupg -y
+RUN apt-get update -y && apt-get install -y \
+    udev curl wget gnupg \
+    ca-certificates lsb-release
+
+# Install Docker CLI (for Docker socket access)
+RUN install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${VERSION_CODENAME:-noble}") stable" > /etc/apt/sources.list.d/docker.list \
+    && apt-get update -y \
+    && apt-get install -y docker-ce-cli docker-compose-plugin
 
 # Install PVS-Studio
 RUN wget -q -O - https://files.pvs-studio.com/etc/pubkey.txt | apt-key add - \
@@ -17,7 +27,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
 	&& apt-get install -y vim \
 	&& apt-get install -y bash-completion \
-	&& npm install -g @anthropic-ai/claude-code 
+	&& npm install -g @anthropic-ai/claude-code
+
+ 
 # Install Python packages for parameter code generation (Feature 4)
 # - jsonschema: Validate parameters.yaml against JSON Schema
 # - pyyaml: Already included in ESP-IDF, but listed here for clarity
@@ -62,7 +74,18 @@ RUN mkdir -p \
 RUN /opt/esp/python_env/idf5.5_py3.12_env/bin/pip  install --no-cache-dir  jsonschema 
 RUN /opt/esp/python_env/idf5.5_py3.12_env/bin/pip  install --no-cache-dir  gcovr
 
+# Clone Continuous-Claude-v3 and add user to docker group
+RUN git clone https://github.com/parcadei/Continuous-Claude-v3.git /opt/continuous-claude \
+    && chown -R ${USERNAME}:${USERNAME} /opt/continuous-claude \
+    && usermod -aG docker ${USERNAME}
+
+# Add uv to PATH for vscode user
+RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/${USERNAME}/.bashrc
+
 USER ${USERNAME}
+
+# Install uv for vscode user
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ENTRYPOINT [ "/opt/esp/entrypoint.sh" ]
 
