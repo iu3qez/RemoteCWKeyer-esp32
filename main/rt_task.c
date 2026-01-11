@@ -211,6 +211,14 @@ void rt_task(void *arg) {
         /* 1. Poll GPIO paddles */
         gpio_state_t gpio = hal_gpio_read_paddles();
 
+        /* 1b. Override with ISR-detected presses (low latency path) */
+        if (hal_gpio_consume_dit_press()) {
+            gpio = gpio_with_dit(gpio, true);
+        }
+        if (hal_gpio_consume_dah_press()) {
+            gpio = gpio_with_dah(gpio, true);
+        }
+
         /* Update paddle active flag for text keyer abort (Core 1) */
         bool paddle_active = !gpio_is_idle(gpio);
         atomic_store_explicit(&g_paddle_active, paddle_active, memory_order_release);

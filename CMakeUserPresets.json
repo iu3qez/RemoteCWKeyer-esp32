@@ -1,0 +1,14 @@
+{
+    "version": 4,
+    "configurePresets": [
+        {
+            "name": "esp-idf",
+            "displayName": "ESP-IDF Build",
+            "description": "Use existing ESP-IDF build directory",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        }
+    ]
+}
