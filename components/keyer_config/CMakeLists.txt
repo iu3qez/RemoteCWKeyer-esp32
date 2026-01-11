@@ -3,6 +3,9 @@
 # Generated from parameters.yaml by gen_config_c.py
 # Provides atomic config struct and NVS persistence.
 
+# Ensure include directory exists before idf_component_register validates it
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include")
+
 idf_component_register(
     SRCS
         "src/config.c"
