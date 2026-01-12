@@ -85,7 +85,6 @@ RUN echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/${USERNAME} \
 # Clone Continuous-Claude-v3
 RUN git clone --depth 1 https://github.com/parcadei/Continuous-Claude-v3.git /opt/continuous-claude 
 RUN chown -R ${USERNAME}:${USERNAME} /opt/continuous-claude
-RUN uv tool install llm-tldr
 
 # Add uv and elan to PATH for vscode user
 RUN echo 'export PATH="$HOME/.elan/bin:$HOME/.local/bin:$PATH"' >> /home/${USERNAME}/.bashrc
@@ -96,6 +95,9 @@ USER ${USERNAME}
 
 # Install uv for vscode user
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install llm-tldr via uv (after uv is installed)
+RUN ~/.local/bin/uv tool install llm-tldr
 
 # Install Elan (Lean4 version manager) - must be as user, installs to ~/.elan
 RUN curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
