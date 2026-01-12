@@ -96,4 +96,4 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ENTRYPOINT [ "/opt/esp/entrypoint.sh" ]
 
-CMD ["/bin/bash", "-c"]
+CMD ["/bin/bash"]

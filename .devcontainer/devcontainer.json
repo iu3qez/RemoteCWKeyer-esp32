@@ -42,6 +42,5 @@
   ],
 
   "postCreateCommand": "cd components/keyer_webui/frontend && npm install",
-	"postStartCommand": "DOCKER_GID=$(stat -c '%g' /var/run/docker.sock) && (getent group $DOCKER_GID || sudo groupadd -g $DOCKER_GID docker-host) && sudo usermod -aG $DOCKER_GID vscode && newgrp docker-host || true",
-	"overrideCommand": false
+	"postStartCommand": "DOCKER_GID=$(stat -c '%g' /var/run/docker.sock) && (getent group $DOCKER_GID || sudo groupadd -g $DOCKER_GID docker-host) && sudo usermod -aG $DOCKER_GID vscode && newgrp docker-host || true"
 }
