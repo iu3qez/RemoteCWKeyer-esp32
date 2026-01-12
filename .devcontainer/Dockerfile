@@ -85,9 +85,12 @@ RUN echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/${USERNAME} \
 # Clone Continuous-Claude-v3
 RUN git clone --depth 1 https://github.com/parcadei/Continuous-Claude-v3.git /opt/continuous-claude 
 RUN chown -R ${USERNAME}:${USERNAME} /opt/continuous-claude
+RUN curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh
 
 # Add uv to PATH for vscode user
 RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/${USERNAME}/.bashrc
+
+
 
 USER ${USERNAME}
 
