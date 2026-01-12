@@ -121,6 +121,49 @@ void test_decoder_state_str(void);
 void test_decoder_buffer_circular(void);
 void test_decoder_get_text_with_timestamps(void);
 
+/* CWNet Timestamp tests */
+void test_timestamp_encode_zero(void);
+void test_timestamp_encode_1ms(void);
+void test_timestamp_encode_15ms(void);
+void test_timestamp_encode_31ms(void);
+void test_timestamp_encode_32ms(void);
+void test_timestamp_encode_36ms(void);
+void test_timestamp_encode_60ms(void);
+void test_timestamp_encode_100ms(void);
+void test_timestamp_encode_156ms(void);
+void test_timestamp_encode_157ms(void);
+void test_timestamp_encode_173ms(void);
+void test_timestamp_encode_500ms(void);
+void test_timestamp_encode_1000ms(void);
+void test_timestamp_encode_1165ms(void);
+void test_timestamp_encode_negative(void);
+void test_timestamp_encode_negative_large(void);
+void test_timestamp_encode_overflow(void);
+void test_timestamp_encode_large_overflow(void);
+void test_timestamp_encode_int_max(void);
+void test_timestamp_encode_33ms(void);
+void test_timestamp_encode_34ms(void);
+void test_timestamp_encode_35ms(void);
+void test_timestamp_encode_158ms(void);
+void test_timestamp_encode_165ms(void);
+void test_timestamp_decode_zero(void);
+void test_timestamp_decode_linear_max(void);
+void test_timestamp_decode_medium_start(void);
+void test_timestamp_decode_medium_end(void);
+void test_timestamp_decode_long_start(void);
+void test_timestamp_decode_long_end(void);
+void test_timestamp_decode_with_key_bit_0x80(void);
+void test_timestamp_decode_with_key_bit_0x9F(void);
+void test_timestamp_decode_with_key_bit_0xBF(void);
+void test_timestamp_decode_with_key_bit_0xFF(void);
+void test_timestamp_roundtrip_linear(void);
+void test_timestamp_roundtrip_medium(void);
+void test_timestamp_roundtrip_long(void);
+void test_timestamp_decode_medium_0x27(void);
+void test_timestamp_decode_medium_0x31(void);
+void test_timestamp_decode_long_0x55(void);
+void test_timestamp_decode_long_0x72(void);
+
 void setUp(void) {
     /* Called before each test */
 }
@@ -268,6 +311,59 @@ int main(void) {
     RUN_TEST(test_decoder_state_str);
     RUN_TEST(test_decoder_buffer_circular);
     RUN_TEST(test_decoder_get_text_with_timestamps);
+
+    /* CWNet Timestamp tests */
+    printf("\n=== CWNet Timestamp Tests ===\n");
+    /* Encoding: Linear range (0-31ms, 1ms resolution) */
+    RUN_TEST(test_timestamp_encode_zero);
+    RUN_TEST(test_timestamp_encode_1ms);
+    RUN_TEST(test_timestamp_encode_15ms);
+    RUN_TEST(test_timestamp_encode_31ms);
+    /* Encoding: Medium range (32-156ms, 4ms resolution) */
+    RUN_TEST(test_timestamp_encode_32ms);
+    RUN_TEST(test_timestamp_encode_36ms);
+    RUN_TEST(test_timestamp_encode_60ms);
+    RUN_TEST(test_timestamp_encode_100ms);
+    RUN_TEST(test_timestamp_encode_156ms);
+    /* Encoding: Long range (157-1165ms, 16ms resolution) */
+    RUN_TEST(test_timestamp_encode_157ms);
+    RUN_TEST(test_timestamp_encode_173ms);
+    RUN_TEST(test_timestamp_encode_500ms);
+    RUN_TEST(test_timestamp_encode_1000ms);
+    RUN_TEST(test_timestamp_encode_1165ms);
+    /* Encoding: Edge cases */
+    RUN_TEST(test_timestamp_encode_negative);
+    RUN_TEST(test_timestamp_encode_negative_large);
+    RUN_TEST(test_timestamp_encode_overflow);
+    RUN_TEST(test_timestamp_encode_large_overflow);
+    RUN_TEST(test_timestamp_encode_int_max);
+    /* Encoding: Resolution boundaries */
+    RUN_TEST(test_timestamp_encode_33ms);
+    RUN_TEST(test_timestamp_encode_34ms);
+    RUN_TEST(test_timestamp_encode_35ms);
+    RUN_TEST(test_timestamp_encode_158ms);
+    RUN_TEST(test_timestamp_encode_165ms);
+    /* Decoding: Basic */
+    RUN_TEST(test_timestamp_decode_zero);
+    RUN_TEST(test_timestamp_decode_linear_max);
+    RUN_TEST(test_timestamp_decode_medium_start);
+    RUN_TEST(test_timestamp_decode_medium_end);
+    RUN_TEST(test_timestamp_decode_long_start);
+    RUN_TEST(test_timestamp_decode_long_end);
+    /* Decoding: Key bit masking */
+    RUN_TEST(test_timestamp_decode_with_key_bit_0x80);
+    RUN_TEST(test_timestamp_decode_with_key_bit_0x9F);
+    RUN_TEST(test_timestamp_decode_with_key_bit_0xBF);
+    RUN_TEST(test_timestamp_decode_with_key_bit_0xFF);
+    /* Decoding: Additional coverage */
+    RUN_TEST(test_timestamp_decode_medium_0x27);
+    RUN_TEST(test_timestamp_decode_medium_0x31);
+    RUN_TEST(test_timestamp_decode_long_0x55);
+    RUN_TEST(test_timestamp_decode_long_0x72);
+    /* Round-trip property tests */
+    RUN_TEST(test_timestamp_roundtrip_linear);
+    RUN_TEST(test_timestamp_roundtrip_medium);
+    RUN_TEST(test_timestamp_roundtrip_long);
 
     return UNITY_END();
 }
