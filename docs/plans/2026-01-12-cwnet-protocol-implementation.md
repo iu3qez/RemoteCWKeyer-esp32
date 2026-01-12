@@ -600,7 +600,207 @@ void remote_rx_producer_on_morse(remote_rx_producer_t *ctx,
 
 ---
 
-## 8. Lessons Learned
+## 8. PTT Management (CRITICO)
+
+### 8.1 Principio Fondamentale
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  IL PTT DEVE ESSERE ATTIVO PRIMA CHE ARRIVI IL PRIMO KEY-DOWN  │
+│  E DEVE RIMANERE ATTIVO FINO A (last_key + tail + latency)     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Se il PTT si disattiva troppo presto → **ultime lettere troncate**
+Se il PTT si attiva troppo tardi → **prime lettere perse**
+
+### 8.2 Timing PTT
+
+```
+        PTT ON                                      PTT OFF
+           │                                           │
+           ▼                                           ▼
+    ───────┬───────────────────────────────────────────┬───────
+           │  CW Keying Events                         │
+           │  ▄▄▄  ▄  ▄▄▄  ▄▄▄    ▄  ▄▄▄  ▄           │
+           │  C    Q   C    Q      D   E              │
+           │                       │                   │
+           │                       │← last_key_time   │
+           │                       │                   │
+           │                       │←─── tail_ms ────►│
+           │                       │←─── + latency ──►│
+```
+
+### 8.3 PTT Tail Dinamico
+
+Il tail PTT DEVE includere la latenza di rete misurata:
+
+```c
+// SBAGLIATO - tail fisso
+#define PTT_TAIL_MS 200
+
+// CORRETTO - tail dinamico
+uint32_t get_ptt_tail_ms(remote_ctx_t *ctx) {
+    return ctx->config.ptt_tail_base_ms + ctx->measured_latency_ms;
+}
+
+// Esempio:
+// - Base tail: 200ms
+// - Latency misurata: 85ms
+// - PTT tail effettivo: 285ms
+```
+
+### 8.4 State Machine PTT (Lato Client TX)
+
+```c
+typedef enum {
+    PTT_STATE_IDLE,         // Nessuna attività
+    PTT_STATE_ACTIVE,       // PTT attivo, keying in corso
+    PTT_STATE_TAIL_WAIT     // Ultimo key-up, aspetto tail timeout
+} ptt_state_t;
+
+typedef struct {
+    ptt_state_t state;
+    int64_t last_key_activity_us;   // Timestamp ultimo evento key
+    uint32_t tail_ms;               // Tail dinamico (base + latency)
+    bool ptt_output;                // Stato output PTT fisico
+} ptt_controller_t;
+
+void ptt_on_key_event(ptt_controller_t *ptt, bool key_down, int64_t now_us) {
+    ptt->last_key_activity_us = now_us;
+
+    switch (ptt->state) {
+        case PTT_STATE_IDLE:
+            if (key_down) {
+                // Prima attività - attiva PTT IMMEDIATAMENTE
+                ptt->ptt_output = true;
+                ptt->state = PTT_STATE_ACTIVE;
+                send_rigctld_command("set_ptt 1");  // Opzionale
+            }
+            break;
+
+        case PTT_STATE_ACTIVE:
+        case PTT_STATE_TAIL_WAIT:
+            if (key_down) {
+                // Nuova attività - resta in ACTIVE
+                ptt->state = PTT_STATE_ACTIVE;
+            } else {
+                // Key-up - inizia countdown tail
+                ptt->state = PTT_STATE_TAIL_WAIT;
+            }
+            break;
+    }
+}
+
+void ptt_tick(ptt_controller_t *ptt, int64_t now_us, uint32_t latency_ms) {
+    if (ptt->state == PTT_STATE_TAIL_WAIT) {
+        // Calcola tail dinamico
+        uint32_t dynamic_tail_us = (ptt->tail_ms + latency_ms) * 1000;
+
+        if (now_us - ptt->last_key_activity_us >= dynamic_tail_us) {
+            // Tail timeout scaduto - disattiva PTT
+            ptt->ptt_output = false;
+            ptt->state = PTT_STATE_IDLE;
+            send_rigctld_command("set_ptt 0");  // Opzionale
+        }
+    }
+}
+```
+
+### 8.5 PTT via rigctld (Opzionale)
+
+Il protocollo CWNet supporta comandi rigctld per controllo esplicito PTT:
+
+```c
+// Client → Server
+void send_ptt_command(bool ptt_on) {
+    char cmd[32];
+    snprintf(cmd, sizeof(cmd), "set_ptt %d\n", ptt_on ? 1 : 0);
+    send_rigctld_frame(cmd);
+}
+
+// Frame format:
+// 0x46 [length] "set_ptt 1\n\0"
+// │              └─ ASCII command + newline + null
+// └─ 0x06 | 0x40 = CMD_RIGCTLD with short block
+```
+
+**Nota:** Il comando `set_ptt` è **opzionale**. Il server può inferire PTT dalla presenza di frame MORSE. Tuttavia, il comando esplicito riduce la latenza di attivazione TX.
+
+### 8.6 PTT Lato Server (Ricezione Keying)
+
+Quando il server riceve MORSE frames da un client remoto:
+
+```c
+// Da CwNet.c:2885-2900
+void server_on_morse_received(server_ctx_t *ctx, int client_idx, uint8_t morse_byte) {
+    // 1. Verifica permessi
+    if (!(ctx->clients[client_idx].permissions & CWNET_PERMISSION_TRANSMIT)) {
+        return;  // Ignora silenziosamente!
+    }
+
+    // 2. Gestione "chi ha la chiave"
+    if (ctx->transmitting_client < 0) {
+        // Nessuno sta trasmettendo - dai la chiave a questo client
+        ctx->transmitting_client = client_idx;
+    }
+
+    if (ctx->transmitting_client != client_idx) {
+        // Un altro client ha la chiave - ignora (o break-in dopo timeout)
+        return;
+    }
+
+    // 3. Inserisci nel FIFO per il keyer thread
+    ctx->morse_rx_fifo[ctx->fifo_head].byte = morse_byte;
+    ctx->morse_rx_fifo[ctx->fifo_head].rx_time_ms = timer_read_synced_ms();
+    ctx->fifo_head = (ctx->fifo_head + 1) % FIFO_SIZE;
+
+    // 4. PTT viene gestito dal keyer thread basandosi sul FIFO
+}
+```
+
+### 8.7 Problemi Comuni PTT
+
+| Problema | Causa | Soluzione |
+|----------|-------|-----------|
+| Prime lettere tagliate | PTT attivato dopo key-down | Attivare PTT su PRIMO key-down |
+| Ultime lettere tagliate | Tail troppo corto | Tail = base + latency misurata |
+| PTT non si disattiva | Nessun timeout | Implementare tail timeout |
+| PTT cicla on/off | Reset `last_key_activity` errato | Reset solo dopo PTT OFF |
+| Latency alta → troncamento | Tail fisso non sufficiente | Tail DINAMICO obbligatorio |
+
+### 8.8 Diagnostica PTT
+
+```c
+// Log PTT state transitions per debug
+void log_ptt_transition(ptt_state_t old_state, ptt_state_t new_state,
+                        bool ptt_output, int64_t now_us) {
+    ESP_LOGI(TAG, "PTT: %s → %s, output=%s, time=%lld",
+             ptt_state_str(old_state),
+             ptt_state_str(new_state),
+             ptt_output ? "ON" : "OFF",
+             now_us / 1000);
+}
+
+// Verifica tail timing
+void verify_ptt_tail(int64_t last_key_us, int64_t ptt_off_us,
+                     uint32_t expected_tail_ms) {
+    int64_t actual_tail_us = ptt_off_us - last_key_us;
+    int64_t expected_tail_us = expected_tail_ms * 1000;
+    int64_t error_us = actual_tail_us - expected_tail_us;
+
+    if (abs(error_us) > 10000) {  // > 10ms error
+        ESP_LOGW(TAG, "PTT tail error: expected=%ldms, actual=%ldms, error=%ldms",
+                 expected_tail_ms,
+                 (long)(actual_tail_us / 1000),
+                 (long)(error_us / 1000));
+    }
+}
+```
+
+---
+
+## 9. Lessons Learned
 
 ### 8.1 Bug Critici dall'Implementazione C++
 
