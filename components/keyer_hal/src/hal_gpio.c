@@ -39,6 +39,14 @@ static volatile atomic_uint_fast32_t s_dit_isr_count = ATOMIC_VAR_INIT(0);
 static volatile atomic_uint_fast32_t s_dah_isr_count = ATOMIC_VAR_INIT(0);
 static volatile atomic_uint_fast32_t s_blanking_reject_count = ATOMIC_VAR_INIT(0);
 
+/* Adaptive blanking state */
+static uint32_t s_effective_blanking_us = 1500;  /* Default conservative */
+
+/* ISR watchdog state - tracks when interrupts were disabled */
+static volatile int64_t s_dit_disabled_at_us = 0;
+static volatile int64_t s_dah_disabled_at_us = 0;
+static volatile atomic_uint_fast32_t s_watchdog_recovery_count = ATOMIC_VAR_INIT(0);
+
 /* ============================================================================
  * ISR Handlers (IRAM_ATTR - must be in internal RAM)
  * ============================================================================ */
@@ -58,11 +66,14 @@ static void IRAM_ATTR dit_isr_handler(void *arg) {
     /* Increment trigger count */
     atomic_fetch_add_explicit(&s_dit_isr_count, 1, memory_order_relaxed);
 
+    /* Record when we disabled the interrupt (for watchdog) */
+    s_dit_disabled_at_us = esp_timer_get_time();
+
     /* Disable interrupt during blanking period */
     gpio_intr_disable((gpio_num_t)s_config.dit_pin);
 
-    /* Start blanking timer to re-enable interrupt */
-    esp_timer_start_once(s_dit_blanking_timer, (uint64_t)s_config.isr_blanking_us);
+    /* Start blanking timer to re-enable interrupt (using adaptive blanking) */
+    esp_timer_start_once(s_dit_blanking_timer, (uint64_t)s_effective_blanking_us);
 }
 
 /**
@@ -73,8 +84,12 @@ static void IRAM_ATTR dah_isr_handler(void *arg) {
 
     atomic_store_explicit(&s_dah_pending, true, memory_order_release);
     atomic_fetch_add_explicit(&s_dah_isr_count, 1, memory_order_relaxed);
+
+    /* Record when we disabled the interrupt (for watchdog) */
+    s_dah_disabled_at_us = esp_timer_get_time();
+
     gpio_intr_disable((gpio_num_t)s_config.dah_pin);
-    esp_timer_start_once(s_dah_blanking_timer, (uint64_t)s_config.isr_blanking_us);
+    esp_timer_start_once(s_dah_blanking_timer, (uint64_t)s_effective_blanking_us);
 }
 
 /* ============================================================================
@@ -86,6 +101,7 @@ static void IRAM_ATTR dah_isr_handler(void *arg) {
  */
 static void dit_blanking_expired(void *arg) {
     (void)arg;
+    s_dit_disabled_at_us = 0;  /* Mark as not disabled (for watchdog) */
     gpio_intr_enable((gpio_num_t)s_config.dit_pin);
 }
 
@@ -94,6 +110,7 @@ static void dit_blanking_expired(void *arg) {
  */
 static void dah_blanking_expired(void *arg) {
     (void)arg;
+    s_dah_disabled_at_us = 0;  /* Mark as not disabled (for watchdog) */
     gpio_intr_enable((gpio_num_t)s_config.dah_pin);
 }
 
@@ -311,6 +328,81 @@ void hal_gpio_isr_get_stats(uint32_t *dit_triggers, uint32_t *dah_triggers,
     }
 }
 
+void hal_gpio_update_blanking_for_wpm(uint32_t wpm) {
+    const uint32_t BASE_BLANKING_US = 1500;
+    const uint32_t MIN_BLANKING_US = 500;   /* Below this: bounce risk */
+
+    if (wpm == 0) {
+        wpm = 25;  /* Fallback to default */
+    }
+
+    /* Dit duration: 1,200,000 / WPM (in us) */
+    uint32_t dit_us = 1200000 / wpm;
+
+    /* QRQ worst case: inter-element = 50% dit */
+    uint32_t inter_element_us = dit_us / 2;
+
+    /* Blanking max = 40% inter-element (60% window for detection) */
+    uint32_t max_blanking = (inter_element_us * 40) / 100;
+
+    /* Start with base blanking */
+    s_effective_blanking_us = BASE_BLANKING_US;
+
+    /* Clamp to max allowed for this WPM */
+    if (s_effective_blanking_us > max_blanking) {
+        s_effective_blanking_us = max_blanking;
+    }
+
+    /* Enforce minimum to prevent bounce issues */
+    if (s_effective_blanking_us < MIN_BLANKING_US) {
+        s_effective_blanking_us = MIN_BLANKING_US;
+    }
+
+    ESP_LOGI(TAG, "Adaptive blanking: WPM=%lu -> blanking=%luus",
+             (unsigned long)wpm, (unsigned long)s_effective_blanking_us);
+
+    /* Warn user if reduced blanking for QRQ */
+    if (wpm > 150 && s_effective_blanking_us < BASE_BLANKING_US) {
+        ESP_LOGW(TAG, "QRQ mode: blanking reduced to %luus. "
+                 "For optimal performance, consider hardware debounce.",
+                 (unsigned long)s_effective_blanking_us);
+    }
+}
+
+void hal_gpio_isr_watchdog(int64_t now_us) {
+    if (!s_isr_enabled) {
+        return;
+    }
+
+    /* Max time interrupt can be disabled: blanking + 1ms safety margin */
+    const int64_t max_disabled_us = (int64_t)s_effective_blanking_us + 1000;
+
+    /* Check DIT */
+    int64_t dit_disabled = s_dit_disabled_at_us;
+    if (dit_disabled > 0 && (now_us - dit_disabled) > max_disabled_us) {
+        gpio_intr_enable((gpio_num_t)s_config.dit_pin);
+        s_dit_disabled_at_us = 0;
+        atomic_fetch_add_explicit(&s_watchdog_recovery_count, 1, memory_order_relaxed);
+        /* Note: No logging in RT path - use counter for diagnostics */
+    }
+
+    /* Check DAH */
+    int64_t dah_disabled = s_dah_disabled_at_us;
+    if (dah_disabled > 0 && (now_us - dah_disabled) > max_disabled_us) {
+        gpio_intr_enable((gpio_num_t)s_config.dah_pin);
+        s_dah_disabled_at_us = 0;
+        atomic_fetch_add_explicit(&s_watchdog_recovery_count, 1, memory_order_relaxed);
+    }
+}
+
+uint32_t hal_gpio_get_watchdog_recoveries(void) {
+    return (uint32_t)atomic_load_explicit(&s_watchdog_recovery_count, memory_order_relaxed);
+}
+
+uint32_t hal_gpio_get_effective_blanking_us(void) {
+    return s_effective_blanking_us;
+}
+
 #else
 /* ============================================================================
  * Host Stub Implementation
@@ -365,6 +457,44 @@ void hal_gpio_isr_get_stats(uint32_t *dit_triggers, uint32_t *dah_triggers,
     if (dit_triggers) *dit_triggers = s_dit_isr_count;
     if (dah_triggers) *dah_triggers = s_dah_isr_count;
     if (blanking_rejects) *blanking_rejects = 0;
+}
+
+/* Adaptive blanking state for host */
+static uint32_t s_effective_blanking_us = 1500;
+static uint32_t s_watchdog_recovery_count = 0;
+
+void hal_gpio_update_blanking_for_wpm(uint32_t wpm) {
+    const uint32_t BASE_BLANKING_US = 1500;
+    const uint32_t MIN_BLANKING_US = 500;
+
+    if (wpm == 0) {
+        wpm = 25;
+    }
+
+    uint32_t dit_us = 1200000 / wpm;
+    uint32_t inter_element_us = dit_us / 2;
+    uint32_t max_blanking = (inter_element_us * 40) / 100;
+
+    s_effective_blanking_us = BASE_BLANKING_US;
+    if (s_effective_blanking_us > max_blanking) {
+        s_effective_blanking_us = max_blanking;
+    }
+    if (s_effective_blanking_us < MIN_BLANKING_US) {
+        s_effective_blanking_us = MIN_BLANKING_US;
+    }
+}
+
+void hal_gpio_isr_watchdog(int64_t now_us) {
+    (void)now_us;
+    /* No-op in host build */
+}
+
+uint32_t hal_gpio_get_watchdog_recoveries(void) {
+    return s_watchdog_recovery_count;
+}
+
+uint32_t hal_gpio_get_effective_blanking_us(void) {
+    return s_effective_blanking_us;
 }
 
 /* Test helper to set paddle state */

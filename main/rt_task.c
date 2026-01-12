@@ -153,6 +153,9 @@ void rt_task(void *arg) {
     iambic_processor_t iambic;
     iambic_init(&iambic, &iambic_cfg);
 
+    /* Set initial ISR blanking based on WPM */
+    hal_gpio_update_blanking_for_wpm(iambic_cfg.wpm);
+
     /* Initialize hard RT consumer */
     hard_rt_consumer_t consumer;
     hard_rt_consumer_init(&consumer, &g_keying_stream, &g_fault_state, 2);
@@ -192,6 +195,9 @@ void rt_task(void *arg) {
             iambic_cfg.mem_window_start_pct = CONFIG_GET_MEM_WINDOW_START_PCT();
             iambic_cfg.mem_window_end_pct = CONFIG_GET_MEM_WINDOW_END_PCT();
             iambic_set_config(&iambic, &iambic_cfg);
+
+            /* Update ISR blanking for new WPM (adaptive blanking) */
+            hal_gpio_update_blanking_for_wpm(iambic_cfg.wpm);
 
             /* Reload sidetone frequency */
             uint32_t new_freq = CONFIG_GET_SIDETONE_FREQ_HZ();
@@ -294,6 +300,9 @@ void rt_task(void *arg) {
         /* 6. Diagnostic logging (zero overhead if disabled) */
         rt_diag_log(&s_diag, &iambic, &sidetone,
                     out.local_key != 0, now_us);
+
+        /* 7. ISR watchdog - recover from stuck interrupts */
+        hal_gpio_isr_watchdog(now_us);
 
         /* Wait for next tick */
         vTaskDelayUntil(&last_wake, period);

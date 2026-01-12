@@ -432,7 +432,7 @@ families:
 
       isr_blanking_us:
         type: u32
-        default: 2000
+        default: 1500
         range: [0, 10000]
         nvs_key: "isr_blank"
         runtime_change: reboot

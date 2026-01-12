@@ -35,7 +35,7 @@ typedef struct {
     .tx_pin = 6, \
     .active_low = true, \
     .tx_active_high = true, \
-    .isr_blanking_us = 2000 \
+    .isr_blanking_us = 1500 \
 }
 
 /**
@@ -104,6 +104,42 @@ bool hal_gpio_isr_enabled(void);
  */
 void hal_gpio_isr_get_stats(uint32_t *dit_triggers, uint32_t *dah_triggers,
                             uint32_t *blanking_rejects);
+
+/**
+ * @brief Update adaptive blanking period based on WPM
+ *
+ * Recalculates the optimal blanking period for the given WPM.
+ * Formula: blanking = min(base, 40% of worst-case inter-element)
+ * QRQ worst-case inter-element = dit_duration / 2
+ *
+ * @param wpm Speed in words per minute
+ * @note Call when WPM configuration changes
+ */
+void hal_gpio_update_blanking_for_wpm(uint32_t wpm);
+
+/**
+ * @brief Check ISR health and recover from stuck interrupts
+ *
+ * Watchdog mechanism that detects and recovers from situations where
+ * the blanking timer fails to re-enable interrupts. Should be called
+ * from the RT task every tick.
+ *
+ * @param now_us Current timestamp from esp_timer_get_time()
+ * @note RT-safe, call from RT task every tick
+ */
+void hal_gpio_isr_watchdog(int64_t now_us);
+
+/**
+ * @brief Get watchdog recovery count
+ * @return Number of times watchdog had to recover a stuck interrupt
+ */
+uint32_t hal_gpio_get_watchdog_recoveries(void);
+
+/**
+ * @brief Get current effective blanking period
+ * @return Current blanking period in microseconds (may differ from config if adaptive)
+ */
+uint32_t hal_gpio_get_effective_blanking_us(void);
 
 #ifdef __cplusplus
 }
