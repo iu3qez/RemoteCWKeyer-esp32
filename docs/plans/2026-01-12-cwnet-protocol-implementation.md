@@ -9,15 +9,20 @@
 ## Indice
 
 1. [Overview](#1-overview)
+   - 1.4 [Configurazione Client](#14-configurazione-client)
+   - 1.5 [Validazione Configurazione](#15-validazione-configurazione)
+   - 1.6 [Mapping su parameters.yaml](#16-mapping-su-parametersyaml)
+   - 1.7 [Console Commands](#17-console-commands)
 2. [Frame Format](#2-frame-format)
 3. [Timer Synchronization (CRITICO)](#3-timer-synchronization-critico)
 4. [Commands](#4-commands)
 5. [CW Stream Encoding](#5-cw-stream-encoding)
 6. [State Machines](#6-state-machines)
 7. [Integration con KeyingStream](#7-integration-con-keyingstream)
-8. [Lessons Learned](#8-lessons-learned)
-9. [Implementation Checklist](#9-implementation-checklist)
-10. [Test Plan](#10-test-plan)
+8. [PTT Management (CRITICO)](#8-ptt-management-critico)
+9. [Lessons Learned](#9-lessons-learned)
+10. [Implementation Checklist](#9-implementation-checklist)
+11. [Test Plan](#10-test-plan)
 
 ---
 
@@ -55,6 +60,160 @@
 #define CWNET_PERMISSION_TRANSMIT       0x02    // Può inviare MORSE
 #define CWNET_PERMISSION_CTRL_RIG       0x04    // Controllo radio
 #define CWNET_PERMISSION_ADMIN          0x08    // Amministratore
+```
+
+### 1.4 Configurazione Client
+
+```c
+/**
+ * Configurazione CWNet Client
+ *
+ * ATTENZIONE: Il server è CASE SENSITIVE!
+ * Il callsign DEVE essere lowercase.
+ */
+typedef struct {
+    // Connessione
+    char server_host[64];           // Hostname o IP del server
+    uint16_t server_port;           // Porta TCP (default: 7355)
+    bool enabled;                   // Client abilitato
+    bool auto_reconnect;            // Riconnetti su disconnessione
+
+    // Identificazione (CASE SENSITIVE!)
+    char callsign[16];              // DEVE essere lowercase! "iu3qez" non "IU3QEZ"
+    char username[44];              // Nome utente (può essere diverso da callsign)
+
+    // Timing
+    uint32_t ptt_tail_base_ms;      // PTT tail base (tipico: 200ms)
+    uint32_t reconnect_delay_ms;    // Delay tra tentativi (tipico: 5000ms)
+    uint32_t handshake_timeout_ms;  // Timeout handshake (tipico: 3000ms)
+} cwnet_client_config_t;
+
+// Default values
+static const cwnet_client_config_t CWNET_CLIENT_CONFIG_DEFAULT = {
+    .server_host = "cwnet.example.com",
+    .server_port = 7355,
+    .enabled = false,               // Disabilitato di default
+    .auto_reconnect = true,
+    .callsign = "",                 // OBBLIGATORIO, lowercase!
+    .username = "",
+    .ptt_tail_base_ms = 200,
+    .reconnect_delay_ms = 5000,
+    .handshake_timeout_ms = 3000,
+};
+```
+
+### 1.5 Validazione Configurazione
+
+```c
+/**
+ * Valida configurazione prima di connettere.
+ *
+ * @return ESP_OK se valida, ESP_ERR_INVALID_ARG se invalida
+ */
+esp_err_t cwnet_config_validate(const cwnet_client_config_t *cfg) {
+    // 1. Callsign obbligatorio
+    if (cfg->callsign[0] == '\0') {
+        ESP_LOGE(TAG, "Callsign non configurato");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    // 2. Callsign DEVE essere lowercase (server è case sensitive!)
+    for (const char *p = cfg->callsign; *p; p++) {
+        if (*p >= 'A' && *p <= 'Z') {
+            ESP_LOGE(TAG, "Callsign DEVE essere lowercase! '%s' contiene maiuscole",
+                     cfg->callsign);
+            return ESP_ERR_INVALID_ARG;
+        }
+    }
+
+    // 3. Server host obbligatorio
+    if (cfg->server_host[0] == '\0') {
+        ESP_LOGE(TAG, "Server host non configurato");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    // 4. Porta valida
+    if (cfg->server_port == 0) {
+        ESP_LOGE(TAG, "Porta server invalida");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    return ESP_OK;
+}
+
+/**
+ * Converte callsign a lowercase in-place.
+ * Chiamare PRIMA di usare la configurazione.
+ */
+void cwnet_callsign_to_lower(char *callsign) {
+    for (char *p = callsign; *p; p++) {
+        if (*p >= 'A' && *p <= 'Z') {
+            *p = *p + ('a' - 'A');
+        }
+    }
+}
+```
+
+### 1.6 Mapping su parameters.yaml
+
+```yaml
+# In parameters.yaml - famiglia "remote"
+remote:
+  cwnet_enabled:
+    type: bool
+    default: false
+    description: "Enable CWNet remote client"
+
+  cwnet_server:
+    type: string
+    max_length: 64
+    default: ""
+    description: "CWNet server hostname or IP"
+
+  cwnet_port:
+    type: uint16
+    default: 7355
+    min: 1
+    max: 65535
+    description: "CWNet server TCP port"
+
+  cwnet_callsign:
+    type: string
+    max_length: 16
+    default: ""
+    description: "Callsign (lowercase only!)"
+    nvs_key: "cwnet_call"
+
+  cwnet_username:
+    type: string
+    max_length: 44
+    default: ""
+    description: "Username (if different from callsign)"
+    nvs_key: "cwnet_user"
+
+  cwnet_ptt_tail_ms:
+    type: uint32
+    default: 200
+    min: 50
+    max: 1000
+    description: "PTT tail base time (ms)"
+
+  cwnet_auto_reconnect:
+    type: bool
+    default: true
+    description: "Auto reconnect on disconnect"
+```
+
+### 1.7 Console Commands
+
+```
+remote status              # Mostra stato connessione e configurazione
+remote connect             # Connetti manualmente
+remote disconnect          # Disconnetti
+remote set server <host>   # Imposta server
+remote set port <port>     # Imposta porta
+remote set callsign <call> # Imposta callsign (auto-lowercase)
+remote set enabled <0|1>   # Abilita/disabilita
 ```
 
 ---
