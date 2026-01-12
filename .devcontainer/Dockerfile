@@ -78,8 +78,8 @@ RUN /opt/esp/python_env/idf5.5_py3.12_env/bin/pip  install --no-cache-dir  gcovr
 RUN groupadd -f docker && usermod -aG docker ${USERNAME}
 
 # Clone Continuous-Claude-v3
-RUN git clone --depth 1 https://github.com/parcadei/Continuous-Claude-v3.git /opt/continuous-claude \
-    && chown -R ${USERNAME}:${USERNAME} /opt/continuous-claude
+RUN git clone --depth 1 https://github.com/parcadei/Continuous-Claude-v3.git /opt/continuous-claude 
+RUN chown -R ${USERNAME}:${USERNAME} /opt/continuous-claude
 
 # Add uv to PATH for vscode user
 RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/${USERNAME}/.bashrc
