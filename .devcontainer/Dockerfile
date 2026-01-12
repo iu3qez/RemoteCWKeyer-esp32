@@ -6,7 +6,8 @@ ENV LANG=C.UTF-8
 
 RUN apt-get update -y && apt-get install -y \
     udev curl wget gnupg \
-    ca-certificates lsb-release
+    ca-certificates lsb-release \
+    sudo
 
 # Install Docker CLI (for Docker socket access)
 RUN install -m 0755 -d /etc/apt/keyrings \
@@ -76,6 +77,10 @@ RUN /opt/esp/python_env/idf5.5_py3.12_env/bin/pip  install --no-cache-dir  gcovr
 
 # Create docker group (for socket access) and add user
 RUN groupadd -f docker && usermod -aG docker ${USERNAME}
+
+# Allow vscode to use sudo without password (needed for docker socket permissions)
+RUN echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/${USERNAME} \
+    && chmod 0440 /etc/sudoers.d/${USERNAME}
 
 # Clone Continuous-Claude-v3
 RUN git clone --depth 1 https://github.com/parcadei/Continuous-Claude-v3.git /opt/continuous-claude 
