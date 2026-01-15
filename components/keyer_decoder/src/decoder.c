@@ -68,6 +68,9 @@ static size_t s_buffer_read = 0;   /* Next read position (for pop) */
 static char s_pattern[MAX_PATTERN_LEN + 1];
 static size_t s_pattern_len = 0;
 
+/** Last finalized pattern (for display) */
+static char s_last_pattern[MAX_PATTERN_LEN + 1];
+
 /** Decoder state */
 static decoder_state_t s_state = DECODER_STATE_IDLE;
 
@@ -123,6 +126,10 @@ static void finalize_pattern(int64_t timestamp_us) {
     }
 
     s_pattern[s_pattern_len] = '\0';
+
+    /* Save pattern before clearing (for display) */
+    memcpy(s_last_pattern, s_pattern, s_pattern_len + 1);
+
     char decoded = morse_table_lookup(s_pattern);
 
     if (decoded != '\0') {
@@ -189,6 +196,7 @@ void decoder_init(void) {
     memset(&s_stats, 0, sizeof(s_stats));
     memset(s_decoded_buffer, 0, sizeof(s_decoded_buffer));
     memset(s_pattern, 0, sizeof(s_pattern));
+    memset(s_last_pattern, 0, sizeof(s_last_pattern));
 
     /* Initialize consumer */
 #ifdef ESP_PLATFORM
@@ -423,8 +431,12 @@ size_t decoder_get_current_pattern(char *buf, size_t max_len) {
         return 0;
     }
 
-    size_t len = (s_pattern_len < max_len - 1) ? s_pattern_len : max_len - 1;
-    memcpy(buf, s_pattern, len);
+    /* Return current pattern if being built, otherwise last finalized */
+    const char *src = (s_pattern_len > 0) ? s_pattern : s_last_pattern;
+    size_t src_len = strlen(src);
+
+    size_t len = (src_len < max_len - 1) ? src_len : max_len - 1;
+    memcpy(buf, src, len);
     buf[len] = '\0';
 
     return len;
@@ -459,6 +471,7 @@ void decoder_reset(void) {
     memset(&s_stats, 0, sizeof(s_stats));
     memset(s_decoded_buffer, 0, sizeof(s_decoded_buffer));
     memset(s_pattern, 0, sizeof(s_pattern));
+    memset(s_last_pattern, 0, sizeof(s_last_pattern));
 
     timing_classifier_reset(&s_timing, DEFAULT_INITIAL_WPM);
 }

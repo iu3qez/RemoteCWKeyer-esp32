@@ -217,6 +217,14 @@ void ws_broadcast_decoder_word(void) {
     ws_broadcast("{\"type\":\"word\"}");
 }
 
+void ws_broadcast_decoder_pattern(const char *pattern) {
+    char json[64];
+    snprintf(json, sizeof(json), "{\"type\":\"pattern\",\"pattern\":\"%s\"}",
+             pattern ? pattern : "");
+    ESP_LOGI(TAG, "Push pattern '%s' clients=%d", pattern ? pattern : "", ws_get_client_count());
+    ws_broadcast(json);
+}
+
 void ws_broadcast_timeline(const char *event_type, const char *json_data) {
     char json[256];
 
