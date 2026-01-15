@@ -113,9 +113,11 @@ void app_main(void) {
         .tx_pin = CONFIG_GET_GPIO_TX(),
         .active_low = true,        /* Paddles are active low (internal pull-up) */
         .tx_active_high = true,    /* TX output is active high */
+        .isr_blanking_us = CONFIG_GET_ISR_BLANKING_US(),
     };
-    ESP_LOGI(TAG, "GPIO config from g_config: DIT=%d, DAH=%d, TX=%d",
-             gpio_cfg.dit_pin, gpio_cfg.dah_pin, gpio_cfg.tx_pin);
+    ESP_LOGI(TAG, "GPIO config from g_config: DIT=%d, DAH=%d, TX=%d, ISR_blank=%luus",
+             gpio_cfg.dit_pin, gpio_cfg.dah_pin, gpio_cfg.tx_pin,
+             (unsigned long)gpio_cfg.isr_blanking_us);
     hal_gpio_init(&gpio_cfg);
     printf(">>> hal_gpio_init OK\n");
 
