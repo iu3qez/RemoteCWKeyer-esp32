@@ -128,6 +128,8 @@ class ApiClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   connect(callbacks: WSCallbacks): void {
+    // Close existing connection before creating new one
+    this.disconnect();
     this.wsCallbacks = callbacks;
     this.doConnect();
   }
@@ -180,6 +182,9 @@ class ApiClient {
       case 'word':
         this.wsCallbacks.onWord?.();
         break;
+      case 'pattern':
+        this.wsCallbacks.onPattern?.(msg.pattern);
+        break;
       case 'paddle':
         this.wsCallbacks.onPaddle?.(msg.ts, msg.paddle, msg.state);
         break;
@@ -219,6 +224,11 @@ interface WSMessageWord {
   type: 'word';
 }
 
+interface WSMessagePattern {
+  type: 'pattern';
+  pattern: string;
+}
+
 interface WSMessagePaddle {
   type: 'paddle';
   ts: number;
@@ -239,11 +249,12 @@ interface WSMessageGap {
   gap_type: number;
 }
 
-type WSMessage = WSMessageDecoded | WSMessageWord | WSMessagePaddle | WSMessageKeying | WSMessageGap;
+type WSMessage = WSMessageDecoded | WSMessageWord | WSMessagePattern | WSMessagePaddle | WSMessageKeying | WSMessageGap;
 
 export interface WSCallbacks {
   onDecodedChar?: (char: string, wpm: number) => void;
   onWord?: () => void;
+  onPattern?: (pattern: string) => void;
   onPaddle?: (ts: number, paddle: number, state: number) => void;
   onKeying?: (ts: number, element: number, state: number) => void;
   onGap?: (ts: number, gapType: number) => void;

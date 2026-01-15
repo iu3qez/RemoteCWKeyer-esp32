@@ -59,6 +59,12 @@ void ws_broadcast_decoder_char(char c, uint8_t wpm);
 void ws_broadcast_decoder_word(void);
 
 /**
+ * @brief Broadcast decoder pattern update
+ * @param pattern Current pattern string (e.g., ".-")
+ */
+void ws_broadcast_decoder_pattern(const char *pattern);
+
+/**
  * @brief Broadcast timeline event
  * @param event_type Event type string (paddle, keying, decoded, gap)
  * @param json_data JSON payload (will be merged with type)

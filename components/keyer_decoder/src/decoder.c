@@ -17,6 +17,8 @@
 
 #ifdef ESP_PLATFORM
 #include "esp_timer.h"
+#include "esp_log.h"
+static const char *TAG = "decoder";
 #else
 /* Host stub for esp_timer_get_time */
 static int64_t s_mock_time_us = 0;
@@ -60,6 +62,7 @@ void decoder_set_test_stream(keying_stream_t *stream) { s_test_stream = stream; 
 static decoded_char_t s_decoded_buffer[DECODER_BUFFER_SIZE];
 static size_t s_buffer_head = 0;   /* Next write position */
 static size_t s_buffer_count = 0;  /* Characters in buffer */
+static size_t s_buffer_read = 0;   /* Next read position (for pop) */
 
 /** Current pattern being accumulated */
 static char s_pattern[MAX_PATTERN_LEN + 1];
@@ -85,8 +88,14 @@ static bool s_last_was_mark = false;
 /** Statistics */
 static decoder_stats_t s_stats;
 
-/** Last character timestamp (for inactivity detection) */
+/** Last event timestamp in sample time */
 static int64_t s_last_event_us = 0;
+
+/** Last event timestamp in wall clock (for inactivity detection) */
+static int64_t s_last_event_wall_us = 0;
+
+/** Sample-based time tracking (1 sample = 1ms = 1000us) */
+static int64_t s_sample_time_us = 0;
 
 /* ============================================================================
  * Internal helpers
@@ -119,9 +128,15 @@ static void finalize_pattern(int64_t timestamp_us) {
     if (decoded != '\0') {
         buffer_push(decoded, timestamp_us);
         s_stats.chars_decoded++;
+#ifdef ESP_PLATFORM
+        ESP_LOGD(TAG, "Decoded: '%s' -> '%c'", s_pattern, decoded);
+#endif
     } else {
-        /* Unknown pattern - could log or use placeholder */
+        /* Unknown pattern */
         s_stats.errors++;
+#ifdef ESP_PLATFORM
+        ESP_LOGD(TAG, "Unknown pattern: '%s'", s_pattern);
+#endif
     }
 
     /* Reset pattern */
@@ -130,22 +145,21 @@ static void finalize_pattern(int64_t timestamp_us) {
 }
 
 /**
- * @brief Check for inactivity timeout
+ * @brief Check for inactivity timeout (uses wall clock)
  */
-static void check_inactivity(int64_t now_us) {
-    if (s_state != DECODER_STATE_RECEIVING || s_last_event_us == 0) {
+static void check_inactivity(void) {
+    if (s_state != DECODER_STATE_RECEIVING || s_last_event_wall_us == 0) {
         return;
     }
 
-    int64_t elapsed_us = now_us - s_last_event_us;
+    int64_t now_us = esp_timer_get_time();
+    int64_t elapsed_us = now_us - s_last_event_wall_us;
     int64_t timeout_us = s_timing.dit_avg_us * INACTIVITY_DIT_UNITS;
 
     if (elapsed_us > timeout_us) {
         /* Force finalization */
-        finalize_pattern(now_us);
-        /* Add word space */
-        buffer_push(' ', now_us);
-        s_stats.words_decoded++;
+        finalize_pattern(s_sample_time_us);
+        /* No word space - just character gap */
     }
 }
 
@@ -154,12 +168,18 @@ static void check_inactivity(int64_t now_us) {
  * ============================================================================ */
 
 void decoder_init(void) {
+#ifdef ESP_PLATFORM
+    /* Enable DEBUG level for decoder tag */
+    esp_log_level_set(TAG, ESP_LOG_DEBUG);
+#endif
+
     /* Initialize timing classifier with default WPM */
     timing_classifier_init(&s_timing, DEFAULT_INITIAL_WPM);
 
     /* Reset state */
     s_buffer_head = 0;
     s_buffer_count = 0;
+    s_buffer_read = 0;
     s_pattern_len = 0;
     s_state = DECODER_STATE_IDLE;
     s_last_edge_us = 0;
@@ -189,48 +209,77 @@ void decoder_process(void) {
         return;
     }
 
-    int64_t now_us = esp_timer_get_time();
-
     /* Process all available samples */
     stream_sample_t sample;
     while (best_effort_consumer_tick(&s_consumer, &sample)) {
         s_stats.samples_processed++;
 
+        /* Advance sample time based on sample type:
+         * - Regular sample: 1ms (1000us)
+         * - Silence marker: config_gen ms (ticks * 1000us)
+         */
+        if (sample_is_silence(&sample)) {
+            s_sample_time_us += (int64_t)sample_silence_ticks(&sample) * 1000;
+            continue;  /* Silence doesn't change key state */
+        }
+        s_sample_time_us += 1000;  /* 1 sample = 1ms */
+
         /* We're interested in local_key transitions (mark/space) */
         bool is_mark = (sample.local_key != 0);
 
         /* Detect edge */
-        if (s_last_edge_us > 0 && is_mark != s_last_was_mark) {
-            /* Edge detected - classify the duration */
-            int64_t duration_us = now_us - s_last_edge_us;
+        if (is_mark != s_last_was_mark) {
+            if (s_last_edge_us > 0) {
+                /* Edge detected - classify the duration */
+                int64_t duration_us = s_sample_time_us - s_last_edge_us;
 
-            /* s_last_was_mark tells us what just ended:
-             * - true: a mark just ended (key went up) → classify as dit/dah
-             * - false: a space just ended (key went down) → classify as gap
-             */
-            key_event_t event = timing_classifier_classify(
-                &s_timing, duration_us, s_last_was_mark);
+                /* s_last_was_mark tells us what just ended:
+                 * - true: a mark just ended (key went up) → classify as dit/dah
+                 * - false: a space just ended (key went down) → classify as gap
+                 */
+                key_event_t event = timing_classifier_classify(
+                    &s_timing, duration_us, s_last_was_mark);
 
-            decoder_handle_event(event, now_us);
-            s_last_event_us = now_us;
+#ifdef ESP_PLATFORM
+                ESP_LOGD(TAG, "Edge: %s->%s dur=%lldus event=%d dit_avg=%lld",
+                         s_last_was_mark ? "MARK" : "SPACE",
+                         is_mark ? "MARK" : "SPACE",
+                         (long long)duration_us, (int)event,
+                         (long long)s_timing.dit_avg_us);
+#endif
+
+                decoder_handle_event(event, s_sample_time_us);
+                s_last_event_us = s_sample_time_us;
+                s_last_event_wall_us = esp_timer_get_time();
+            }
+
+            /* Update edge tracking only on transitions */
+            s_last_edge_us = s_sample_time_us;
+            s_last_was_mark = is_mark;
         }
-
-        s_last_edge_us = now_us;
-        s_last_was_mark = is_mark;
     }
 
     /* Update dropped count */
     s_stats.samples_dropped = (uint32_t)best_effort_consumer_dropped(&s_consumer);
 
-    /* Check for inactivity timeout */
-    check_inactivity(now_us);
+    /* Check for inactivity timeout (uses wall clock) */
+    check_inactivity();
 }
 
 void decoder_handle_event(key_event_t event, int64_t timestamp_us) {
+#ifdef ESP_PLATFORM
+    ESP_LOGD(TAG, "Event: %d pattern='%.*s' len=%zu",
+             (int)event, (int)s_pattern_len, s_pattern, s_pattern_len);
+#endif
+
     switch (event) {
         case KEY_EVENT_DIT:
             if (s_pattern_len < MAX_PATTERN_LEN) {
                 s_pattern[s_pattern_len++] = '.';
+#ifdef ESP_PLATFORM
+                ESP_LOGD(TAG, "Added DIT, pattern now: '%.*s'",
+                         (int)s_pattern_len, s_pattern);
+#endif
             }
             s_state = DECODER_STATE_RECEIVING;
             break;
@@ -238,6 +287,10 @@ void decoder_handle_event(key_event_t event, int64_t timestamp_us) {
         case KEY_EVENT_DAH:
             if (s_pattern_len < MAX_PATTERN_LEN) {
                 s_pattern[s_pattern_len++] = '-';
+#ifdef ESP_PLATFORM
+                ESP_LOGD(TAG, "Added DAH, pattern now: '%.*s'",
+                         (int)s_pattern_len, s_pattern);
+#endif
             }
             s_state = DECODER_STATE_RECEIVING;
             break;
@@ -248,11 +301,19 @@ void decoder_handle_event(key_event_t event, int64_t timestamp_us) {
 
         case KEY_EVENT_CHAR_GAP:
             /* Character complete */
+#ifdef ESP_PLATFORM
+            ESP_LOGD(TAG, "CHAR_GAP: finalizing pattern '%.*s'",
+                     (int)s_pattern_len, s_pattern);
+#endif
             finalize_pattern(timestamp_us);
             break;
 
         case KEY_EVENT_WORD_GAP:
             /* Word complete */
+#ifdef ESP_PLATFORM
+            ESP_LOGD(TAG, "WORD_GAP: finalizing pattern '%.*s'",
+                     (int)s_pattern_len, s_pattern);
+#endif
             finalize_pattern(timestamp_us);
             buffer_push(' ', timestamp_us);
             s_stats.words_decoded++;
@@ -338,6 +399,21 @@ decoded_char_t decoder_get_last_char(void) {
     return s_decoded_buffer[idx];
 }
 
+decoded_char_t decoder_pop_char(void) {
+    /* Check if there are unread characters */
+    if (s_buffer_read == s_buffer_head) {
+        return (decoded_char_t){ .character = '\0', .timestamp_us = 0 };
+    }
+
+    /* Get character at read position */
+    decoded_char_t result = s_decoded_buffer[s_buffer_read];
+
+    /* Advance read pointer */
+    s_buffer_read = (s_buffer_read + 1) % DECODER_BUFFER_SIZE;
+
+    return result;
+}
+
 uint32_t decoder_get_wpm(void) {
     return timing_classifier_get_wpm(&s_timing);
 }
@@ -371,11 +447,14 @@ const timing_classifier_t *decoder_get_timing(void) {
 void decoder_reset(void) {
     s_buffer_head = 0;
     s_buffer_count = 0;
+    s_buffer_read = 0;
     s_pattern_len = 0;
     s_state = DECODER_STATE_IDLE;
     s_last_edge_us = 0;
     s_last_was_mark = false;
     s_last_event_us = 0;
+    s_last_event_wall_us = 0;
+    s_sample_time_us = 0;
 
     memset(&s_stats, 0, sizeof(s_stats));
     memset(s_decoded_buffer, 0, sizeof(s_decoded_buffer));

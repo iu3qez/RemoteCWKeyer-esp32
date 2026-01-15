@@ -58,6 +58,9 @@
       onWord: () => {
         decodedText += ' ';
       },
+      onPattern: (pattern) => {
+        currentPattern = pattern;
+      },
       onConnect: () => {
         connected = true;
         error = null;

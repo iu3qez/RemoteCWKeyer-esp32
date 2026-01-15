@@ -15,6 +15,7 @@ esp_err_t webui_stop(void);
 void webui_timeline_push(const char *event_type, const char *json_data);
 void webui_decoder_push_char(char c, uint8_t wpm);
 void webui_decoder_push_word(void);
+void webui_decoder_push_pattern(const char *pattern);
 
 #ifdef __cplusplus
 }

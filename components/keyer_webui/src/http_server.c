@@ -313,9 +313,14 @@ void webui_timeline_push(const char *event_type, const char *json_data) {
 }
 
 void webui_decoder_push_char(char c, uint8_t wpm) {
+    ESP_LOGI(TAG, "Push char '%c' wpm=%u clients=%d", c, wpm, ws_get_client_count());
     ws_broadcast_decoder_char(c, wpm);
 }
 
 void webui_decoder_push_word(void) {
     ws_broadcast_decoder_word();
+}
+
+void webui_decoder_push_pattern(const char *pattern) {
+    ws_broadcast_decoder_pattern(pattern);
 }

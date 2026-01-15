@@ -65,7 +65,6 @@ void bg_task(void *arg) {
     uint32_t stats_counter = 0;
     wifi_state_t prev_wifi_state = WIFI_STATE_DISABLED;
     bool wifi_connected_flash_done = false;
-    static int64_t prev_char_timestamp = 0;
 
     for (;;) {
         now_us = esp_timer_get_time();
@@ -109,14 +108,25 @@ void bg_task(void *arg) {
         /* Process decoder (reads from keying_stream) */
         decoder_process();
 
-        /* Push decoded characters to WebUI SSE */
-        decoded_char_t last = decoder_get_last_char();
-        if (last.character != '\0' && last.timestamp_us != prev_char_timestamp) {
-            webui_decoder_push_char(last.character, (uint8_t)decoder_get_wpm());
-            if (last.character == ' ') {
+        /* Push decoded characters to WebUI */
+        decoded_char_t ch;
+        while ((ch = decoder_pop_char()).character != '\0') {
+            webui_decoder_push_char(ch.character, (uint8_t)decoder_get_wpm());
+            if (ch.character == ' ') {
                 webui_decoder_push_word();
             }
-            prev_char_timestamp = last.timestamp_us;
+        }
+
+        /* Push current pattern if changed */
+        {
+            static char prev_pattern[16] = "";
+            char pattern[16];
+            decoder_get_current_pattern(pattern, sizeof(pattern));
+            if (strcmp(pattern, prev_pattern) != 0) {
+                webui_decoder_push_pattern(pattern);
+                strncpy(prev_pattern, pattern, sizeof(prev_pattern) - 1);
+                prev_pattern[sizeof(prev_pattern) - 1] = '\0';
+            }
         }
 
         /* Tick text keyer */
