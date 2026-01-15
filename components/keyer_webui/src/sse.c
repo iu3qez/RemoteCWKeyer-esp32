@@ -2,19 +2,54 @@
 #include "esp_log.h"
 #include <string.h>
 #include <sys/socket.h>
+#include <errno.h>
 
 static const char *TAG = "sse";
 
 typedef struct {
     int fd;
     bool active;
+    sse_stream_t stream;
+    int slot;
 } sse_client_t;
 
 static sse_client_t s_clients[SSE_STREAM_COUNT][SSE_MAX_CLIENTS];
+static httpd_handle_t s_httpd_handle = NULL;
+
+/**
+ * @brief Session close callback - cleans up SSE client when connection closes
+ *
+ * Note: httpd_free_ctx_fn_t signature is void (*)(void *), no sockfd param.
+ * The client struct contains the fd for identification.
+ */
+static void sse_session_close_cb(void *ctx) {
+    if (ctx == NULL) {
+        return;
+    }
+
+    sse_client_t *client = (sse_client_t *)ctx;
+    if (client->active) {
+        ESP_LOGI(TAG, "SSE session closed: stream=%d slot=%d fd=%d",
+                 client->stream, client->slot, client->fd);
+        client->active = false;
+        client->fd = -1;
+    }
+}
 
 void sse_init(void) {
     memset(s_clients, 0, sizeof(s_clients));
+    for (int s = 0; s < SSE_STREAM_COUNT; s++) {
+        for (int i = 0; i < SSE_MAX_CLIENTS; i++) {
+            s_clients[s][i].fd = -1;
+            s_clients[s][i].stream = (sse_stream_t)s;
+            s_clients[s][i].slot = i;
+        }
+    }
     ESP_LOGI(TAG, "SSE initialized (max %d clients per stream)", SSE_MAX_CLIENTS);
+}
+
+void sse_set_httpd_handle(httpd_handle_t handle) {
+    s_httpd_handle = handle;
 }
 
 esp_err_t sse_client_register(sse_stream_t stream, httpd_req_t *req) {
@@ -37,25 +72,48 @@ esp_err_t sse_client_register(sse_stream_t stream, httpd_req_t *req) {
         return ESP_ERR_NO_MEM;
     }
 
-    /* Send SSE headers */
-    httpd_resp_set_type(req, "text/event-stream");
-    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
-    httpd_resp_set_hdr(req, "Connection", "keep-alive");
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-
-    /* Send initial comment to establish connection */
-    const char *init = ": SSE stream connected\n\n";
-    size_t init_len = strlen(init);
-    httpd_resp_send_chunk(req, init, (ssize_t)init_len);
-
-    /* Get socket fd for later sends */
+    /* Get socket fd */
     int fd = httpd_req_to_sockfd(req);
-    s_clients[stream][slot].fd = fd;
-    s_clients[stream][slot].active = true;
+    if (fd < 0) {
+        ESP_LOGE(TAG, "Failed to get socket fd");
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Socket error");
+        return ESP_FAIL;
+    }
+
+    /* Start async handling - this prevents httpd from closing the connection */
+    httpd_req_t *async_req = NULL;
+    esp_err_t ret = httpd_req_async_handler_begin(req, &async_req);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start async handler: %s", esp_err_to_name(ret));
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Async error");
+        return ESP_FAIL;
+    }
+
+    /* Register session context for cleanup on disconnect */
+    sse_client_t *client = &s_clients[stream][slot];
+    client->fd = fd;
+    client->active = true;
+
+    /* Set session context with close callback */
+    httpd_sess_set_ctx(req->handle, fd, client, sse_session_close_cb);
+
+    /* Send SSE headers using httpd API */
+    httpd_resp_set_type(async_req, "text/event-stream");
+    httpd_resp_set_hdr(async_req, "Cache-Control", "no-cache");
+    httpd_resp_set_hdr(async_req, "Connection", "keep-alive");
+    httpd_resp_set_hdr(async_req, "Access-Control-Allow-Origin", "*");
+
+    /* Send initial SSE comment - use chunked encoding to keep connection open */
+    const char *init = ": SSE stream connected\n\n";
+    httpd_resp_send_chunk(async_req, init, (ssize_t)strlen(init));
 
     ESP_LOGI(TAG, "SSE client registered: stream=%d slot=%d fd=%d", stream, slot, fd);
 
-    /* Don't close connection - return without sending final chunk */
+    /* NOTE: We intentionally do NOT call httpd_req_async_handler_complete()
+     * This keeps the connection open for SSE streaming.
+     * The connection will be cleaned up when the client disconnects
+     * (detected by send() failure in sse_broadcast). */
+
     return ESP_OK;
 }
 

@@ -22,6 +22,12 @@ typedef enum {
 void sse_init(void);
 
 /**
+ * @brief Set HTTP server handle for session management
+ * @param handle HTTP server handle from httpd_start()
+ */
+void sse_set_httpd_handle(httpd_handle_t handle);
+
+/**
  * @brief Register new SSE client
  * @param stream Which stream to subscribe to
  * @param req HTTP request (kept open for streaming)
