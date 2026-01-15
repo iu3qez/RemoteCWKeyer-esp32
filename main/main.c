@@ -73,10 +73,6 @@ void app_main(void) {
     /* Initialize UART logger early for boot logs (GPIO6, 115200) */
     uart_logger_init();
 
-    /* DEBUG: 5 second pause to allow UART connection */
-    ESP_LOGI(TAG, "DEBUG: Waiting 5 seconds for UART connection...");
-    vTaskDelay(pdMS_TO_TICKS(5000));
-
     /* Initialize NVS */
     printf(">>> NVS init...\n");
     esp_err_t ret = nvs_flash_init();
