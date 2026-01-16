@@ -126,10 +126,12 @@ class ApiClient {
   private ws: WebSocket | null = null;
   private wsCallbacks: WSCallbacks = {};
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private intentionalDisconnect = false;
 
   connect(callbacks: WSCallbacks): void {
     // Close existing connection before creating new one
     this.disconnect();
+    this.intentionalDisconnect = false;
     this.wsCallbacks = callbacks;
     this.doConnect();
   }
@@ -151,8 +153,8 @@ class ApiClient {
 
     this.ws.onclose = () => {
       this.wsCallbacks.onDisconnect?.();
-      // Auto-reconnect after 3 seconds
-      if (!this.reconnectTimer) {
+      // Auto-reconnect after 3 seconds (unless intentionally disconnected)
+      if (!this.reconnectTimer && !this.intentionalDisconnect) {
         this.reconnectTimer = setTimeout(() => {
           this.reconnectTimer = null;
           this.doConnect();
@@ -198,6 +200,7 @@ class ApiClient {
   }
 
   disconnect(): void {
+    this.intentionalDisconnect = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

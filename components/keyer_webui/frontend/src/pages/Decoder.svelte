@@ -78,7 +78,7 @@
 
   let wpmDisplay = $derived(currentWpm || status?.wpm || 0);
   let wpmPercent = $derived(Math.min(100, Math.max(0, ((wpmDisplay - 5) / 55) * 100)));
-  let patternDisplay = $derived(status?.pattern || currentPattern || '');
+  let patternDisplay = $derived(currentPattern || status?.pattern || '');
 </script>
 
 <div class="decoder-page">
