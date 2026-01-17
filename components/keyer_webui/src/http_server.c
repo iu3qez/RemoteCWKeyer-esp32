@@ -324,3 +324,7 @@ void webui_decoder_push_word(void) {
 void webui_decoder_push_pattern(const char *pattern) {
     ws_broadcast_decoder_pattern(pattern);
 }
+
+int webui_get_ws_client_count(void) {
+    return ws_get_client_count();
+}

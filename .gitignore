@@ -57,3 +57,8 @@ components/keyer_webui/src/assets.c
 .tldr/
 .vscode
 .gitignore
+components/keyer_webui/src/assets_generated.c
+.claude/tsc-cache/
+..claude/settings.json
+.tldrignore
+.claude/settings.json

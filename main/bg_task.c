@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include "keyer_core.h"
+#include "consumer.h"
 #include "rt_log.h"
 #include "decoder.h"
 #include "text_keyer.h"
@@ -29,9 +30,22 @@
 #include "config.h"
 #include "webui.h"
 
+#include <stdio.h>
+
 /* External globals */
 extern keying_stream_t g_keying_stream;
 extern fault_state_t g_fault_state;
+
+/* ============================================================================
+ * Timeline Consumer (best-effort, for WebUI visualization)
+ * ============================================================================ */
+
+static best_effort_consumer_t s_timeline_consumer;
+static bool s_timeline_initialized = false;
+
+/* Previous state for edge detection */
+static gpio_state_t s_tl_prev_gpio = {0};
+static uint8_t s_tl_prev_local_key = 0;
 
 /**
  * @brief Map WiFi state to LED state
@@ -57,6 +71,10 @@ void bg_task(void *arg) {
     (void)arg;
 
     /* Note: All initialization (LED, WiFi, decoder, text_keyer) is done in main.c */
+
+    /* Initialize timeline consumer (skip_threshold=0: never auto-skip) */
+    best_effort_consumer_init(&s_timeline_consumer, &g_keying_stream, 0);
+    s_timeline_initialized = true;
 
     /* Log startup */
     int64_t now_us = esp_timer_get_time();
@@ -126,6 +144,50 @@ void bg_task(void *arg) {
                 webui_decoder_push_pattern(pattern);
                 strncpy(prev_pattern, pattern, sizeof(prev_pattern) - 1);
                 prev_pattern[sizeof(prev_pattern) - 1] = '\0';
+            }
+        }
+
+        /* Process timeline events (only if WebSocket clients connected) */
+        if (s_timeline_initialized && webui_get_ws_client_count() > 0) {
+            stream_sample_t sample;
+            while (best_effort_consumer_tick(&s_timeline_consumer, &sample)) {
+                /* Skip silence markers */
+                if (sample_is_silence(&sample)) {
+                    continue;
+                }
+
+                char json[80];
+
+                /* Check for DIT paddle edge */
+                if (gpio_dit(sample.gpio) != gpio_dit(s_tl_prev_gpio)) {
+                    snprintf(json, sizeof(json),
+                        "{\"ts\":%lld,\"paddle\":0,\"state\":%d}",
+                        (long long)(now_us / 1000),  /* Convert to ms */
+                        gpio_dit(sample.gpio) ? 1 : 0);
+                    webui_timeline_push("paddle", json);
+                }
+
+                /* Check for DAH paddle edge */
+                if (gpio_dah(sample.gpio) != gpio_dah(s_tl_prev_gpio)) {
+                    snprintf(json, sizeof(json),
+                        "{\"ts\":%lld,\"paddle\":1,\"state\":%d}",
+                        (long long)(now_us / 1000),
+                        gpio_dah(sample.gpio) ? 1 : 0);
+                    webui_timeline_push("paddle", json);
+                }
+
+                /* Check for keying output edge */
+                if (sample.local_key != s_tl_prev_local_key) {
+                    snprintf(json, sizeof(json),
+                        "{\"ts\":%lld,\"state\":%d}",
+                        (long long)(now_us / 1000),
+                        sample.local_key ? 1 : 0);
+                    webui_timeline_push("keying", json);
+                }
+
+                /* Update previous state */
+                s_tl_prev_gpio = sample.gpio;
+                s_tl_prev_local_key = sample.local_key;
             }
         }
 
