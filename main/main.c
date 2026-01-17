@@ -109,6 +109,7 @@ void app_main(void) {
         .tx_pin = CONFIG_GET_GPIO_TX(),
         .active_low = true,        /* Paddles are active low (internal pull-up) */
         .tx_active_high = true,    /* TX output is active high */
+        .isr_blanking_us = 1500,   /* ISR blanking period for debounce (0 = polling only) */
     };
     ESP_LOGI(TAG, "GPIO config from g_config: DIT=%d, DAH=%d, TX=%d",
              gpio_cfg.dit_pin, gpio_cfg.dah_pin, gpio_cfg.tx_pin);

@@ -182,6 +182,10 @@ typedef struct {
     int64_t dit_release_time_us;   /**< Last DIT release timestamp (debounce) */
     int64_t dah_release_time_us;   /**< Last DAH release timestamp (debounce) */
 
+    /* Press start timestamps (for fresh press detection) */
+    int64_t dit_press_start_us;    /**< When current DIT press started */
+    int64_t dah_press_start_us;    /**< When current DAH press started */
+
     /* Memory flags */
     bool dit_memory;           /**< DIT was pressed during memory window */
     bool dah_memory;           /**< DAH was pressed during memory window */

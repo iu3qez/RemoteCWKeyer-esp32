@@ -211,6 +211,14 @@ void rt_task(void *arg) {
         /* 1. Poll GPIO paddles */
         gpio_state_t gpio = hal_gpio_read_paddles();
 
+        /* 1b. Override with ISR-detected presses (low latency path) */
+        if (hal_gpio_consume_dit_press()) {
+            gpio.bits |= GPIO_DIT_BIT;
+        }
+        if (hal_gpio_consume_dah_press()) {
+            gpio.bits |= GPIO_DAH_BIT;
+        }
+
         /* Update paddle active flag for text keyer abort (Core 1) */
         bool paddle_active = !gpio_is_idle(gpio);
         atomic_store_explicit(&g_paddle_active, paddle_active, memory_order_release);
@@ -286,6 +294,9 @@ void rt_task(void *arg) {
         /* 6. Diagnostic logging (zero overhead if disabled) */
         rt_diag_log(&s_diag, &iambic, &sidetone,
                     out.local_key != 0, now_us);
+
+        /* 7. ISR blanking timer management (must be in task context) */
+        hal_gpio_isr_tick(now_us);
 
         /* Wait for next tick */
         vTaskDelayUntil(&last_wake, period);
