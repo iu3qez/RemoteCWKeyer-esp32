@@ -6,11 +6,15 @@
   import Home from './pages/Home.svelte';
   import Keyer from './pages/Keyer.svelte';
   import Timeline from './pages/Timeline.svelte';
+  import { initTheme } from './lib/stores/theme';
 
   let currentPage = $state('/');
   let currentTime = $state('00:00:00');
 
-  onMount(() => {
+  onMount(async () => {
+    // Initialize theme from device config
+    await initTheme();
+
     currentPage = window.location.pathname;
 
     window.addEventListener('popstate', () => {

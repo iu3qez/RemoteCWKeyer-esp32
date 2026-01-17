@@ -158,6 +158,9 @@ def main():
     print("Generating config_console.h...")
     generate_config_console_h(params, families, output_dir)
 
+    print("Generating config_console.c...")
+    generate_config_console_c(params, families, output_dir)
+
     print("Generating config_schema.h...")
     generate_config_schema_json(params, families, output_dir)
 
@@ -892,6 +895,345 @@ void config_foreach_matching(const char *pattern, param_visitor_fn visitor, void
 """
 
     with open(output_dir / "config_console.h", "w") as f:
+        f.write(code)
+
+
+def generate_config_console_c(params: List[Dict], families: List[Dict], output_dir: Path):
+    """Generate config_console.c - Console parameter registry implementation"""
+
+    src_dir = output_dir.parent / "src"
+    src_dir.mkdir(parents=True, exist_ok=True)
+
+    code = """/* Auto-generated from parameters.yaml - DO NOT EDIT MANUALLY */
+/**
+ * @file config_console.c
+ * @brief Console parameter registry implementation
+ */
+
+#include "config_console.h"
+#include "config.h"
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+"""
+
+    # Generate CONSOLE_FAMILIES array
+    if families:
+        code += "/* ============================================================================\n"
+        code += " * Family Registry\n"
+        code += " * ============================================================================ */\n\n"
+        code += "const family_descriptor_t CONSOLE_FAMILIES[FAMILY_COUNT] = {\n"
+        for f in families:
+            aliases = ','.join(f.get('aliases', []))
+            desc = f.get('description', {}).get('en', f['name'])
+            order = f.get('order', 0)
+            code += f'    {{ "{f["name"]}", "{aliases}", "{desc}", {order} }},\n'
+        code += "};\n\n"
+
+    # Generate get/set functions for each parameter
+    code += "/* ============================================================================\n"
+    code += " * Parameter Accessors\n"
+    code += " * ============================================================================ */\n\n"
+
+    for p in params:
+        pname = p['name']
+        family = p.get('family', '')
+        ptype = p['type']
+
+        # Build config path
+        if family:
+            config_path = f"g_config.{family}.{pname}"
+        else:
+            config_path = f"g_config.{pname}"
+
+        # Function name uses underscore-separated full path
+        if family:
+            func_name = f"{family}_{pname}"
+        else:
+            func_name = pname
+
+        # Generate getter
+        code += f"static param_value_t get_{func_name}(void) {{\n"
+        code += "    param_value_t v;\n"
+
+        if ptype == 'string':
+            code += f"    v.str = {config_path};\n"
+        elif ptype == 'bool':
+            code += f"    v.b = atomic_load_explicit(&{config_path}, memory_order_relaxed);\n"
+        elif ptype in ('u8', 'enum'):
+            code += f"    v.u8 = atomic_load_explicit(&{config_path}, memory_order_relaxed);\n"
+        elif ptype == 'u16':
+            code += f"    v.u16 = atomic_load_explicit(&{config_path}, memory_order_relaxed);\n"
+        elif ptype == 'u32':
+            code += f"    v.u32 = atomic_load_explicit(&{config_path}, memory_order_relaxed);\n"
+
+        code += "    return v;\n"
+        code += "}\n\n"
+
+        # Generate setter
+        code += f"static void set_{func_name}(param_value_t v) {{\n"
+
+        if ptype == 'string':
+            max_len = p.get('max_length', 32)
+            code += f"    strncpy({config_path}, v.str, {max_len});\n"
+            code += f"    {config_path}[{max_len}] = '\\0';\n"
+        elif ptype == 'bool':
+            code += f"    atomic_store_explicit(&{config_path}, v.b, memory_order_relaxed);\n"
+        elif ptype in ('u8', 'enum'):
+            code += f"    atomic_store_explicit(&{config_path}, v.u8, memory_order_relaxed);\n"
+        elif ptype == 'u16':
+            code += f"    atomic_store_explicit(&{config_path}, v.u16, memory_order_relaxed);\n"
+        elif ptype == 'u32':
+            code += f"    atomic_store_explicit(&{config_path}, v.u32, memory_order_relaxed);\n"
+
+        code += "    config_bump_generation(&g_config);\n"
+        code += "}\n\n"
+
+    # Generate CONSOLE_PARAMS array
+    code += "/* ============================================================================\n"
+    code += " * Parameter Registry\n"
+    code += " * ============================================================================ */\n\n"
+    code += "const param_descriptor_t CONSOLE_PARAMS[CONSOLE_PARAM_COUNT] = {\n"
+
+    for p in params:
+        pname = p['name']
+        family = p.get('family', '')
+        ptype = p['type']
+
+        # Build full_path
+        if family:
+            full_path = f"{family}.{pname}"
+            func_name = f"{family}_{pname}"
+        else:
+            full_path = pname
+            func_name = pname
+
+        # Map type
+        type_map = {
+            'u8': 'PARAM_TYPE_U8',
+            'u16': 'PARAM_TYPE_U16',
+            'u32': 'PARAM_TYPE_U32',
+            'bool': 'PARAM_TYPE_BOOL',
+            'enum': 'PARAM_TYPE_ENUM',
+            'string': 'PARAM_TYPE_STRING',
+        }
+        param_type = type_map.get(ptype, 'PARAM_TYPE_U32')
+
+        # Get min/max
+        if 'range' in p:
+            min_val = p['range'][0]
+            max_val = p['range'][1]
+        elif ptype == 'enum':
+            min_val = 0
+            max_val = len(p.get('enum_values', [])) - 1
+        elif ptype == 'bool':
+            min_val = 0
+            max_val = 1
+        elif ptype == 'string':
+            min_val = 0
+            max_val = p.get('max_length', 32)
+        else:
+            min_val = 0
+            max_val = 0xFFFFFFFF
+
+        code += f'    {{ "{pname}", "{family}", "{full_path}", {param_type}, {min_val}, {max_val}, get_{func_name}, set_{func_name} }},\n'
+
+    code += "};\n\n"
+
+    # Generate helper functions
+    code += """/* ============================================================================
+ * Helper Functions
+ * ============================================================================ */
+
+const family_descriptor_t *config_find_family(const char *name) {
+    if (name == NULL) return NULL;
+
+    for (int i = 0; i < FAMILY_COUNT; i++) {
+        const family_descriptor_t *f = &CONSOLE_FAMILIES[i];
+        /* Check exact name match */
+        if (strcmp(f->name, name) == 0) {
+            return f;
+        }
+        /* Check aliases */
+        if (f->aliases && f->aliases[0] != '\\0') {
+            char aliases_copy[64];
+            strncpy(aliases_copy, f->aliases, sizeof(aliases_copy) - 1);
+            aliases_copy[sizeof(aliases_copy) - 1] = '\\0';
+            char *alias = strtok(aliases_copy, ",");
+            while (alias) {
+                if (strcmp(alias, name) == 0) {
+                    return f;
+                }
+                alias = strtok(NULL, ",");
+            }
+        }
+    }
+    return NULL;
+}
+
+const param_descriptor_t *config_find_param(const char *name) {
+    if (name == NULL) return NULL;
+
+    for (int i = 0; i < CONSOLE_PARAM_COUNT; i++) {
+        const param_descriptor_t *p = &CONSOLE_PARAMS[i];
+        /* Check full path (e.g., "keyer.wpm") */
+        if (strcmp(p->full_path, name) == 0) {
+            return p;
+        }
+        /* Check short name (e.g., "wpm") */
+        if (strcmp(p->name, name) == 0) {
+            return p;
+        }
+    }
+    return NULL;
+}
+
+int config_get_param_str(const char *name, char *buf, size_t len) {
+    const param_descriptor_t *p = config_find_param(name);
+    if (p == NULL || buf == NULL || len == 0) {
+        return -1;
+    }
+
+    param_value_t v = p->get_fn();
+
+    switch (p->type) {
+        case PARAM_TYPE_U8:
+        case PARAM_TYPE_ENUM:
+            snprintf(buf, len, "%u", v.u8);
+            break;
+        case PARAM_TYPE_U16:
+            snprintf(buf, len, "%u", v.u16);
+            break;
+        case PARAM_TYPE_U32:
+            snprintf(buf, len, "%lu", (unsigned long)v.u32);
+            break;
+        case PARAM_TYPE_BOOL:
+            snprintf(buf, len, "%s", v.b ? "true" : "false");
+            break;
+        case PARAM_TYPE_STRING:
+            snprintf(buf, len, "%s", v.str ? v.str : "");
+            break;
+        default:
+            return -1;
+    }
+    return 0;
+}
+
+int config_set_param_str(const char *name, const char *value) {
+    const param_descriptor_t *p = config_find_param(name);
+    if (p == NULL || value == NULL) {
+        return -1;
+    }
+
+    param_value_t v;
+    unsigned long parsed;
+
+    switch (p->type) {
+        case PARAM_TYPE_U8:
+        case PARAM_TYPE_ENUM:
+            parsed = strtoul(value, NULL, 0);
+            if (parsed < p->min || parsed > p->max) {
+                return -2;  /* Out of range */
+            }
+            v.u8 = (uint8_t)parsed;
+            break;
+        case PARAM_TYPE_U16:
+            parsed = strtoul(value, NULL, 0);
+            if (parsed < p->min || parsed > p->max) {
+                return -2;
+            }
+            v.u16 = (uint16_t)parsed;
+            break;
+        case PARAM_TYPE_U32:
+            parsed = strtoul(value, NULL, 0);
+            if (parsed < p->min || parsed > p->max) {
+                return -2;
+            }
+            v.u32 = (uint32_t)parsed;
+            break;
+        case PARAM_TYPE_BOOL:
+            if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0 ||
+                strcmp(value, "on") == 0 || strcmp(value, "yes") == 0) {
+                v.b = true;
+            } else if (strcmp(value, "false") == 0 || strcmp(value, "0") == 0 ||
+                       strcmp(value, "off") == 0 || strcmp(value, "no") == 0) {
+                v.b = false;
+            } else {
+                return -3;  /* Invalid boolean */
+            }
+            break;
+        case PARAM_TYPE_STRING:
+            v.str = value;
+            break;
+        default:
+            return -1;
+    }
+
+    p->set_fn(v);
+    return 0;
+}
+
+void config_foreach_matching(const char *pattern, param_visitor_fn visitor, void *ctx) {
+    if (pattern == NULL || visitor == NULL) return;
+
+    /* Check for wildcard patterns */
+    const char *star = strchr(pattern, '*');
+
+    if (star == NULL) {
+        /* Exact match */
+        const param_descriptor_t *p = config_find_param(pattern);
+        if (p != NULL) {
+            visitor(p, ctx);
+        }
+        return;
+    }
+
+    /* Get prefix (everything before the wildcard) */
+    size_t prefix_len = (size_t)(star - pattern);
+    char prefix[64];
+    if (prefix_len >= sizeof(prefix)) {
+        prefix_len = sizeof(prefix) - 1;
+    }
+    strncpy(prefix, pattern, prefix_len);
+    prefix[prefix_len] = '\\0';
+
+    /* Remove trailing dot from prefix if present */
+    if (prefix_len > 0 && prefix[prefix_len - 1] == '.') {
+        prefix[prefix_len - 1] = '\\0';
+        prefix_len--;
+    }
+
+    /* Check if double-star (recursive) */
+    bool recursive = (star[1] == '*');
+
+    /* Iterate all params */
+    for (int i = 0; i < CONSOLE_PARAM_COUNT; i++) {
+        const param_descriptor_t *p = &CONSOLE_PARAMS[i];
+
+        /* Check if family matches prefix */
+        if (prefix_len == 0) {
+            /* Empty prefix matches all */
+            visitor(p, ctx);
+        } else if (strncmp(p->full_path, prefix, prefix_len) == 0) {
+            /* Prefix matches */
+            if (recursive) {
+                /* ** matches all under this family */
+                visitor(p, ctx);
+            } else {
+                /* * only matches direct children (no more dots after prefix) */
+                const char *rest = p->full_path + prefix_len;
+                if (rest[0] == '.') rest++;  /* Skip the dot */
+                if (strchr(rest, '.') == NULL) {
+                    visitor(p, ctx);
+                }
+            }
+        }
+    }
+}
+"""
+
+    with open(src_dir / "config_console.c", "w") as f:
         f.write(code)
 
 

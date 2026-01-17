@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import { api } from '../lib/api';
   import type { ConfigSchema, ConfigValues, ParameterMeta } from '../lib/types';
+  import { getTheme, setTheme, getAvailableThemes, type Theme } from '../lib/stores/theme';
+  import { themeList } from '../lib/themes';
 
   let schema = $state<ConfigSchema | null>(null);
   let values = $state<ConfigValues>({});
@@ -10,6 +12,16 @@
   let activeFamily = $state<string>('');
   let dirtyParams = $state<Set<string>>(new Set());
   let successMessage = $state<string | null>(null);
+
+  // Theme state
+  let currentThemeId = $state(getTheme().id);
+
+  async function handleThemeChange(themeId: string) {
+    currentThemeId = themeId;
+    await setTheme(themeId);
+    successMessage = 'Theme applied and saved';
+    setTimeout(() => successMessage = null, 2000);
+  }
 
   // Group parameters by family (first part of name)
   function groupByFamily(params: ParameterMeta[]): Map<string, ParameterMeta[]> {
@@ -99,6 +111,34 @@
       <span class="msg-text">{successMessage}</span>
     </div>
   {/if}
+
+  <!-- Theme Selector Panel -->
+  <div class="theme-panel">
+    <div class="panel-header">
+      <span class="panel-icon">[T]</span>
+      <span class="panel-title">UI THEME</span>
+    </div>
+    <div class="theme-grid">
+      {#each themeList as theme}
+        <button
+          type="button"
+          class="theme-card"
+          class:active={currentThemeId === theme.id}
+          onclick={() => handleThemeChange(theme.id)}
+        >
+          <div class="theme-preview" style="background: {theme.colors.bgPrimary}">
+            <div class="preview-bar" style="background: {theme.colors.bgSecondary}">
+              <span class="preview-dot" style="background: {theme.colors.accentPrimary}"></span>
+              <span class="preview-dot" style="background: {theme.colors.accentAmber}"></span>
+              <span class="preview-dot" style="background: {theme.colors.accentCyan}"></span>
+            </div>
+            <div class="preview-text" style="color: {theme.colors.textPrimary}">Aa</div>
+          </div>
+          <div class="theme-name">{theme.name}</div>
+        </button>
+      {/each}
+    </div>
+  </div>
 
   {#if schema}
     <div class="tabs-container">
@@ -640,5 +680,97 @@
       width: 100%;
       justify-content: center;
     }
+
+    .theme-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  /*
+   * Theme Panel - Dedicated visual selector
+   *
+   * While parameters.yaml defines ui_theme as an enum (and it would render
+   * automatically as a dropdown), themes deserve a richer UI with color previews.
+   * Users need to SEE the colors before choosing - a text-only dropdown like
+   * "matrix_green" is meaningless without visual context.
+   *
+   * This dedicated panel provides:
+   * - Visual preview of each theme's color palette
+   * - Immediate feedback with color swatches
+   * - Better UX than a generic enum dropdown
+   */
+  .theme-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-dim);
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .theme-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+  }
+
+  .theme-card {
+    background: var(--bg-tertiary);
+    border: 2px solid var(--border-dim);
+    padding: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    text-align: center;
+  }
+
+  .theme-card:hover {
+    border-color: var(--text-secondary);
+  }
+
+  .theme-card.active {
+    border-color: var(--accent-primary);
+    box-shadow: var(--glow-primary);
+  }
+
+  .theme-preview {
+    aspect-ratio: 16/10;
+    border-radius: 2px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+  }
+
+  .preview-bar {
+    display: flex;
+    gap: 4px;
+    padding: 4px 6px;
+    align-items: center;
+  }
+
+  .preview-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+
+  .preview-text {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    font-weight: 700;
+    font-family: "JetBrains Mono", monospace;
+  }
+
+  .theme-name {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
+  .theme-card.active .theme-name {
+    color: var(--text-primary);
   }
 </style>

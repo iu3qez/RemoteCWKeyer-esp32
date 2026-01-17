@@ -561,6 +561,44 @@ families:
           widget: text
           advanced: false
 
+      ui_theme:
+        type: enum
+        enum_values: [matrix_green, amber_terminal, cyan_ice, phosphor_white]
+        default: matrix_green
+        nvs_key: "ui_theme"
+        runtime_change: immediate
+        priority: 32
+        gui:
+          label_short:
+            en: "Theme"
+            it: "Tema"
+          label_long:
+            en: "UI Color Theme"
+            it: "Tema Colori UI"
+          description:
+            en: "Color palette for the web interface"
+            it: "Palette di colori per l'interfaccia web"
+          widget: dropdown
+          widget_config:
+            options:
+              - value: matrix_green
+                label:
+                  en: "Matrix Green"
+                  it: "Verde Matrix"
+              - value: amber_terminal
+                label:
+                  en: "Amber Terminal"
+                  it: "Terminale Ambra"
+              - value: cyan_ice
+                label:
+                  en: "Cyan Ice"
+                  it: "Ciano Ghiaccio"
+              - value: phosphor_white
+                label:
+                  en: "Phosphor White"
+                  it: "Fosforo Bianco"
+          advanced: false
+
   leds:
     order: 6
     icon: "lightbulb"

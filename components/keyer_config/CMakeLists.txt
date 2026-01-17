@@ -22,6 +22,8 @@ set(PARAMS_YAML "${CMAKE_SOURCE_DIR}/parameters.yaml")
 set(GEN_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 # Generate config headers
+# COMMAND_ERROR_IS_FATAL ensures build fails if the Python script fails
+# (e.g., missing pyyaml module) instead of silently using stale generated files
 add_custom_command(
     OUTPUT
         "${GEN_OUTPUT_DIR}/config.h"
@@ -29,7 +31,9 @@ add_custom_command(
         "${GEN_OUTPUT_DIR}/config_nvs.h"
         "${GEN_OUTPUT_DIR}/config_console.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/config.c"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/config_console.c"
     COMMAND ${Python3_EXECUTABLE} ${GEN_SCRIPT} ${PARAMS_YAML} ${GEN_OUTPUT_DIR}
+    COMMAND_ERROR_IS_FATAL ANY
     DEPENDS ${PARAMS_YAML} ${GEN_SCRIPT}
     COMMENT "Generating C configuration code from parameters.yaml"
     VERBATIM
