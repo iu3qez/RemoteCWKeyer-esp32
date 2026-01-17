@@ -119,24 +119,41 @@
   }
 
   :global(:root) {
+    /* ══════════════════════════════════════════
+       BACKGROUNDS - Dark scale
+       ══════════════════════════════════════════ */
     --bg-primary: #0a0a0a;
     --bg-secondary: #0d1117;
     --bg-tertiary: #161b22;
+    --bg-hover: #1c2128;
     --bg-card: #0d1117;
 
+    /* ══════════════════════════════════════════
+       TEXT - Green phosphor hierarchy
+       ══════════════════════════════════════════ */
+    --text-bright: #7fff7f;
     --text-primary: #00ff41;
-    --text-secondary: #00cc33;
-    --text-dim: #006622;
-    --text-bright: #33ff66;
+    --text-secondary: #4ec968;
+    --text-dim: #6b8f71;
 
+    /* ══════════════════════════════════════════
+       BORDERS - Structural elements
+       ══════════════════════════════════════════ */
+    --border-color: #00ff41;
+    --border-dim: #2f5f3f;
+
+    /* ══════════════════════════════════════════
+       ACCENTS - Semantic colors
+       ══════════════════════════════════════════ */
+    --accent-green: #00ff41;
     --accent-amber: #ffb000;
     --accent-cyan: #00d4ff;
-    --accent-red: #ff3333;
-    --accent-magenta: #ff00ff;
+    --accent-red: #ff4757;
+    --accent-magenta: #ff6bcb;
 
-    --border-color: #00ff41;
-    --border-dim: #004411;
-
+    /* ══════════════════════════════════════════
+       GLOWS - CRT phosphor effects
+       ══════════════════════════════════════════ */
     --glow-green: 0 0 10px #00ff41, 0 0 20px #00ff4133;
     --glow-amber: 0 0 10px #ffb000, 0 0 20px #ffb00033;
     --glow-cyan: 0 0 10px #00d4ff, 0 0 20px #00d4ff33;

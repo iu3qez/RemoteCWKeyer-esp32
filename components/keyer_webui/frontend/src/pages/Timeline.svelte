@@ -3,6 +3,11 @@
   import { api } from '../lib/api';
   import type { TimelineConfig } from '../lib/types';
 
+  // Build info (injected by vite)
+  declare const __GIT_HASH__: string;
+  declare const __BUILD_TIME__: string;
+  const buildInfo = `${__GIT_HASH__} @ ${__BUILD_TIME__}`;
+
   // Connection state
   let connected = $state(false);
   let error = $state<string | null>(null);
@@ -35,6 +40,8 @@
 
   // Time tracking
   let baseTime = $state(0);  // First event timestamp (for relative display)
+  let lastEventTime = $state(0);  // Last event arrival time (for auto-pause)
+  const AUTO_PAUSE_DELAY = 500;  // Stop scrolling after 500ms of inactivity
 
   function pushEvent(event: TimelineEvent) {
     if (paused) return;
@@ -43,6 +50,9 @@
     if (baseTime === 0) {
       baseTime = event.ts;
     }
+
+    // Track last event time for auto-pause
+    lastEventTime = Date.now();
 
     events.push(event);
 
@@ -83,7 +93,14 @@
     const width = canvasRef.width;
     const height = canvasRef.height;
     const trackHeight = height / 3;
-    const now = Date.now();
+
+    // Auto-pause: freeze scrolling when no recent events
+    const realNow = Date.now();
+    const timeSinceLastEvent = lastEventTime > 0 ? realNow - lastEventTime : 0;
+    const now = timeSinceLastEvent > AUTO_PAUSE_DELAY && lastEventTime > 0
+      ? lastEventTime + AUTO_PAUSE_DELAY  // Freeze at last event + delay
+      : realNow;  // Keep scrolling
+
     const windowStart = now - (duration * 1000);
     const pxPerMs = width / (duration * 1000);
 
@@ -91,10 +108,7 @@
     ctx.fillStyle = '#0d1117';
     ctx.fillRect(0, 0, width, height);
 
-    // Draw grid
-    drawGrid(ctx, width, height, trackHeight, pxPerMs);
-
-    // Draw track backgrounds and labels
+    // Draw track backgrounds and labels FIRST (so grid draws on top)
     for (let i = 0; i < 3; i++) {
       const y = i * trackHeight;
 
@@ -103,10 +117,13 @@
       ctx.fillRect(0, y, width, trackHeight - 2);
 
       // Track label
-      ctx.fillStyle = '#006622';
+      ctx.fillStyle = '#6b8f71';  // --text-dim
       ctx.font = '11px "JetBrains Mono", monospace';
       ctx.fillText(tracks[i].name, 5, y + 14);
     }
+
+    // Draw grid AFTER backgrounds so lines are visible
+    drawGrid(ctx, width, height, trackHeight, pxPerMs);
 
     // Track current state for drawing pulses
     const trackStates = [false, false, false];
@@ -158,12 +175,12 @@
     const wpm = config?.wpm || 20;
     const ditMs = 1200 / wpm;  // ITU timing
 
-    ctx.strokeStyle = '#1a2a1a';
+    // Dit grid lines - subtle
+    ctx.strokeStyle = '#1f3f2f';
     ctx.lineWidth = 1;
 
-    // Vertical grid lines - every dit duration
     const gridStep = ditMs * pxPerMs;
-    if (gridStep > 3) {  // Only draw if not too dense
+    if (gridStep > 3) {
       for (let x = width; x >= 0; x -= gridStep) {
         ctx.beginPath();
         ctx.moveTo(x, 0);
@@ -172,8 +189,8 @@
       }
     }
 
-    // Thicker lines every 3 dits (one dah)
-    ctx.strokeStyle = '#2a4a2a';
+    // Dah grid lines (every 3 dits) - more visible
+    ctx.strokeStyle = '#2f5f3f';
     const dahStep = gridStep * 3;
     if (dahStep > 10) {
       for (let x = width; x >= 0; x -= dahStep) {
@@ -184,8 +201,35 @@
       }
     }
 
+    // Time scale labels
+    ctx.fillStyle = '#6b8f71';  // --text-dim
+    ctx.font = '10px "JetBrains Mono", monospace';
+    const labelStep = 500;
+    const labelStepPx = labelStep * pxPerMs;
+    if (labelStepPx > 30) {
+      for (let i = 0; i <= Math.ceil(duration * 1000 / labelStep); i++) {
+        const msFromRight = i * labelStep;
+        const x = width - (msFromRight * pxPerMs);
+        if (x >= 0) {
+          // Time marker line
+          ctx.strokeStyle = '#4ec968';  // --text-secondary
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, height);
+          ctx.stroke();
+
+          // Time label
+          const label = msFromRight === 0 ? 'NOW' : `-${msFromRight}ms`;
+          const textWidth = ctx.measureText(label).width;
+          ctx.fillText(label, x - textWidth / 2, height - 3);
+        }
+      }
+    }
+
     // Horizontal track separators
-    ctx.strokeStyle = '#333';
+    ctx.strokeStyle = '#2f5f3f';  // --border-dim
+    ctx.lineWidth = 1;
     for (let i = 1; i < 3; i++) {
       ctx.beginPath();
       ctx.moveTo(0, i * trackHeight);
@@ -205,6 +249,7 @@
   function clearBuffer() {
     events = [];
     baseTime = 0;
+    lastEventTime = 0;
     drawTimeline();
   }
 
@@ -261,6 +306,7 @@
 <div class="timeline-page">
   <div class="page-header">
     <h1>/// TIMELINE VISUALIZER</h1>
+    <span class="build-info">{buildInfo}</span>
     <div class="header-status">
       <span class="connection-status" class:connected>
         {connected ? '● STREAM ACTIVE' : '○ DISCONNECTED'}
@@ -305,8 +351,8 @@
 
     <div class="control-grid">
       <div class="control-item">
-        <label class="control-label">Window</label>
-        <input type="range" min="1" max="10" step="0.5"
+        <label class="control-label" for="duration-range">Window</label>
+        <input id="duration-range" type="range" min="1" max="10" step="0.5"
                bind:value={duration} />
         <span class="control-value">{duration.toFixed(1)}s</span>
       </div>
@@ -347,6 +393,15 @@
     font-size: 1.2rem;
     font-weight: 600;
     letter-spacing: 1px;
+  }
+
+  .build-info {
+    font-size: 0.7rem;
+    color: var(--accent-cyan);
+    font-family: "JetBrains Mono", monospace;
+    background: var(--bg-tertiary);
+    padding: 0.2rem 0.5rem;
+    border: 1px solid var(--border-dim);
   }
 
   .connection-status {

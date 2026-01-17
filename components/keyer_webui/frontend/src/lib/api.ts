@@ -128,6 +128,10 @@ class ApiClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private intentionalDisconnect = false;
 
+  // Time synchronization: map device timestamps to browser time
+  private deviceBaseTime: number | null = null;
+  private browserBaseTime: number | null = null;
+
   connect(callbacks: WSCallbacks): void {
     // Close existing connection before creating new one
     this.disconnect();
@@ -177,6 +181,27 @@ class ApiClient {
   }
 
   private handleWSMessage(msg: WSMessage): void {
+    // Convert device timestamp to browser time, preserving relative offsets
+    let ts: number;
+    if (msg.ts !== undefined) {
+      const browserNow = Date.now();
+      if (this.deviceBaseTime === null) {
+        // First event with timestamp: establish baseline
+        this.deviceBaseTime = msg.ts;
+        this.browserBaseTime = browserNow;
+        ts = browserNow;
+      } else {
+        // Calculate browser time preserving device offset
+        ts = this.browserBaseTime! + (msg.ts - this.deviceBaseTime);
+        // Don't let events appear in the future
+        if (ts > browserNow) {
+          ts = browserNow;
+        }
+      }
+    } else {
+      ts = Date.now();
+    }
+
     switch (msg.type) {
       case 'decoded':
         this.wsCallbacks.onDecodedChar?.(msg.char, msg.wpm);
@@ -188,13 +213,13 @@ class ApiClient {
         this.wsCallbacks.onPattern?.(msg.pattern);
         break;
       case 'paddle':
-        this.wsCallbacks.onPaddle?.(msg.ts, msg.paddle, msg.state);
+        this.wsCallbacks.onPaddle?.(ts, msg.paddle, msg.state);
         break;
       case 'keying':
-        this.wsCallbacks.onKeying?.(msg.ts, msg.element, msg.state);
+        this.wsCallbacks.onKeying?.(ts, msg.element, msg.state);
         break;
       case 'gap':
-        this.wsCallbacks.onGap?.(msg.ts, msg.gap_type);
+        this.wsCallbacks.onGap?.(ts, msg.gap_type);
         break;
     }
   }
@@ -209,6 +234,9 @@ class ApiClient {
       this.ws.close();
       this.ws = null;
     }
+    // Reset time sync on disconnect
+    this.deviceBaseTime = null;
+    this.browserBaseTime = null;
   }
 
   isConnected(): boolean {

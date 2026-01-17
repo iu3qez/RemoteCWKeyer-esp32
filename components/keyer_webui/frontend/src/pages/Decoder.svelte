@@ -107,14 +107,14 @@
       </div>
       {#if status}
         <div class="toggle-row">
-          <label class="toggle-control" onclick={toggleEnabled}>
+          <button type="button" class="toggle-control" onclick={toggleEnabled}>
             <span class="toggle-track" class:active={status.enabled}>
               <span class="toggle-thumb"></span>
             </span>
             <span class="toggle-text">
               {status.enabled ? 'DECODER ACTIVE' : 'DECODER OFF'}
             </span>
-          </label>
+          </button>
         </div>
         <div class="action-buttons">
           <button class="action-btn" onclick={clearText}>
@@ -320,6 +320,10 @@
     background: var(--bg-tertiary);
     border: 1px solid var(--border-dim);
     transition: all 0.2s;
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+    text-align: left;
   }
 
   .toggle-control:hover {
