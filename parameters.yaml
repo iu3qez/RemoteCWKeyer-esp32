@@ -363,7 +363,7 @@ families:
     parameters:
       gpio_dit:
         type: u8
-        default: 5
+        default: 3
         range: [0, 45]
         nvs_key: "gpio_dit"
         runtime_change: reboot
@@ -409,7 +409,7 @@ families:
 
       gpio_tx:
         type: u8
-        default: 6
+        default: 5
         range: [0, 45]
         nvs_key: "gpio_tx"
         runtime_change: reboot

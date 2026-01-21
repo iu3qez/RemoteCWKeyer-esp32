@@ -31,8 +31,14 @@
 #include "decoder.h"
 #include "text_keyer.h"
 #include "text_memory.h"
+#include "provisioning.h"
 
 static const char *TAG = "main";
+
+/* Default GPIO pins for factory reset check (before config loaded) */
+#define DEFAULT_GPIO_DIT  3
+#define DEFAULT_GPIO_DAH  4
+#define FACTORY_RESET_HOLD_MS  5000
 
 /* External task functions */
 extern void rt_task(void *arg);
@@ -82,6 +88,25 @@ void app_main(void) {
     }
     ESP_ERROR_CHECK(ret);
     printf(">>> NVS init OK\n");
+
+    /* ===== PROVISIONING CHECK (before normal boot) ===== */
+
+    /* Check for factory reset request (both paddles held 5s) */
+    printf(">>> Checking factory reset...\n");
+    if (provisioning_check_factory_reset(DEFAULT_GPIO_DIT, DEFAULT_GPIO_DAH, FACTORY_RESET_HOLD_MS)) {
+        ESP_LOGW(TAG, "Factory reset triggered - rebooting to provisioning mode");
+        esp_restart();
+    }
+
+    /* Check if provisioning is needed (WiFi not configured) */
+    if (provisioning_is_needed()) {
+        ESP_LOGI(TAG, "WiFi not configured - entering provisioning mode");
+        provisioning_start();  /* Does not return - reboots after config */
+    }
+
+    printf(">>> Provisioning check passed - normal boot\n");
+
+    /* ===== NORMAL BOOT CONTINUES ===== */
 
     /* Initialize config with defaults, then load from NVS */
     printf(">>> config_init_defaults...\n");
