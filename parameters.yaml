@@ -902,3 +902,103 @@ families:
             it: "IP server DNS (es. 8.8.8.8)"
           widget: text
           advanced: true
+
+  remote:
+    order: 8
+    icon: "globe"
+    label:
+      en: "Remote"
+      it: "Remoto"
+    description:
+      en: "CWNet remote keying configuration"
+      it: "Configurazione keying remoto CWNet"
+    aliases: [r, cwnet]
+
+    parameters:
+      cwnet_enabled:
+        type: bool
+        default: false
+        nvs_key: "cwnet_en"
+        runtime_change: reboot
+        priority: 60
+        gui:
+          label_short:
+            en: "Enable"
+            it: "Abilita"
+          label_long:
+            en: "CWNet Enabled"
+            it: "CWNet Abilitato"
+          description:
+            en: "Enable CWNet remote keying client"
+            it: "Abilita client keying remoto CWNet"
+          widget: toggle
+          widget_config:
+            on_label:
+              en: "On"
+              it: "Attivo"
+            off_label:
+              en: "Off"
+              it: "Spento"
+          advanced: false
+
+      server_host:
+        type: string
+        max_length: 64
+        default: ""
+        nvs_key: "cwnet_host"
+        runtime_change: reboot
+        priority: 61
+        gui:
+          label_short:
+            en: "Server"
+            it: "Server"
+          label_long:
+            en: "CWNet Server Address"
+            it: "Indirizzo Server CWNet"
+          description:
+            en: "CWNet server hostname or IP address"
+            it: "Nome host o indirizzo IP del server CWNet"
+          widget: text
+          advanced: false
+
+      server_port:
+        type: u16
+        default: 7373
+        range: [1, 65535]
+        nvs_key: "cwnet_port"
+        runtime_change: reboot
+        priority: 62
+        gui:
+          label_short:
+            en: "Port"
+            it: "Porta"
+          label_long:
+            en: "CWNet Server Port"
+            it: "Porta Server CWNet"
+          description:
+            en: "CWNet server TCP port (default: 7373)"
+            it: "Porta TCP del server CWNet (default: 7373)"
+          widget: spinbox
+          widget_config:
+            step: 1
+          advanced: false
+
+      username:
+        type: string
+        max_length: 32
+        default: ""
+        nvs_key: "cwnet_user"
+        runtime_change: reboot
+        priority: 63
+        gui:
+          label_short:
+            en: "Username"
+            it: "Nome Utente"
+          label_long:
+            en: "CWNet Username"
+            it: "Nome Utente CWNet"
+          description:
+            en: "Username for server logging (case sensitive, can match callsign)"
+            it: "Nome utente per logging server (case sensitive, può coincidere col nominativo)"
+          widget: text
+          advanced: false

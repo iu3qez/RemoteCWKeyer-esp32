@@ -164,6 +164,85 @@ void test_timestamp_decode_medium_0x31(void);
 void test_timestamp_decode_long_0x55(void);
 void test_timestamp_decode_long_0x72(void);
 
+/* CWNet Frame Parser tests */
+void test_frame_category_no_payload(void);
+void test_frame_category_short(void);
+void test_frame_category_long(void);
+void test_frame_category_reserved(void);
+void test_cmd_type_connect(void);
+void test_cmd_type_disconnect(void);
+void test_cmd_type_ping(void);
+void test_cmd_type_morse(void);
+void test_cmd_type_audio(void);
+void test_parse_disconnect_frame(void);
+void test_parse_ping_frame(void);
+void test_parse_connect_frame(void);
+void test_parse_morse_frame_5bytes(void);
+void test_parse_audio_frame_320(void);
+void test_parse_audio_frame_256(void);
+void test_stream_parse_disconnect_byte_by_byte(void);
+void test_stream_parse_ping_byte_by_byte(void);
+void test_stream_parse_partial_header(void);
+void test_stream_parse_partial_payload(void);
+void test_stream_parse_two_disconnects(void);
+void test_stream_parse_disconnect_then_ping(void);
+void test_parse_reserved_category(void);
+void test_parse_incomplete_returns_need_more(void);
+void test_parse_zero_length_short_block(void);
+void test_parse_null_buffer(void);
+void test_parse_empty_buffer(void);
+void test_parser_reset_clears_state(void);
+void test_parser_init_state(void);
+void test_parser_null_safety(void);
+void test_stream_parse_long_block_partial_length(void);
+
+/* CWNet PING/Timer tests */
+void test_timer_sync_init(void);
+void test_timer_sync_no_drift(void);
+void test_timer_sync_client_ahead(void);
+void test_timer_sync_client_behind(void);
+void test_timer_sync_cumulative(void);
+void test_timer_sync_drift_correction(void);
+void test_timer_null_safety(void);
+void test_ping_parse_request(void);
+void test_ping_parse_response_1(void);
+void test_ping_parse_response_2(void);
+void test_ping_parse_invalid_length(void);
+void test_ping_parse_null(void);
+void test_ping_parse_negative_timestamps(void);
+void test_ping_build_response_1(void);
+void test_ping_build_response_buffer_too_small(void);
+void test_ping_build_response_null(void);
+void test_ping_calc_latency_basic(void);
+void test_ping_calc_latency_zero(void);
+void test_ping_calc_latency_wrap(void);
+void test_ping_calc_latency_wrong_type(void);
+void test_ping_calc_latency_null(void);
+void test_ping_full_sequence(void);
+void test_ping_latency_measurement(void);
+
+/* CWNet Client tests */
+void test_client_init_basic(void);
+void test_client_init_null_client(void);
+void test_client_init_null_config(void);
+void test_client_init_null_callbacks(void);
+void test_client_init_empty_host(void);
+void test_client_init_empty_username(void);
+void test_client_connect_transitions_to_connecting(void);
+void test_client_disconnect_from_any_state(void);
+void test_client_sends_ident_on_connect(void);
+void test_client_receives_welcome_transitions_to_ready(void);
+void test_client_responds_to_ping_request(void);
+void test_client_syncs_timer_on_ping_request(void);
+void test_client_updates_latency_on_ping_response2(void);
+void test_client_sends_key_down_event(void);
+void test_client_sends_key_up_event(void);
+void test_client_rejects_events_when_not_ready(void);
+void test_client_handles_invalid_frame(void);
+void test_client_handles_disconnect_during_operation(void);
+void test_client_handles_fragmented_frame(void);
+void test_client_handles_ping_in_fragments(void);
+
 void setUp(void) {
     /* Called before each test */
 }
@@ -364,6 +443,106 @@ int main(void) {
     RUN_TEST(test_timestamp_roundtrip_linear);
     RUN_TEST(test_timestamp_roundtrip_medium);
     RUN_TEST(test_timestamp_roundtrip_long);
+
+    /* CWNet Frame Parser tests */
+    printf("\n=== CWNet Frame Parser Tests ===\n");
+    /* Category detection */
+    RUN_TEST(test_frame_category_no_payload);
+    RUN_TEST(test_frame_category_short);
+    RUN_TEST(test_frame_category_long);
+    RUN_TEST(test_frame_category_reserved);
+    /* Command extraction */
+    RUN_TEST(test_cmd_type_connect);
+    RUN_TEST(test_cmd_type_disconnect);
+    RUN_TEST(test_cmd_type_ping);
+    RUN_TEST(test_cmd_type_morse);
+    RUN_TEST(test_cmd_type_audio);
+    /* Complete frame parsing */
+    RUN_TEST(test_parse_disconnect_frame);
+    RUN_TEST(test_parse_ping_frame);
+    RUN_TEST(test_parse_connect_frame);
+    RUN_TEST(test_parse_morse_frame_5bytes);
+    RUN_TEST(test_parse_audio_frame_320);
+    RUN_TEST(test_parse_audio_frame_256);
+    /* Streaming parser */
+    RUN_TEST(test_stream_parse_disconnect_byte_by_byte);
+    RUN_TEST(test_stream_parse_ping_byte_by_byte);
+    RUN_TEST(test_stream_parse_partial_header);
+    RUN_TEST(test_stream_parse_partial_payload);
+    RUN_TEST(test_stream_parse_two_disconnects);
+    RUN_TEST(test_stream_parse_disconnect_then_ping);
+    RUN_TEST(test_stream_parse_long_block_partial_length);
+    /* Error handling */
+    RUN_TEST(test_parse_reserved_category);
+    RUN_TEST(test_parse_incomplete_returns_need_more);
+    RUN_TEST(test_parse_zero_length_short_block);
+    RUN_TEST(test_parse_null_buffer);
+    RUN_TEST(test_parse_empty_buffer);
+    /* Parser state */
+    RUN_TEST(test_parser_reset_clears_state);
+    RUN_TEST(test_parser_init_state);
+    RUN_TEST(test_parser_null_safety);
+
+    /* CWNet PING/Timer tests */
+    printf("\n=== CWNet PING/Timer Tests ===\n");
+    /* Timer sync */
+    RUN_TEST(test_timer_sync_init);
+    RUN_TEST(test_timer_sync_no_drift);
+    RUN_TEST(test_timer_sync_client_ahead);
+    RUN_TEST(test_timer_sync_client_behind);
+    RUN_TEST(test_timer_sync_cumulative);
+    RUN_TEST(test_timer_sync_drift_correction);
+    RUN_TEST(test_timer_null_safety);
+    /* PING parsing */
+    RUN_TEST(test_ping_parse_request);
+    RUN_TEST(test_ping_parse_response_1);
+    RUN_TEST(test_ping_parse_response_2);
+    RUN_TEST(test_ping_parse_invalid_length);
+    RUN_TEST(test_ping_parse_null);
+    RUN_TEST(test_ping_parse_negative_timestamps);
+    /* PING building */
+    RUN_TEST(test_ping_build_response_1);
+    RUN_TEST(test_ping_build_response_buffer_too_small);
+    RUN_TEST(test_ping_build_response_null);
+    /* Latency calculation */
+    RUN_TEST(test_ping_calc_latency_basic);
+    RUN_TEST(test_ping_calc_latency_zero);
+    RUN_TEST(test_ping_calc_latency_wrap);
+    RUN_TEST(test_ping_calc_latency_wrong_type);
+    RUN_TEST(test_ping_calc_latency_null);
+    /* Integration */
+    RUN_TEST(test_ping_full_sequence);
+    RUN_TEST(test_ping_latency_measurement);
+
+    /* CWNet Client tests */
+    printf("\n=== CWNet Client Tests ===\n");
+    /* Initialization */
+    RUN_TEST(test_client_init_basic);
+    RUN_TEST(test_client_init_null_client);
+    RUN_TEST(test_client_init_null_config);
+    RUN_TEST(test_client_init_null_callbacks);
+    RUN_TEST(test_client_init_empty_host);
+    RUN_TEST(test_client_init_empty_username);
+    /* State Transitions */
+    RUN_TEST(test_client_connect_transitions_to_connecting);
+    RUN_TEST(test_client_disconnect_from_any_state);
+    /* Protocol Handshake */
+    RUN_TEST(test_client_sends_ident_on_connect);
+    RUN_TEST(test_client_receives_welcome_transitions_to_ready);
+    /* PING Handling */
+    RUN_TEST(test_client_responds_to_ping_request);
+    RUN_TEST(test_client_syncs_timer_on_ping_request);
+    RUN_TEST(test_client_updates_latency_on_ping_response2);
+    /* CW Events */
+    RUN_TEST(test_client_sends_key_down_event);
+    RUN_TEST(test_client_sends_key_up_event);
+    RUN_TEST(test_client_rejects_events_when_not_ready);
+    /* Error Handling */
+    RUN_TEST(test_client_handles_invalid_frame);
+    RUN_TEST(test_client_handles_disconnect_during_operation);
+    /* Fragmentation */
+    RUN_TEST(test_client_handles_fragmented_frame);
+    RUN_TEST(test_client_handles_ping_in_fragments);
 
     return UNITY_END();
 }

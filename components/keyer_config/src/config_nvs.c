@@ -128,6 +128,12 @@ int config_load_from_nvs(void) {
         loaded++;
     }
 
+    /* Load system.ui_theme */
+    if (nvs_get_u8(handle, NVS_SYSTEM_UI_THEME, &u8_val) == ESP_OK) {
+        atomic_store_explicit(&g_config.system.ui_theme, u8_val, memory_order_relaxed);
+        loaded++;
+    }
+
     /* Load leds.gpio_data */
     if (nvs_get_u8(handle, NVS_LEDS_GPIO_DATA, &u8_val) == ESP_OK) {
         atomic_store_explicit(&g_config.leds.gpio_data, u8_val, memory_order_relaxed);
@@ -203,6 +209,30 @@ int config_load_from_nvs(void) {
     /* Load wifi.dns */
     str_len = sizeof(g_config.wifi.dns);
     if (nvs_get_str(handle, NVS_WIFI_DNS, g_config.wifi.dns, &str_len) == ESP_OK) {
+        loaded++;
+    }
+
+    /* Load remote.cwnet_enabled */
+    if (nvs_get_u8(handle, NVS_REMOTE_CWNET_ENABLED, &u8_val) == ESP_OK) {
+        atomic_store_explicit(&g_config.remote.cwnet_enabled, u8_val != 0, memory_order_relaxed);
+        loaded++;
+    }
+
+    /* Load remote.server_host */
+    str_len = sizeof(g_config.remote.server_host);
+    if (nvs_get_str(handle, NVS_REMOTE_SERVER_HOST, g_config.remote.server_host, &str_len) == ESP_OK) {
+        loaded++;
+    }
+
+    /* Load remote.server_port */
+    if (nvs_get_u16(handle, NVS_REMOTE_SERVER_PORT, &u16_val) == ESP_OK) {
+        atomic_store_explicit(&g_config.remote.server_port, u16_val, memory_order_relaxed);
+        loaded++;
+    }
+
+    /* Load remote.username */
+    str_len = sizeof(g_config.remote.username);
+    if (nvs_get_str(handle, NVS_REMOTE_USERNAME, g_config.remote.username, &str_len) == ESP_OK) {
         loaded++;
     }
 
@@ -320,6 +350,12 @@ int config_save_to_nvs(void) {
         saved++;
     }
 
+    /* Save system.ui_theme */
+    if (nvs_set_u8(handle, NVS_SYSTEM_UI_THEME,
+            atomic_load_explicit(&g_config.system.ui_theme, memory_order_relaxed)) == ESP_OK) {
+        saved++;
+    }
+
     /* Save leds.gpio_data */
     if (nvs_set_u8(handle, NVS_LEDS_GPIO_DATA,
             atomic_load_explicit(&g_config.leds.gpio_data, memory_order_relaxed)) == ESP_OK) {
@@ -389,6 +425,28 @@ int config_save_to_nvs(void) {
 
     /* Save wifi.dns */
     if (nvs_set_str(handle, NVS_WIFI_DNS, g_config.wifi.dns) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save remote.cwnet_enabled */
+    if (nvs_set_u8(handle, NVS_REMOTE_CWNET_ENABLED,
+            atomic_load_explicit(&g_config.remote.cwnet_enabled, memory_order_relaxed) ? 1 : 0) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save remote.server_host */
+    if (nvs_set_str(handle, NVS_REMOTE_SERVER_HOST, g_config.remote.server_host) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save remote.server_port */
+    if (nvs_set_u16(handle, NVS_REMOTE_SERVER_PORT,
+            atomic_load_explicit(&g_config.remote.server_port, memory_order_relaxed)) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save remote.username */
+    if (nvs_set_str(handle, NVS_REMOTE_USERNAME, g_config.remote.username) == ESP_OK) {
         saved++;
     }
 

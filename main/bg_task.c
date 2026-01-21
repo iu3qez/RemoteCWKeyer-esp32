@@ -29,6 +29,7 @@
 #include "hal_gpio.h"
 #include "config.h"
 #include "webui.h"
+#include "cwnet_socket.h"
 
 #include <stdio.h>
 
@@ -76,6 +77,9 @@ void bg_task(void *arg) {
     best_effort_consumer_init(&s_timeline_consumer, &g_keying_stream, 0);
     s_timeline_initialized = true;
 
+    /* Initialize CWNet client (reads config, connects if enabled) */
+    cwnet_socket_init();
+
     /* Log startup */
     int64_t now_us = esp_timer_get_time();
     RT_INFO(&g_bg_log_stream, now_us, "BG task started (text keyer ready)");
@@ -122,6 +126,9 @@ void bg_task(void *arg) {
             gpio_state_t paddles = hal_gpio_read_paddles();
             led_tick(now_us, gpio_dit(paddles), gpio_dah(paddles));
         }
+
+        /* Process CWNet socket (connection, send/receive) */
+        cwnet_socket_process();
 
         /* Process decoder (reads from keying_stream) */
         decoder_process();
@@ -183,6 +190,9 @@ void bg_task(void *arg) {
                         (long long)(now_us / 1000),
                         sample.local_key ? 1 : 0);
                     webui_timeline_push("keying", json);
+
+                    /* Forward key event to CWNet */
+                    cwnet_socket_send_key_event(sample.local_key != 0);
                 }
 
                 /* Update previous state */
@@ -212,6 +222,19 @@ void bg_task(void *arg) {
                 RT_ERROR(&g_bg_log_stream, now_us, "FAULT active: %s (count=%" PRIu32 ")",
                          fault_code_str(fault_get_code(&g_fault_state)),
                          fault_get_count(&g_fault_state));
+            }
+
+            /* Log CWNet status if enabled */
+            cwnet_socket_state_t cwnet_state = cwnet_socket_get_state();
+            if (cwnet_state != CWNET_SOCK_DISABLED) {
+                int32_t latency = cwnet_socket_get_latency_ms();
+                if (latency >= 0) {
+                    RT_INFO(&g_bg_log_stream, now_us, "CWNet: %s, latency=%"PRId32"ms",
+                            cwnet_socket_state_str(cwnet_state), latency);
+                } else {
+                    RT_INFO(&g_bg_log_stream, now_us, "CWNet: %s",
+                            cwnet_socket_state_str(cwnet_state));
+                }
             }
 
             stats_counter = 0;
