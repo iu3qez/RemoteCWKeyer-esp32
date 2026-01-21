@@ -363,7 +363,7 @@ families:
     parameters:
       gpio_dit:
         type: u8
-        default: 4
+        default: 5
         range: [0, 45]
         nvs_key: "gpio_dit"
         runtime_change: reboot
@@ -386,7 +386,7 @@ families:
 
       gpio_dah:
         type: u8
-        default: 5
+        default: 4
         range: [0, 45]
         nvs_key: "gpio_dah"
         runtime_change: reboot
@@ -428,48 +428,6 @@ families:
           widget_config:
             step: 1
             prefix: "GPIO "
-          advanced: true
-
-      isr_blanking_us:
-        type: u32
-        default: 1500
-        range: [0, 10000]
-        nvs_key: "isr_blank"
-        runtime_change: reboot
-        priority: 23
-        gui:
-          label_short:
-            en: "ISR Blank"
-            it: "Blank ISR"
-          label_long:
-            en: "ISR Blanking Period (µs)"
-            it: "Periodo Blanking ISR (µs)"
-          description:
-            en: "Paddle ISR blanking period in microseconds (0=disable ISR, use polling)"
-            it: "Periodo blanking ISR paddle in microsecondi (0=disabilita ISR, usa polling)"
-          widget: dropdown
-          widget_config:
-            options:
-              - value: 0
-                label:
-                  en: "Disabled (polling only)"
-                  it: "Disabilitato (solo polling)"
-              - value: 1000
-                label:
-                  en: "1ms (fast repeat)"
-                  it: "1ms (ripetizione veloce)"
-              - value: 2000
-                label:
-                  en: "2ms (recommended)"
-                  it: "2ms (raccomandato)"
-              - value: 3000
-                label:
-                  en: "3ms (conservative)"
-                  it: "3ms (conservativo)"
-              - value: 5000
-                label:
-                  en: "5ms (very safe)"
-                  it: "5ms (molto sicuro)"
           advanced: true
 
   timing:
@@ -601,6 +559,44 @@ families:
             en: "Your amateur radio callsign"
             it: "Il tuo nominativo radioamatoriale"
           widget: text
+          advanced: false
+
+      ui_theme:
+        type: enum
+        enum_values: [matrix_green, amber_terminal, cyan_ice, phosphor_white]
+        default: matrix_green
+        nvs_key: "ui_theme"
+        runtime_change: immediate
+        priority: 32
+        gui:
+          label_short:
+            en: "Theme"
+            it: "Tema"
+          label_long:
+            en: "UI Color Theme"
+            it: "Tema Colori UI"
+          description:
+            en: "Color palette for the web interface"
+            it: "Palette di colori per l'interfaccia web"
+          widget: dropdown
+          widget_config:
+            options:
+              - value: matrix_green
+                label:
+                  en: "Matrix Green"
+                  it: "Verde Matrix"
+              - value: amber_terminal
+                label:
+                  en: "Amber Terminal"
+                  it: "Terminale Ambra"
+              - value: cyan_ice
+                label:
+                  en: "Cyan Ice"
+                  it: "Ciano Ghiaccio"
+              - value: phosphor_white
+                label:
+                  en: "Phosphor White"
+                  it: "Fosforo Bianco"
           advanced: false
 
   leds:

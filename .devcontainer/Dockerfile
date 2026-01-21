@@ -96,6 +96,9 @@ USER ${USERNAME}
 # Install uv for vscode user
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
+# Install llm-tldr via uv (build locally, not in GitHub CI due to timeout)
+RUN ~/.local/bin/uv tool install llm-tldr
+
 # Install Elan (Lean4 version manager) - must be as user, installs to ~/.elan
 RUN curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
 

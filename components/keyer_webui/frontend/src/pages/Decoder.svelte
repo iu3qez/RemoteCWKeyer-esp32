@@ -8,7 +8,6 @@
   let currentWpm = $state(0);
   let currentPattern = $state('');
   let error = $state<string | null>(null);
-  let eventSource: EventSource | null = null;
   let connected = $state(false);
   let charCount = $state(0);
 
@@ -31,37 +30,11 @@
     }
   }
 
-  function connectStream() {
-    eventSource = api.connectDecoderStream(
-      (char, wpm) => {
-        decodedText += char;
-        currentWpm = wpm;
-        charCount++;
-        // Keep last 500 chars
-        if (decodedText.length > 500) {
-          decodedText = decodedText.slice(-500);
-        }
-        // Scroll terminal to bottom
-        setTimeout(() => {
-          const terminal = document.getElementById('decoder-terminal');
-          if (terminal) terminal.scrollTop = terminal.scrollHeight;
-        }, 10);
-      },
-      () => {
-        decodedText += ' ';
-      }
-    );
-
-    eventSource.onopen = () => {
-      connected = true;
-      error = null;
-    };
-
-    eventSource.onerror = () => {
-      connected = false;
-      error = 'SSE connection lost. Reconnecting...';
-      setTimeout(connectStream, 3000);
-    };
+  function scrollTerminal() {
+    setTimeout(() => {
+      const terminal = document.getElementById('decoder-terminal');
+      if (terminal) terminal.scrollTop = terminal.scrollHeight;
+    }, 10);
   }
 
   function clearText() {
@@ -71,18 +44,41 @@
 
   onMount(() => {
     refresh();
-    connectStream();
+    api.connect({
+      onDecodedChar: (char, wpm) => {
+        decodedText += char;
+        currentWpm = wpm;
+        charCount++;
+        // Keep last 500 chars
+        if (decodedText.length > 500) {
+          decodedText = decodedText.slice(-500);
+        }
+        scrollTerminal();
+      },
+      onWord: () => {
+        decodedText += ' ';
+      },
+      onPattern: (pattern) => {
+        currentPattern = pattern;
+      },
+      onConnect: () => {
+        connected = true;
+        error = null;
+      },
+      onDisconnect: () => {
+        connected = false;
+        error = 'WebSocket disconnected. Reconnecting...';
+      }
+    });
   });
 
   onDestroy(() => {
-    if (eventSource) {
-      eventSource.close();
-    }
+    api.disconnect();
   });
 
   let wpmDisplay = $derived(currentWpm || status?.wpm || 0);
   let wpmPercent = $derived(Math.min(100, Math.max(0, ((wpmDisplay - 5) / 55) * 100)));
-  let patternDisplay = $derived(status?.pattern || currentPattern || '');
+  let patternDisplay = $derived(currentPattern || status?.pattern || '');
 </script>
 
 <div class="decoder-page">
@@ -111,14 +107,14 @@
       </div>
       {#if status}
         <div class="toggle-row">
-          <label class="toggle-control" onclick={toggleEnabled}>
+          <button type="button" class="toggle-control" onclick={toggleEnabled}>
             <span class="toggle-track" class:active={status.enabled}>
               <span class="toggle-thumb"></span>
             </span>
             <span class="toggle-text">
               {status.enabled ? 'DECODER ACTIVE' : 'DECODER OFF'}
             </span>
-          </label>
+          </button>
         </div>
         <div class="action-buttons">
           <button class="action-btn" onclick={clearText}>
@@ -324,6 +320,10 @@
     background: var(--bg-tertiary);
     border: 1px solid var(--border-dim);
     transition: all 0.2s;
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+    text-align: left;
   }
 
   .toggle-control:hover {

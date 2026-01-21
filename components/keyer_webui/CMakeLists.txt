@@ -6,7 +6,7 @@ idf_component_register(
         "src/api_system.c"
         "src/api_decoder.c"
         "src/api_timeline.c"
-        "src/sse.c"
+        "src/ws_server.c"
         "src/assets.c"
     INCLUDE_DIRS
         "include"

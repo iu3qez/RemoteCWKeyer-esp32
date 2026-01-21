@@ -114,6 +114,15 @@ size_t decoder_get_text_with_timestamps(decoded_char_t *buf, size_t max_count);
 decoded_char_t decoder_get_last_char(void);
 
 /**
+ * @brief Pop next unread decoded character
+ *
+ * Returns characters in FIFO order. Each character is returned only once.
+ *
+ * @return Next unread character (character='\0' if none available)
+ */
+decoded_char_t decoder_pop_char(void);
+
+/**
  * @brief Get detected WPM
  *
  * @return WPM (0 if not calibrated)

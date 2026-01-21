@@ -73,10 +73,6 @@ void app_main(void) {
     /* Initialize UART logger early for boot logs (GPIO6, 115200) */
     uart_logger_init();
 
-    /* DEBUG: 5 second pause to allow UART connection */
-    ESP_LOGI(TAG, "DEBUG: Waiting 5 seconds for UART connection...");
-    vTaskDelay(pdMS_TO_TICKS(5000));
-
     /* Initialize NVS */
     printf(">>> NVS init...\n");
     esp_err_t ret = nvs_flash_init();
@@ -113,11 +109,10 @@ void app_main(void) {
         .tx_pin = CONFIG_GET_GPIO_TX(),
         .active_low = true,        /* Paddles are active low (internal pull-up) */
         .tx_active_high = true,    /* TX output is active high */
-        .isr_blanking_us = CONFIG_GET_ISR_BLANKING_US(),
+        .isr_blanking_us = 1500,   /* ISR blanking period for debounce (0 = polling only) */
     };
-    ESP_LOGI(TAG, "GPIO config from g_config: DIT=%d, DAH=%d, TX=%d, ISR_blank=%luus",
-             gpio_cfg.dit_pin, gpio_cfg.dah_pin, gpio_cfg.tx_pin,
-             (unsigned long)gpio_cfg.isr_blanking_us);
+    ESP_LOGI(TAG, "GPIO config from g_config: DIT=%d, DAH=%d, TX=%d",
+             gpio_cfg.dit_pin, gpio_cfg.dah_pin, gpio_cfg.tx_pin);
     hal_gpio_init(&gpio_cfg);
     printf(">>> hal_gpio_init OK\n");
 

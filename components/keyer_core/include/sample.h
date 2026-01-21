@@ -68,26 +68,6 @@ static inline gpio_state_t gpio_from_paddles(bool dit, bool dah) {
     return gs;
 }
 
-/** Set DIT state in GPIO state */
-static inline gpio_state_t gpio_with_dit(gpio_state_t gs, bool pressed) {
-    if (pressed) {
-        gs.bits |= GPIO_DIT_BIT;
-    } else {
-        gs.bits &= (uint8_t)~GPIO_DIT_BIT;
-    }
-    return gs;
-}
-
-/** Set DAH state in GPIO state */
-static inline gpio_state_t gpio_with_dah(gpio_state_t gs, bool pressed) {
-    if (pressed) {
-        gs.bits |= GPIO_DAH_BIT;
-    } else {
-        gs.bits &= (uint8_t)~GPIO_DAH_BIT;
-    }
-    return gs;
-}
-
 /* ============================================================================
  * Sample Flags
  * ============================================================================ */

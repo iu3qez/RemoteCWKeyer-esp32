@@ -1,6 +1,6 @@
 #include "webui.h"
 #include "assets.h"
-#include "sse.h"
+#include "ws_server.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include <string.h>
@@ -18,9 +18,7 @@ extern esp_err_t api_system_stats_handler(httpd_req_t *req);
 extern esp_err_t api_system_reboot_handler(httpd_req_t *req);
 extern esp_err_t api_decoder_status_handler(httpd_req_t *req);
 extern esp_err_t api_decoder_enable_handler(httpd_req_t *req);
-extern esp_err_t api_decoder_stream_handler(httpd_req_t *req);
 extern esp_err_t api_timeline_config_handler(httpd_req_t *req);
-extern esp_err_t api_timeline_stream_handler(httpd_req_t *req);
 extern esp_err_t api_text_send_handler(httpd_req_t *req);
 extern esp_err_t api_text_status_handler(httpd_req_t *req);
 extern esp_err_t api_text_abort_handler(httpd_req_t *req);
@@ -180,14 +178,6 @@ static void register_api_routes(httpd_handle_t server) {
     };
     httpd_register_uri_handler(server, &decoder_enable);
 
-    httpd_uri_t decoder_stream = {
-        .uri = "/api/decoder/stream",
-        .method = HTTP_GET,
-        .handler = api_decoder_stream_handler,
-        .user_ctx = NULL,
-    };
-    httpd_register_uri_handler(server, &decoder_stream);
-
     /* Timeline API */
     httpd_uri_t timeline_config = {
         .uri = "/api/timeline/config",
@@ -197,13 +187,16 @@ static void register_api_routes(httpd_handle_t server) {
     };
     httpd_register_uri_handler(server, &timeline_config);
 
-    httpd_uri_t timeline_stream = {
-        .uri = "/api/timeline/stream",
+    /* WebSocket endpoint for real-time streaming */
+    httpd_uri_t ws = {
+        .uri = "/ws",
         .method = HTTP_GET,
-        .handler = api_timeline_stream_handler,
+        .handler = ws_handler,
         .user_ctx = NULL,
+        .is_websocket = true,
+        .handle_ws_control_frames = true,
     };
-    httpd_register_uri_handler(server, &timeline_stream);
+    httpd_register_uri_handler(server, &ws);
 
     /* Text Keyer API */
     httpd_uri_t text_send = {
@@ -272,7 +265,7 @@ static void register_api_routes(httpd_handle_t server) {
 }
 
 esp_err_t webui_init(void) {
-    sse_init();
+    ws_server_init();
     ESP_LOGI(TAG, "WebUI initialized (%zu assets)", webui_get_asset_count());
     return ESP_OK;
 }
@@ -293,6 +286,9 @@ esp_err_t webui_start(void) {
         return ret;
     }
 
+    /* Set httpd handle for WebSocket session management */
+    ws_server_set_httpd_handle(s_server);
+
     register_static_routes(s_server);
     register_api_routes(s_server);
 
@@ -311,17 +307,24 @@ esp_err_t webui_stop(void) {
     return ESP_OK;
 }
 
-/* SSE push functions */
+/* WebSocket push functions */
 void webui_timeline_push(const char *event_type, const char *json_data) {
-    sse_broadcast(SSE_STREAM_TIMELINE, event_type, json_data);
+    ws_broadcast_timeline(event_type, json_data);
 }
 
 void webui_decoder_push_char(char c, uint8_t wpm) {
-    char json[32];
-    snprintf(json, sizeof(json), "{\"char\":\"%c\",\"wpm\":%u}", c, wpm);
-    sse_broadcast(SSE_STREAM_DECODER, "char", json);
+    ESP_LOGI(TAG, "Push char '%c' wpm=%u clients=%d", c, wpm, ws_get_client_count());
+    ws_broadcast_decoder_char(c, wpm);
 }
 
 void webui_decoder_push_word(void) {
-    sse_broadcast(SSE_STREAM_DECODER, "word", "{}");
+    ws_broadcast_decoder_word();
+}
+
+void webui_decoder_push_pattern(const char *pattern) {
+    ws_broadcast_decoder_pattern(pattern);
+}
+
+int webui_get_ws_client_count(void) {
+    return ws_get_client_count();
 }

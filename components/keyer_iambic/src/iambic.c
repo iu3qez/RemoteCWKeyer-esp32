@@ -43,6 +43,8 @@ void iambic_init(iambic_processor_t *proc, const iambic_config_t *config) {
     proc->dah_pressed = false;
     proc->dit_release_time_us = 0;
     proc->dah_release_time_us = 0;
+    proc->dit_press_start_us = 0;
+    proc->dah_press_start_us = 0;
     proc->dit_memory = false;
     proc->dah_memory = false;
     proc->squeeze_seen = false;
@@ -103,6 +105,8 @@ void iambic_reset(iambic_processor_t *proc) {
     proc->key_down = false;
     proc->dit_release_time_us = 0;
     proc->dah_release_time_us = 0;
+    proc->dit_press_start_us = 0;
+    proc->dah_press_start_us = 0;
 }
 
 /* ============================================================================
@@ -163,8 +167,19 @@ static void update_gpio(iambic_processor_t *proc, gpio_state_t gpio, int64_t now
     bool dit_in_blanking = (now_us - proc->dit_release_time_us) < IAMBIC_DEBOUNCE_RELEASE_US;
     bool dah_in_blanking = (now_us - proc->dah_release_time_us) < IAMBIC_DEBOUNCE_RELEASE_US;
 
-    proc->dit_pressed = raw_dit && !dit_in_blanking;
-    proc->dah_pressed = raw_dah && !dah_in_blanking;
+    bool new_dit_pressed = raw_dit && !dit_in_blanking;
+    bool new_dah_pressed = raw_dah && !dah_in_blanking;
+
+    /* Track rising edge (press start) for fresh press detection */
+    if (new_dit_pressed && !proc->dit_pressed) {
+        proc->dit_press_start_us = now_us;
+    }
+    if (new_dah_pressed && !proc->dah_pressed) {
+        proc->dah_press_start_us = now_us;
+    }
+
+    proc->dit_pressed = new_dit_pressed;
+    proc->dah_pressed = new_dah_pressed;
 
     bool is_squeeze = proc->dit_pressed && proc->dah_pressed;
 
@@ -203,11 +218,16 @@ static void update_gpio(iambic_processor_t *proc, gpio_state_t gpio, int64_t now
         }
 
         if (in_window) {
-            /* Inside window: arm memory if paddle pressed */
-            if (can_arm_dit && check_dit && iambic_dit_memory_enabled(proc->config.memory_mode)) {
+            /* Fresh press detection: only arm memory if press started AFTER element began.
+             * This prevents re-arming from the same press due to contact bounce. */
+            bool dit_is_fresh = (proc->dit_press_start_us > proc->element_start_us);
+            bool dah_is_fresh = (proc->dah_press_start_us > proc->element_start_us);
+
+            /* Inside window: arm memory if paddle pressed AND it's a fresh press */
+            if (can_arm_dit && check_dit && dit_is_fresh && iambic_dit_memory_enabled(proc->config.memory_mode)) {
                 proc->dit_memory = true;
             }
-            if (can_arm_dah && check_dah && iambic_dah_memory_enabled(proc->config.memory_mode)) {
+            if (can_arm_dah && check_dah && dah_is_fresh && iambic_dah_memory_enabled(proc->config.memory_mode)) {
                 proc->dah_memory = true;
             }
         }

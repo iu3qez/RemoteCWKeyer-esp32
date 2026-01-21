@@ -122,33 +122,175 @@ class ApiClient {
     });
   }
 
-  // SSE helpers
-  connectDecoderStream(onChar: (char: string, wpm: number) => void, onWord: () => void): EventSource {
-    const es = new EventSource(`${this.baseUrl}/api/decoder/stream`);
+  // WebSocket streaming
+  private ws: WebSocket | null = null;
+  private wsCallbacks: WSCallbacks = {};
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private intentionalDisconnect = false;
 
-    es.addEventListener('char', (e) => {
-      const data = JSON.parse(e.data);
-      onChar(data.char, data.wpm);
-    });
+  // Time synchronization: map device timestamps to browser time
+  private deviceBaseTime: number | null = null;
+  private browserBaseTime: number | null = null;
 
-    es.addEventListener('word', () => {
-      onWord();
-    });
-
-    return es;
+  connect(callbacks: WSCallbacks): void {
+    // Close existing connection before creating new one
+    this.disconnect();
+    this.intentionalDisconnect = false;
+    this.wsCallbacks = callbacks;
+    this.doConnect();
   }
 
-  connectTimelineStream(onEvent: (type: string, data: unknown) => void): EventSource {
-    const es = new EventSource(`${this.baseUrl}/api/timeline/stream`);
+  private doConnect(): void {
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = this.baseUrl || location.host;
+    const url = `${protocol}//${host}/ws`;
 
-    ['paddle', 'keying', 'decoded', 'gap'].forEach(eventType => {
-      es.addEventListener(eventType, (e) => {
-        onEvent(eventType, JSON.parse(e.data));
-      });
-    });
+    this.ws = new WebSocket(url);
 
-    return es;
+    this.ws.onopen = () => {
+      this.wsCallbacks.onConnect?.();
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+    };
+
+    this.ws.onclose = () => {
+      this.wsCallbacks.onDisconnect?.();
+      // Auto-reconnect after 3 seconds (unless intentionally disconnected)
+      if (!this.reconnectTimer && !this.intentionalDisconnect) {
+        this.reconnectTimer = setTimeout(() => {
+          this.reconnectTimer = null;
+          this.doConnect();
+        }, 3000);
+      }
+    };
+
+    this.ws.onerror = () => {
+      // Error will trigger onclose
+    };
+
+    this.ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        this.handleWSMessage(msg);
+      } catch {
+        console.warn('Invalid WS message:', e.data);
+      }
+    };
   }
+
+  private handleWSMessage(msg: WSMessage): void {
+    // Convert device timestamp to browser time, preserving relative offsets
+    let ts: number;
+    if (msg.ts !== undefined) {
+      const browserNow = Date.now();
+      if (this.deviceBaseTime === null) {
+        // First event with timestamp: establish baseline
+        this.deviceBaseTime = msg.ts;
+        this.browserBaseTime = browserNow;
+        ts = browserNow;
+      } else {
+        // Calculate browser time preserving device offset
+        ts = this.browserBaseTime! + (msg.ts - this.deviceBaseTime);
+        // Don't let events appear in the future
+        if (ts > browserNow) {
+          ts = browserNow;
+        }
+      }
+    } else {
+      ts = Date.now();
+    }
+
+    switch (msg.type) {
+      case 'decoded':
+        this.wsCallbacks.onDecodedChar?.(msg.char, msg.wpm);
+        break;
+      case 'word':
+        this.wsCallbacks.onWord?.();
+        break;
+      case 'pattern':
+        this.wsCallbacks.onPattern?.(msg.pattern);
+        break;
+      case 'paddle':
+        this.wsCallbacks.onPaddle?.(ts, msg.paddle, msg.state);
+        break;
+      case 'keying':
+        this.wsCallbacks.onKeying?.(ts, msg.element, msg.state);
+        break;
+      case 'gap':
+        this.wsCallbacks.onGap?.(ts, msg.gap_type);
+        break;
+    }
+  }
+
+  disconnect(): void {
+    this.intentionalDisconnect = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    // Reset time sync on disconnect
+    this.deviceBaseTime = null;
+    this.browserBaseTime = null;
+  }
+
+  isConnected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
+  }
+}
+
+// WebSocket message types
+interface WSMessageDecoded {
+  type: 'decoded';
+  char: string;
+  wpm: number;
+}
+
+interface WSMessageWord {
+  type: 'word';
+}
+
+interface WSMessagePattern {
+  type: 'pattern';
+  pattern: string;
+}
+
+interface WSMessagePaddle {
+  type: 'paddle';
+  ts: number;
+  paddle: number;
+  state: number;
+}
+
+interface WSMessageKeying {
+  type: 'keying';
+  ts: number;
+  element: number;
+  state: number;
+}
+
+interface WSMessageGap {
+  type: 'gap';
+  ts: number;
+  gap_type: number;
+}
+
+type WSMessage = WSMessageDecoded | WSMessageWord | WSMessagePattern | WSMessagePaddle | WSMessageKeying | WSMessageGap;
+
+export interface WSCallbacks {
+  onDecodedChar?: (char: string, wpm: number) => void;
+  onWord?: () => void;
+  onPattern?: (pattern: string) => void;
+  onPaddle?: (ts: number, paddle: number, state: number) => void;
+  onKeying?: (ts: number, element: number, state: number) => void;
+  onGap?: (ts: number, gapType: number) => void;
+  onConnect?: () => void;
+  onDisconnect?: () => void;
 }
 
 export const api = new ApiClient();
