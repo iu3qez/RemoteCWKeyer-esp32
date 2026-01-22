@@ -74,3 +74,14 @@ export interface MemorySlot {
   text: string;
   label: string;
 }
+
+export interface VpnStats {
+  handshakes: number;
+  last_handshake_us: number;
+}
+
+export interface VpnStatus {
+  state: string;
+  connected: boolean;
+  stats?: VpnStats;
+}

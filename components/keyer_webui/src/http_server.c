@@ -27,6 +27,7 @@ extern esp_err_t api_text_resume_handler(httpd_req_t *req);
 extern esp_err_t api_text_memory_list_handler(httpd_req_t *req);
 extern esp_err_t api_text_memory_set_handler(httpd_req_t *req);
 extern esp_err_t api_text_play_handler(httpd_req_t *req);
+extern esp_err_t api_vpn_status_handler(httpd_req_t *req);
 
 /* SPA routes that should serve index.html */
 static const char *SPA_ROUTES[] = {
@@ -160,6 +161,15 @@ static void register_api_routes(httpd_handle_t server) {
         .user_ctx = NULL,
     };
     httpd_register_uri_handler(server, &reboot);
+
+    /* VPN API */
+    httpd_uri_t vpn_status = {
+        .uri = "/api/vpn/status",
+        .method = HTTP_GET,
+        .handler = api_vpn_status_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &vpn_status);
 
     /* Decoder API */
     httpd_uri_t decoder_status = {
