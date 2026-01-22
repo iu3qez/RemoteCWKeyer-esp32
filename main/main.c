@@ -165,7 +165,7 @@ void app_main(void) {
     }
 
     /* Initialize VPN if enabled (requires WiFi) */
-    if (atomic_load_explicit(&g_config.vpn.vpn_enabled, memory_order_relaxed)) {
+    if (atomic_load_explicit(&g_config.vpn.enabled, memory_order_relaxed)) {
         ESP_LOGI(TAG, "VPN enabled, initializing...");
         vpn_config_app_t vpn_cfg = {
             .enabled = true,

@@ -903,8 +903,19 @@ families:
           widget: text
           advanced: true
 
-      # WireGuard VPN settings (under wifi family)
-      vpn_enabled:
+  vpn:
+    order: 8
+    icon: "shield"
+    label:
+      en: "VPN"
+      it: "VPN"
+    description:
+      en: "WireGuard VPN tunnel"
+      it: "Tunnel VPN WireGuard"
+    aliases: [wg]
+
+    parameters:
+      enabled:
         type: bool
         default: false
         nvs_key: "vpn_en"
@@ -912,8 +923,8 @@ families:
         priority: 60
         gui:
           label_short:
-            en: "VPN Enable"
-            it: "Abilita VPN"
+            en: "Enable"
+            it: "Abilita"
           label_long:
             en: "VPN Enabled"
             it: "VPN Abilitato"
@@ -930,7 +941,7 @@ families:
               it: "Spento"
           advanced: false
 
-      vpn_endpoint:
+      server_endpoint:
         type: string
         max_length: 64
         default: ""
@@ -939,18 +950,18 @@ families:
         priority: 61
         gui:
           label_short:
-            en: "VPN Server"
-            it: "Server VPN"
+            en: "Server"
+            it: "Server"
           label_long:
-            en: "VPN Server Endpoint"
-            it: "Endpoint Server VPN"
+            en: "Server Endpoint"
+            it: "Endpoint Server"
           description:
             en: "WireGuard server hostname or IP address"
             it: "Hostname o indirizzo IP del server WireGuard"
           widget: text
           advanced: false
 
-      vpn_port:
+      server_port:
         type: u16
         default: 51820
         range: [1, 65535]
@@ -959,11 +970,11 @@ families:
         priority: 62
         gui:
           label_short:
-            en: "VPN Port"
-            it: "Porta VPN"
+            en: "Port"
+            it: "Porta"
           label_long:
-            en: "VPN Server Port"
-            it: "Porta Server VPN"
+            en: "Server Port"
+            it: "Porta Server"
           description:
             en: "WireGuard server UDP port (default: 51820)"
             it: "Porta UDP del server WireGuard (default: 51820)"
@@ -972,7 +983,7 @@ families:
             step: 1
           advanced: false
 
-      vpn_server_key:
+      server_public_key:
         type: string
         max_length: 48
         default: ""
@@ -985,15 +996,15 @@ families:
             en: "Server Key"
             it: "Chiave Server"
           label_long:
-            en: "VPN Server Public Key"
-            it: "Chiave Pubblica Server VPN"
+            en: "Server Public Key"
+            it: "Chiave Pubblica Server"
           description:
             en: "WireGuard server public key (Base64)"
             it: "Chiave pubblica del server WireGuard (Base64)"
           widget: password
           advanced: false
 
-      vpn_private_key:
+      client_private_key:
         type: string
         max_length: 48
         default: ""
@@ -1006,15 +1017,15 @@ families:
             en: "Private Key"
             it: "Chiave Privata"
           label_long:
-            en: "VPN Client Private Key"
-            it: "Chiave Privata Client VPN"
+            en: "Client Private Key"
+            it: "Chiave Privata Client"
           description:
             en: "This device's WireGuard private key (Base64)"
             it: "Chiave privata WireGuard di questo dispositivo (Base64)"
           widget: password
           advanced: false
 
-      vpn_address:
+      client_address:
         type: string
         max_length: 18
         default: "10.0.0.2/24"
@@ -1023,18 +1034,18 @@ families:
         priority: 65
         gui:
           label_short:
-            en: "VPN Address"
-            it: "Indirizzo VPN"
+            en: "Address"
+            it: "Indirizzo"
           label_long:
-            en: "VPN Client Address"
-            it: "Indirizzo Client VPN"
+            en: "Client Address"
+            it: "Indirizzo Client"
           description:
             en: "VPN tunnel IP address with CIDR (e.g., 10.0.0.2/24)"
             it: "Indirizzo IP del tunnel VPN con CIDR (es. 10.0.0.2/24)"
           widget: text
           advanced: false
 
-      vpn_allowed_ips:
+      allowed_ips:
         type: string
         max_length: 64
         default: "0.0.0.0/0"
@@ -1046,15 +1057,15 @@ families:
             en: "Allowed IPs"
             it: "IP Consentiti"
           label_long:
-            en: "VPN Allowed IPs"
-            it: "IP Consentiti VPN"
+            en: "Allowed IPs"
+            it: "IP Consentiti"
           description:
             en: "Traffic to route through VPN (CIDR, e.g., 0.0.0.0/0 for all)"
             it: "Traffico da instradare attraverso VPN (CIDR, es. 0.0.0.0/0 per tutto)"
           widget: text
           advanced: true
 
-      vpn_keepalive:
+      persistent_keepalive:
         type: u16
         default: 25
         range: [0, 3600]
@@ -1066,8 +1077,8 @@ families:
             en: "Keepalive"
             it: "Keepalive"
           label_long:
-            en: "VPN Persistent Keepalive (s)"
-            it: "Keepalive Persistente VPN (s)"
+            en: "Persistent Keepalive (s)"
+            it: "Keepalive Persistente (s)"
           description:
             en: "Send keepalive packet interval (0=off, 25 recommended for NAT)"
             it: "Intervallo pacchetti keepalive (0=off, 25 consigliato per NAT)"

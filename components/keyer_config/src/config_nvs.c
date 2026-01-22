@@ -212,51 +212,51 @@ int config_load_from_nvs(void) {
         loaded++;
     }
 
-    /* Load wifi.vpn_enabled */
-    if (nvs_get_u8(handle, NVS_WIFI_VPN_ENABLED, &u8_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.wifi.vpn_enabled, u8_val != 0, memory_order_relaxed);
+    /* Load vpn.enabled */
+    if (nvs_get_u8(handle, NVS_VPN_ENABLED, &u8_val) == ESP_OK) {
+        atomic_store_explicit(&g_config.vpn.enabled, u8_val != 0, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load wifi.vpn_endpoint */
-    str_len = sizeof(g_config.wifi.vpn_endpoint);
-    if (nvs_get_str(handle, NVS_WIFI_VPN_ENDPOINT, g_config.wifi.vpn_endpoint, &str_len) == ESP_OK) {
+    /* Load vpn.server_endpoint */
+    str_len = sizeof(g_config.vpn.server_endpoint);
+    if (nvs_get_str(handle, NVS_VPN_SERVER_ENDPOINT, g_config.vpn.server_endpoint, &str_len) == ESP_OK) {
         loaded++;
     }
 
-    /* Load wifi.vpn_port */
-    if (nvs_get_u16(handle, NVS_WIFI_VPN_PORT, &u16_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.wifi.vpn_port, u16_val, memory_order_relaxed);
+    /* Load vpn.server_port */
+    if (nvs_get_u16(handle, NVS_VPN_SERVER_PORT, &u16_val) == ESP_OK) {
+        atomic_store_explicit(&g_config.vpn.server_port, u16_val, memory_order_relaxed);
         loaded++;
     }
 
-    /* Load wifi.vpn_server_key */
-    str_len = sizeof(g_config.wifi.vpn_server_key);
-    if (nvs_get_str(handle, NVS_WIFI_VPN_SERVER_KEY, g_config.wifi.vpn_server_key, &str_len) == ESP_OK) {
+    /* Load vpn.server_public_key */
+    str_len = sizeof(g_config.vpn.server_public_key);
+    if (nvs_get_str(handle, NVS_VPN_SERVER_PUBLIC_KEY, g_config.vpn.server_public_key, &str_len) == ESP_OK) {
         loaded++;
     }
 
-    /* Load wifi.vpn_private_key */
-    str_len = sizeof(g_config.wifi.vpn_private_key);
-    if (nvs_get_str(handle, NVS_WIFI_VPN_PRIVATE_KEY, g_config.wifi.vpn_private_key, &str_len) == ESP_OK) {
+    /* Load vpn.client_private_key */
+    str_len = sizeof(g_config.vpn.client_private_key);
+    if (nvs_get_str(handle, NVS_VPN_CLIENT_PRIVATE_KEY, g_config.vpn.client_private_key, &str_len) == ESP_OK) {
         loaded++;
     }
 
-    /* Load wifi.vpn_address */
-    str_len = sizeof(g_config.wifi.vpn_address);
-    if (nvs_get_str(handle, NVS_WIFI_VPN_ADDRESS, g_config.wifi.vpn_address, &str_len) == ESP_OK) {
+    /* Load vpn.client_address */
+    str_len = sizeof(g_config.vpn.client_address);
+    if (nvs_get_str(handle, NVS_VPN_CLIENT_ADDRESS, g_config.vpn.client_address, &str_len) == ESP_OK) {
         loaded++;
     }
 
-    /* Load wifi.vpn_allowed_ips */
-    str_len = sizeof(g_config.wifi.vpn_allowed_ips);
-    if (nvs_get_str(handle, NVS_WIFI_VPN_ALLOWED_IPS, g_config.wifi.vpn_allowed_ips, &str_len) == ESP_OK) {
+    /* Load vpn.allowed_ips */
+    str_len = sizeof(g_config.vpn.allowed_ips);
+    if (nvs_get_str(handle, NVS_VPN_ALLOWED_IPS, g_config.vpn.allowed_ips, &str_len) == ESP_OK) {
         loaded++;
     }
 
-    /* Load wifi.vpn_keepalive */
-    if (nvs_get_u16(handle, NVS_WIFI_VPN_KEEPALIVE, &u16_val) == ESP_OK) {
-        atomic_store_explicit(&g_config.wifi.vpn_keepalive, u16_val, memory_order_relaxed);
+    /* Load vpn.persistent_keepalive */
+    if (nvs_get_u16(handle, NVS_VPN_PERSISTENT_KEEPALIVE, &u16_val) == ESP_OK) {
+        atomic_store_explicit(&g_config.vpn.persistent_keepalive, u16_val, memory_order_relaxed);
         loaded++;
     }
 
@@ -452,46 +452,46 @@ int config_save_to_nvs(void) {
         saved++;
     }
 
-    /* Save wifi.vpn_enabled */
-    if (nvs_set_u8(handle, NVS_WIFI_VPN_ENABLED,
-            atomic_load_explicit(&g_config.wifi.vpn_enabled, memory_order_relaxed) ? 1 : 0) == ESP_OK) {
+    /* Save vpn.enabled */
+    if (nvs_set_u8(handle, NVS_VPN_ENABLED,
+            atomic_load_explicit(&g_config.vpn.enabled, memory_order_relaxed) ? 1 : 0) == ESP_OK) {
         saved++;
     }
 
-    /* Save wifi.vpn_endpoint */
-    if (nvs_set_str(handle, NVS_WIFI_VPN_ENDPOINT, g_config.wifi.vpn_endpoint) == ESP_OK) {
+    /* Save vpn.server_endpoint */
+    if (nvs_set_str(handle, NVS_VPN_SERVER_ENDPOINT, g_config.vpn.server_endpoint) == ESP_OK) {
         saved++;
     }
 
-    /* Save wifi.vpn_port */
-    if (nvs_set_u16(handle, NVS_WIFI_VPN_PORT,
-            atomic_load_explicit(&g_config.wifi.vpn_port, memory_order_relaxed)) == ESP_OK) {
+    /* Save vpn.server_port */
+    if (nvs_set_u16(handle, NVS_VPN_SERVER_PORT,
+            atomic_load_explicit(&g_config.vpn.server_port, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
-    /* Save wifi.vpn_server_key */
-    if (nvs_set_str(handle, NVS_WIFI_VPN_SERVER_KEY, g_config.wifi.vpn_server_key) == ESP_OK) {
+    /* Save vpn.server_public_key */
+    if (nvs_set_str(handle, NVS_VPN_SERVER_PUBLIC_KEY, g_config.vpn.server_public_key) == ESP_OK) {
         saved++;
     }
 
-    /* Save wifi.vpn_private_key */
-    if (nvs_set_str(handle, NVS_WIFI_VPN_PRIVATE_KEY, g_config.wifi.vpn_private_key) == ESP_OK) {
+    /* Save vpn.client_private_key */
+    if (nvs_set_str(handle, NVS_VPN_CLIENT_PRIVATE_KEY, g_config.vpn.client_private_key) == ESP_OK) {
         saved++;
     }
 
-    /* Save wifi.vpn_address */
-    if (nvs_set_str(handle, NVS_WIFI_VPN_ADDRESS, g_config.wifi.vpn_address) == ESP_OK) {
+    /* Save vpn.client_address */
+    if (nvs_set_str(handle, NVS_VPN_CLIENT_ADDRESS, g_config.vpn.client_address) == ESP_OK) {
         saved++;
     }
 
-    /* Save wifi.vpn_allowed_ips */
-    if (nvs_set_str(handle, NVS_WIFI_VPN_ALLOWED_IPS, g_config.wifi.vpn_allowed_ips) == ESP_OK) {
+    /* Save vpn.allowed_ips */
+    if (nvs_set_str(handle, NVS_VPN_ALLOWED_IPS, g_config.vpn.allowed_ips) == ESP_OK) {
         saved++;
     }
 
-    /* Save wifi.vpn_keepalive */
-    if (nvs_set_u16(handle, NVS_WIFI_VPN_KEEPALIVE,
-            atomic_load_explicit(&g_config.wifi.vpn_keepalive, memory_order_relaxed)) == ESP_OK) {
+    /* Save vpn.persistent_keepalive */
+    if (nvs_set_u16(handle, NVS_VPN_PERSISTENT_KEEPALIVE,
+            atomic_load_explicit(&g_config.vpn.persistent_keepalive, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 

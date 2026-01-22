@@ -48,19 +48,19 @@ void config_init_defaults(keyer_config_t *cfg) {
     cfg->wifi.gateway[16] = '\0';
     strncpy(cfg->wifi.dns, "0.0.0.0", 16);
     cfg->wifi.dns[16] = '\0';
-    atomic_init(&cfg->wifi.vpn_enabled, false);
-    strncpy(cfg->wifi.vpn_endpoint, "", 64);
-    cfg->wifi.vpn_endpoint[64] = '\0';
-    atomic_init(&cfg->wifi.vpn_port, 51820);
-    strncpy(cfg->wifi.vpn_server_key, "", 48);
-    cfg->wifi.vpn_server_key[48] = '\0';
-    strncpy(cfg->wifi.vpn_private_key, "", 48);
-    cfg->wifi.vpn_private_key[48] = '\0';
-    strncpy(cfg->wifi.vpn_address, "10.0.0.2/24", 18);
-    cfg->wifi.vpn_address[18] = '\0';
-    strncpy(cfg->wifi.vpn_allowed_ips, "0.0.0.0/0", 64);
-    cfg->wifi.vpn_allowed_ips[64] = '\0';
-    atomic_init(&cfg->wifi.vpn_keepalive, 25);
+    atomic_init(&cfg->vpn.enabled, false);
+    strncpy(cfg->vpn.server_endpoint, "", 64);
+    cfg->vpn.server_endpoint[64] = '\0';
+    atomic_init(&cfg->vpn.server_port, 51820);
+    strncpy(cfg->vpn.server_public_key, "", 48);
+    cfg->vpn.server_public_key[48] = '\0';
+    strncpy(cfg->vpn.client_private_key, "", 48);
+    cfg->vpn.client_private_key[48] = '\0';
+    strncpy(cfg->vpn.client_address, "10.0.0.2/24", 18);
+    cfg->vpn.client_address[18] = '\0';
+    strncpy(cfg->vpn.allowed_ips, "0.0.0.0/0", 64);
+    cfg->vpn.allowed_ips[64] = '\0';
+    atomic_init(&cfg->vpn.persistent_keepalive, 25);
     atomic_init(&cfg->generation, 0);
 }
 

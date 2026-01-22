@@ -22,6 +22,7 @@ const family_descriptor_t CONSOLE_FAMILIES[FAMILY_COUNT] = {
     { "system", "sys", "Debug and system settings", 5 },
     { "leds", "led,l", "RGB LED strip configuration", 6 },
     { "wifi", "w,net", "Wireless network configuration", 7 },
+    { "vpn", "wg", "WireGuard VPN tunnel", 8 },
 };
 
 /* ============================================================================
@@ -376,96 +377,96 @@ static void set_wifi_dns(param_value_t v) {
     config_bump_generation(&g_config);
 }
 
-static param_value_t get_wifi_vpn_enabled(void) {
+static param_value_t get_vpn_enabled(void) {
     param_value_t v;
-    v.b = atomic_load_explicit(&g_config.wifi.vpn_enabled, memory_order_relaxed);
+    v.b = atomic_load_explicit(&g_config.vpn.enabled, memory_order_relaxed);
     return v;
 }
 
-static void set_wifi_vpn_enabled(param_value_t v) {
-    atomic_store_explicit(&g_config.wifi.vpn_enabled, v.b, memory_order_relaxed);
+static void set_vpn_enabled(param_value_t v) {
+    atomic_store_explicit(&g_config.vpn.enabled, v.b, memory_order_relaxed);
     config_bump_generation(&g_config);
 }
 
-static param_value_t get_wifi_vpn_endpoint(void) {
+static param_value_t get_vpn_server_endpoint(void) {
     param_value_t v;
-    v.str = g_config.wifi.vpn_endpoint;
+    v.str = g_config.vpn.server_endpoint;
     return v;
 }
 
-static void set_wifi_vpn_endpoint(param_value_t v) {
-    strncpy(g_config.wifi.vpn_endpoint, v.str, 64);
-    g_config.wifi.vpn_endpoint[64] = '\0';
+static void set_vpn_server_endpoint(param_value_t v) {
+    strncpy(g_config.vpn.server_endpoint, v.str, 64);
+    g_config.vpn.server_endpoint[64] = '\0';
     config_bump_generation(&g_config);
 }
 
-static param_value_t get_wifi_vpn_port(void) {
+static param_value_t get_vpn_server_port(void) {
     param_value_t v;
-    v.u16 = atomic_load_explicit(&g_config.wifi.vpn_port, memory_order_relaxed);
+    v.u16 = atomic_load_explicit(&g_config.vpn.server_port, memory_order_relaxed);
     return v;
 }
 
-static void set_wifi_vpn_port(param_value_t v) {
-    atomic_store_explicit(&g_config.wifi.vpn_port, v.u16, memory_order_relaxed);
+static void set_vpn_server_port(param_value_t v) {
+    atomic_store_explicit(&g_config.vpn.server_port, v.u16, memory_order_relaxed);
     config_bump_generation(&g_config);
 }
 
-static param_value_t get_wifi_vpn_server_key(void) {
+static param_value_t get_vpn_server_public_key(void) {
     param_value_t v;
-    v.str = g_config.wifi.vpn_server_key;
+    v.str = g_config.vpn.server_public_key;
     return v;
 }
 
-static void set_wifi_vpn_server_key(param_value_t v) {
-    strncpy(g_config.wifi.vpn_server_key, v.str, 48);
-    g_config.wifi.vpn_server_key[48] = '\0';
+static void set_vpn_server_public_key(param_value_t v) {
+    strncpy(g_config.vpn.server_public_key, v.str, 48);
+    g_config.vpn.server_public_key[48] = '\0';
     config_bump_generation(&g_config);
 }
 
-static param_value_t get_wifi_vpn_private_key(void) {
+static param_value_t get_vpn_client_private_key(void) {
     param_value_t v;
-    v.str = g_config.wifi.vpn_private_key;
+    v.str = g_config.vpn.client_private_key;
     return v;
 }
 
-static void set_wifi_vpn_private_key(param_value_t v) {
-    strncpy(g_config.wifi.vpn_private_key, v.str, 48);
-    g_config.wifi.vpn_private_key[48] = '\0';
+static void set_vpn_client_private_key(param_value_t v) {
+    strncpy(g_config.vpn.client_private_key, v.str, 48);
+    g_config.vpn.client_private_key[48] = '\0';
     config_bump_generation(&g_config);
 }
 
-static param_value_t get_wifi_vpn_address(void) {
+static param_value_t get_vpn_client_address(void) {
     param_value_t v;
-    v.str = g_config.wifi.vpn_address;
+    v.str = g_config.vpn.client_address;
     return v;
 }
 
-static void set_wifi_vpn_address(param_value_t v) {
-    strncpy(g_config.wifi.vpn_address, v.str, 18);
-    g_config.wifi.vpn_address[18] = '\0';
+static void set_vpn_client_address(param_value_t v) {
+    strncpy(g_config.vpn.client_address, v.str, 18);
+    g_config.vpn.client_address[18] = '\0';
     config_bump_generation(&g_config);
 }
 
-static param_value_t get_wifi_vpn_allowed_ips(void) {
+static param_value_t get_vpn_allowed_ips(void) {
     param_value_t v;
-    v.str = g_config.wifi.vpn_allowed_ips;
+    v.str = g_config.vpn.allowed_ips;
     return v;
 }
 
-static void set_wifi_vpn_allowed_ips(param_value_t v) {
-    strncpy(g_config.wifi.vpn_allowed_ips, v.str, 64);
-    g_config.wifi.vpn_allowed_ips[64] = '\0';
+static void set_vpn_allowed_ips(param_value_t v) {
+    strncpy(g_config.vpn.allowed_ips, v.str, 64);
+    g_config.vpn.allowed_ips[64] = '\0';
     config_bump_generation(&g_config);
 }
 
-static param_value_t get_wifi_vpn_keepalive(void) {
+static param_value_t get_vpn_persistent_keepalive(void) {
     param_value_t v;
-    v.u16 = atomic_load_explicit(&g_config.wifi.vpn_keepalive, memory_order_relaxed);
+    v.u16 = atomic_load_explicit(&g_config.vpn.persistent_keepalive, memory_order_relaxed);
     return v;
 }
 
-static void set_wifi_vpn_keepalive(param_value_t v) {
-    atomic_store_explicit(&g_config.wifi.vpn_keepalive, v.u16, memory_order_relaxed);
+static void set_vpn_persistent_keepalive(param_value_t v) {
+    atomic_store_explicit(&g_config.vpn.persistent_keepalive, v.u16, memory_order_relaxed);
     config_bump_generation(&g_config);
 }
 
@@ -505,14 +506,14 @@ const param_descriptor_t CONSOLE_PARAMS[CONSOLE_PARAM_COUNT] = {
     { "netmask", "wifi", "wifi.netmask", PARAM_TYPE_STRING, 0, 16, get_wifi_netmask, set_wifi_netmask },
     { "gateway", "wifi", "wifi.gateway", PARAM_TYPE_STRING, 0, 16, get_wifi_gateway, set_wifi_gateway },
     { "dns", "wifi", "wifi.dns", PARAM_TYPE_STRING, 0, 16, get_wifi_dns, set_wifi_dns },
-    { "vpn_enabled", "wifi", "wifi.vpn_enabled", PARAM_TYPE_BOOL, 0, 1, get_wifi_vpn_enabled, set_wifi_vpn_enabled },
-    { "vpn_endpoint", "wifi", "wifi.vpn_endpoint", PARAM_TYPE_STRING, 0, 64, get_wifi_vpn_endpoint, set_wifi_vpn_endpoint },
-    { "vpn_port", "wifi", "wifi.vpn_port", PARAM_TYPE_U16, 1, 65535, get_wifi_vpn_port, set_wifi_vpn_port },
-    { "vpn_server_key", "wifi", "wifi.vpn_server_key", PARAM_TYPE_STRING, 0, 48, get_wifi_vpn_server_key, set_wifi_vpn_server_key },
-    { "vpn_private_key", "wifi", "wifi.vpn_private_key", PARAM_TYPE_STRING, 0, 48, get_wifi_vpn_private_key, set_wifi_vpn_private_key },
-    { "vpn_address", "wifi", "wifi.vpn_address", PARAM_TYPE_STRING, 0, 18, get_wifi_vpn_address, set_wifi_vpn_address },
-    { "vpn_allowed_ips", "wifi", "wifi.vpn_allowed_ips", PARAM_TYPE_STRING, 0, 64, get_wifi_vpn_allowed_ips, set_wifi_vpn_allowed_ips },
-    { "vpn_keepalive", "wifi", "wifi.vpn_keepalive", PARAM_TYPE_U16, 0, 3600, get_wifi_vpn_keepalive, set_wifi_vpn_keepalive },
+    { "enabled", "vpn", "vpn.enabled", PARAM_TYPE_BOOL, 0, 1, get_vpn_enabled, set_vpn_enabled },
+    { "server_endpoint", "vpn", "vpn.server_endpoint", PARAM_TYPE_STRING, 0, 64, get_vpn_server_endpoint, set_vpn_server_endpoint },
+    { "server_port", "vpn", "vpn.server_port", PARAM_TYPE_U16, 1, 65535, get_vpn_server_port, set_vpn_server_port },
+    { "server_public_key", "vpn", "vpn.server_public_key", PARAM_TYPE_STRING, 0, 48, get_vpn_server_public_key, set_vpn_server_public_key },
+    { "client_private_key", "vpn", "vpn.client_private_key", PARAM_TYPE_STRING, 0, 48, get_vpn_client_private_key, set_vpn_client_private_key },
+    { "client_address", "vpn", "vpn.client_address", PARAM_TYPE_STRING, 0, 18, get_vpn_client_address, set_vpn_client_address },
+    { "allowed_ips", "vpn", "vpn.allowed_ips", PARAM_TYPE_STRING, 0, 64, get_vpn_allowed_ips, set_vpn_allowed_ips },
+    { "persistent_keepalive", "vpn", "vpn.persistent_keepalive", PARAM_TYPE_U16, 0, 3600, get_vpn_persistent_keepalive, set_vpn_persistent_keepalive },
 };
 
 /* ============================================================================

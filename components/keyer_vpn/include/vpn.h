@@ -38,7 +38,7 @@ typedef enum {
  * @brief VPN configuration
  */
 typedef struct {
-    bool vpn_enabled;                    /**< VPN master enable */
+    bool enabled;                        /**< VPN master enable */
     char server_endpoint[65];        /**< Server hostname or IP */
     uint16_t server_port;            /**< Server UDP port (default 51820) */
     char server_public_key[49];      /**< Server's WireGuard public key (Base64) */
@@ -52,7 +52,7 @@ typedef struct {
  * @brief Default VPN configuration
  */
 #define VPN_CONFIG_DEFAULT { \
-    .vpn_enabled = false, \
+    .enabled = false, \
     .server_endpoint = "", \
     .server_port = 51820, \
     .server_public_key = "", \

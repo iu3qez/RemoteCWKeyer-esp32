@@ -102,7 +102,7 @@ esp_err_t vpn_app_start(void)
     }
 
     /* Check if VPN is enabled */
-    if (!s_vpn.config.vpn_enabled) {
+    if (!s_vpn.config.enabled) {
         ESP_LOGI(TAG, "VPN disabled in config");
         atomic_store_explicit(&s_vpn.state, VPN_STATE_DISABLED, memory_order_relaxed);
         return ESP_OK;
@@ -327,10 +327,10 @@ static esp_err_t setup_wireguard(void)
         if (cidr >= 0 && cidr <= 32) {
             uint32_t mask_val = (cidr == 0) ? 0 : (0xFFFFFFFFU << (32 - cidr));
             snprintf(mask_str, sizeof(mask_str), "%u.%u.%u.%u",
-                     (mask_val >> 24) & 0xFF,
-                     (mask_val >> 16) & 0xFF,
-                     (mask_val >> 8) & 0xFF,
-                     mask_val & 0xFF);
+                     (unsigned)((mask_val >> 24) & 0xFFU),
+                     (unsigned)((mask_val >> 16) & 0xFFU),
+                     (unsigned)((mask_val >> 8) & 0xFFU),
+                     (unsigned)(mask_val & 0xFFU));
         }
     } else {
         strncpy(ip_str, s_vpn.config.client_address, sizeof(ip_str) - 1);
