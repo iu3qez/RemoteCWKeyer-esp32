@@ -20,14 +20,15 @@ void config_init_defaults(keyer_config_t *cfg) {
     atomic_init(&cfg->audio.sidetone_freq_hz, 600);
     atomic_init(&cfg->audio.sidetone_volume, 70);
     atomic_init(&cfg->audio.fade_duration_ms, 5);
-    atomic_init(&cfg->hardware.gpio_dit, 4);
-    atomic_init(&cfg->hardware.gpio_dah, 5);
+    atomic_init(&cfg->hardware.gpio_dit, 5);
+    atomic_init(&cfg->hardware.gpio_dah, 4);
     atomic_init(&cfg->hardware.gpio_tx, 6);
     atomic_init(&cfg->timing.ptt_tail_ms, 100);
     atomic_init(&cfg->timing.tick_rate_hz, 10000);
     atomic_init(&cfg->system.debug_logging, false);
     strncpy(cfg->system.callsign, "N0CALL", 12);
     cfg->system.callsign[12] = '\0';
+    atomic_init(&cfg->system.ui_theme, 0);  /* matrix_green */
     atomic_init(&cfg->leds.gpio_data, 38);
     atomic_init(&cfg->leds.count, 7);
     atomic_init(&cfg->leds.brightness, 50);
@@ -47,6 +48,19 @@ void config_init_defaults(keyer_config_t *cfg) {
     cfg->wifi.gateway[16] = '\0';
     strncpy(cfg->wifi.dns, "0.0.0.0", 16);
     cfg->wifi.dns[16] = '\0';
+    atomic_init(&cfg->wifi.vpn_enabled, false);
+    strncpy(cfg->wifi.vpn_endpoint, "", 64);
+    cfg->wifi.vpn_endpoint[64] = '\0';
+    atomic_init(&cfg->wifi.vpn_port, 51820);
+    strncpy(cfg->wifi.vpn_server_key, "", 48);
+    cfg->wifi.vpn_server_key[48] = '\0';
+    strncpy(cfg->wifi.vpn_private_key, "", 48);
+    cfg->wifi.vpn_private_key[48] = '\0';
+    strncpy(cfg->wifi.vpn_address, "10.0.0.2/24", 18);
+    cfg->wifi.vpn_address[18] = '\0';
+    strncpy(cfg->wifi.vpn_allowed_ips, "0.0.0.0/0", 64);
+    cfg->wifi.vpn_allowed_ips[64] = '\0';
+    atomic_init(&cfg->wifi.vpn_keepalive, 25);
     atomic_init(&cfg->generation, 0);
 }
 

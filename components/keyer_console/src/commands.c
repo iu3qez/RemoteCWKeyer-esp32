@@ -33,6 +33,7 @@
 #include "usb_cdc.h"
 #include "tusb_cdc_acm.h"
 #include "wifi.h"
+#include "vpn.h"
 /* Use USB console printf for command output (skip for IDE analyzers) */
 #if !defined(__INTELLISENSE__) && !defined(__clang_analyzer__) && !defined(__clangd__)
 #define printf usb_console_printf
@@ -1145,6 +1146,81 @@ static console_error_t cmd_mem(const console_parsed_cmd_t *cmd) {
     return CONSOLE_OK;
 }
 
+/**
+ * @brief vpn - WireGuard VPN control
+ */
+static console_error_t cmd_vpn(const console_parsed_cmd_t *cmd) {
+    /* No args - show status */
+    if (cmd->argc == 0) {
+        vpn_state_t state = vpn_get_state();
+        printf("VPN: %s\r\n", vpn_state_str(state));
+
+        if (state == VPN_STATE_CONNECTED) {
+            printf("  Endpoint: %s:%u\r\n",
+                   g_config.vpn.server_endpoint,
+                   (unsigned)atomic_load_explicit(&g_config.vpn.server_port, memory_order_relaxed));
+            printf("  Address:  %s\r\n", g_config.vpn.client_address);
+
+            vpn_stats_t stats;
+            if (vpn_get_stats(&stats)) {
+                printf("  Handshakes: %u\r\n", (unsigned)stats.handshakes);
+            }
+        } else if (state == VPN_STATE_DISABLED) {
+            printf("  (set vpn.enabled true, configure keys, save, reboot)\r\n");
+        }
+        return CONSOLE_OK;
+    }
+
+    const char *arg = cmd->args[0];
+
+    if (strcmp(arg, "connect") == 0 || strcmp(arg, "up") == 0) {
+        if (vpn_get_state() == VPN_STATE_CONNECTED) {
+            printf("VPN already connected\r\n");
+            return CONSOLE_OK;
+        }
+        esp_err_t ret = vpn_app_start();
+        if (ret == ESP_OK) {
+            printf("VPN connecting...\r\n");
+        } else {
+            printf("VPN start failed: %s\r\n", esp_err_to_name(ret));
+        }
+        return CONSOLE_OK;
+    }
+
+    if (strcmp(arg, "disconnect") == 0 || strcmp(arg, "down") == 0) {
+        vpn_app_stop();
+        printf("VPN disconnected\r\n");
+        return CONSOLE_OK;
+    }
+
+    if (strcmp(arg, "status") == 0) {
+        /* Detailed status */
+        vpn_state_t state = vpn_get_state();
+        printf("State: %s\r\n", vpn_state_str(state));
+        printf("Config:\r\n");
+        printf("  Enabled:   %s\r\n",
+               atomic_load_explicit(&g_config.vpn.enabled, memory_order_relaxed) ? "yes" : "no");
+        printf("  Endpoint:  %s:%u\r\n",
+               g_config.vpn.server_endpoint,
+               (unsigned)atomic_load_explicit(&g_config.vpn.server_port, memory_order_relaxed));
+        printf("  Address:   %s\r\n", g_config.vpn.client_address);
+        printf("  Keepalive: %u s\r\n",
+               (unsigned)atomic_load_explicit(&g_config.vpn.persistent_keepalive, memory_order_relaxed));
+
+        if (state == VPN_STATE_CONNECTED || state == VPN_STATE_FAILED) {
+            vpn_stats_t stats;
+            if (vpn_get_stats(&stats)) {
+                printf("Stats:\r\n");
+                printf("  Handshakes: %u\r\n", (unsigned)stats.handshakes);
+            }
+        }
+        return CONSOLE_OK;
+    }
+
+    printf("Unknown subcommand: %s\r\n", arg);
+    return CONSOLE_ERR_INVALID_VALUE;
+}
+
 /* ============================================================================
  * Command registry
  * ============================================================================ */
@@ -1221,6 +1297,17 @@ static const char USAGE_MEM[] =
     "  mem <slot> clear    Clear slot\r\n"
     "  mem <slot> label X  Set slot label";
 
+static const char USAGE_VPN[] =
+    "  vpn                 Show VPN status\r\n"
+    "  vpn status          Detailed status and config\r\n"
+    "  vpn connect|up      Start VPN tunnel\r\n"
+    "  vpn disconnect|down Stop VPN tunnel\r\n"
+    "\r\n"
+    "Configure with: set vpn.<param> <value>\r\n"
+    "  vpn.enabled, vpn.server_endpoint, vpn.server_port,\r\n"
+    "  vpn.server_public_key, vpn.client_private_key,\r\n"
+    "  vpn.client_address, vpn.persistent_keepalive";
+
 static const console_cmd_t s_commands[] = {
     { "help",          "List commands or show help",   NULL,        cmd_help },
     { "?",             "Alias for help",               NULL,        cmd_question },
@@ -1253,6 +1340,7 @@ static const console_cmd_t s_commands[] = {
     { "pause",         "Pause CW transmission",        NULL,        cmd_pause },
     { "resume",        "Resume CW transmission",       NULL,        cmd_resume },
     { "mem",           "Memory slot management",       USAGE_MEM,   cmd_mem },
+    { "vpn",           "WireGuard VPN control",        USAGE_VPN,   cmd_vpn },
 };
 
 #define NUM_COMMANDS (sizeof(s_commands) / sizeof(s_commands[0]))

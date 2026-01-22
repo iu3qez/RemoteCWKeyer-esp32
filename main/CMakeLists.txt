@@ -19,6 +19,7 @@ idf_component_register(
         keyer_text
         keyer_led
         keyer_wifi
+        keyer_vpn
         keyer_webui
         freertos
         esp_timer

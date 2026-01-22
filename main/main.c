@@ -26,6 +26,7 @@
 #include "usb_cdc.h"
 #include "usb_log.h"
 #include "wifi.h"
+#include "vpn.h"
 #include "webui.h"
 #include "led.h"
 #include "decoder.h"
@@ -161,6 +162,30 @@ void app_main(void) {
     } else {
         ESP_LOGI(TAG, "WiFi disabled");
         led_set_state(LED_STATE_IDLE);
+    }
+
+    /* Initialize VPN if enabled (requires WiFi) */
+    if (atomic_load_explicit(&g_config.vpn.vpn_enabled, memory_order_relaxed)) {
+        ESP_LOGI(TAG, "VPN enabled, initializing...");
+        vpn_config_app_t vpn_cfg = {
+            .enabled = true,
+            .server_port = atomic_load_explicit(&g_config.vpn.server_port, memory_order_relaxed),
+            .persistent_keepalive = atomic_load_explicit(&g_config.vpn.persistent_keepalive, memory_order_relaxed),
+        };
+        strncpy(vpn_cfg.server_endpoint, g_config.vpn.server_endpoint, sizeof(vpn_cfg.server_endpoint) - 1);
+        strncpy(vpn_cfg.server_public_key, g_config.vpn.server_public_key, sizeof(vpn_cfg.server_public_key) - 1);
+        strncpy(vpn_cfg.client_private_key, g_config.vpn.client_private_key, sizeof(vpn_cfg.client_private_key) - 1);
+        strncpy(vpn_cfg.client_address, g_config.vpn.client_address, sizeof(vpn_cfg.client_address) - 1);
+        strncpy(vpn_cfg.allowed_ips, g_config.vpn.allowed_ips, sizeof(vpn_cfg.allowed_ips) - 1);
+
+        ret = vpn_app_init(&vpn_cfg);
+        if (ret == ESP_OK) {
+            vpn_app_start();  /* Non-blocking, spawns task on Core 1 */
+        } else {
+            ESP_LOGE(TAG, "VPN init failed: %s", esp_err_to_name(ret));
+        }
+    } else {
+        ESP_LOGI(TAG, "VPN disabled");
     }
 
     /* Initialize stream */
