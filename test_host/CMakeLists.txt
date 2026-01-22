@@ -42,6 +42,7 @@ include_directories(
     ${COMPONENT_DIR}/keyer_logging/include
     ${COMPONENT_DIR}/keyer_console/include
     ${COMPONENT_DIR}/keyer_config/include
+    ${COMPONENT_DIR}/keyer_morse/include
     ${COMPONENT_DIR}/keyer_decoder/include
     ${COMPONENT_DIR}/keyer_winkeyer/include
     ${CMAKE_SOURCE_DIR}/stubs
@@ -80,18 +81,19 @@ set(CONSOLE_SOURCES
 )
 
 set(CONFIG_SOURCES
-    ${COMPONENT_DIR}/keyer_config/src/config.c
-    ${COMPONENT_DIR}/keyer_config/src/config_console.c
+    # config.c and config_console.c are generated files - not needed for active tests
+)
+
+set(MORSE_SOURCES
+    ${COMPONENT_DIR}/keyer_morse/src/morse_table.c
 )
 
 set(DECODER_SOURCES
-    ${COMPONENT_DIR}/keyer_decoder/src/morse_table.c
     ${COMPONENT_DIR}/keyer_decoder/src/timing_classifier.c
     ${COMPONENT_DIR}/keyer_decoder/src/decoder.c
 )
 
 set(WINKEYER_SOURCES
-    ${COMPONENT_DIR}/keyer_winkeyer/src/winkeyer_morse.c
     ${COMPONENT_DIR}/keyer_winkeyer/src/morse_queue.c
     ${COMPONENT_DIR}/keyer_winkeyer/src/winkeyer_parser.c
 )
@@ -126,6 +128,7 @@ add_executable(test_runner
     ${LOGGING_SOURCES}
     ${CONSOLE_SOURCES}
     ${CONFIG_SOURCES}
+    ${MORSE_SOURCES}
     ${DECODER_SOURCES}
     ${WINKEYER_SOURCES}
 )

@@ -8,11 +8,10 @@
 idf_component_register(
     SRCS
         "src/winkeyer.c"
-        "src/winkeyer_morse.c"
         "src/morse_queue.c"
         "src/winkeyer_parser.c"
     INCLUDE_DIRS "include"
-    REQUIRES ""
+    REQUIRES keyer_morse
 )
 
 # Strict warnings for safety-critical components

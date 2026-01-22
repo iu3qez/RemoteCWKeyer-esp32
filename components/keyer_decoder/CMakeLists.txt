@@ -6,11 +6,10 @@
 
 idf_component_register(
     SRCS
-        "src/morse_table.c"
         "src/timing_classifier.c"
         "src/decoder.c"
     INCLUDE_DIRS "include"
-    REQUIRES keyer_core
+    REQUIRES keyer_core keyer_morse
 )
 
 target_compile_options(${COMPONENT_LIB} PRIVATE

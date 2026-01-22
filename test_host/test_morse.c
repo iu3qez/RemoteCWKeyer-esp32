@@ -8,7 +8,7 @@
  */
 
 #include "unity.h"
-#include "winkeyer_morse.h"
+#include "morse_table.h"
 #include "morse_queue.h"
 #include <string.h>
 

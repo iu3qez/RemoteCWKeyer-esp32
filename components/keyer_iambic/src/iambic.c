@@ -240,9 +240,9 @@ static void update_gpio(iambic_processor_t *proc, gpio_state_t gpio, int64_t now
             if (!current_squeeze) {
                 /* Squeeze released - check if before window */
                 int64_t elapsed = now_us - proc->element_start_us;
-                uint8_t progress_pct = (proc->element_duration_us > 0)
-                    ? (uint8_t)((elapsed * 100) / proc->element_duration_us)
-                    : 0;
+                uint8_t progress_pct = (uint8_t)((proc->element_duration_us > 0)
+                    ? ((elapsed * 100) / proc->element_duration_us)
+                    : 0);
 
                 if (progress_pct < proc->config.mem_window_start_pct) {
                     /* Released BEFORE window start - cancel Mode B bonus */
