@@ -1,0 +1,92 @@
+---
+session: build-20260121-wireguard-vpn
+date: 2026-01-22
+status: complete
+outcome: PARTIAL_PLUS
+---
+
+goal: Complete WireGuard VPN integration - config separation, sdkconfig, and WebUI
+now: Flash to hardware and test VPN connectivity end-to-end
+
+test: source ~/esp/esp-idf/export.sh && idf.py build 2>&1 | tail -5
+
+done_this_session:
+  - task: Separated VPN into own config family (from wifi) in parameters.yaml
+    files: [parameters.yaml]
+  - task: Fixed gen_config_c.py macro collision - prefixes only colliding names (CONFIG_GET_VPN_ENABLED vs CONFIG_GET_WIFI_ENABLED)
+    files: [scripts/gen_config_c.py]
+  - task: Fixed vpn.c format string warnings (uint32_t shift → unsigned cast)
+    files: [components/keyer_vpn/src/vpn.c]
+  - task: Updated vpn.h struct field names (vpn_enabled → enabled)
+    files: [components/keyer_vpn/include/vpn.h]
+  - task: Updated main.c references (g_config.vpn.vpn_enabled → g_config.vpn.enabled)
+    files: [main/main.c]
+  - task: Added WireGuard sdkconfig defaults (TCPIP stack size, SNTP servers, WIREGUARD_ESP_NETIF)
+    files: [sdkconfig.defaults, sdkconfig]
+  - task: Created api_vpn.c backend endpoint (/api/vpn/status) returning state, connected, stats
+    files: [components/keyer_webui/src/api_vpn.c]
+  - task: Registered VPN route in http_server.c
+    files: [components/keyer_webui/src/http_server.c]
+  - task: Added keyer_vpn dependency to webui CMakeLists.txt
+    files: [components/keyer_webui/CMakeLists.txt]
+  - task: Added VpnStats/VpnStatus types and getVpnStatus() API method
+    files: [components/keyer_webui/frontend/src/lib/types.ts, components/keyer_webui/frontend/src/lib/api.ts]
+  - task: Added VPN status panel to System.svelte (state indicator, handshake count, hidden when disabled)
+    files: [components/keyer_webui/frontend/src/pages/System.svelte]
+
+blockers: []
+
+questions:
+  - "Does esp_wireguard v0.9.0 work correctly with ESP-IDF 5.x on ESP32-S3?"
+  - "Is the VPN config tab usable for entering base64 keys (32+ char fields)?"
+
+decisions:
+  - separate_vpn_family: "VPN as its own config family (order 8) avoids CONFIG_GET_ENABLED collision and is cleaner than nesting under wifi"
+  - macro_prefix_on_collision: "Generator only prefixes macros with family name when the same param name exists in multiple families - minimizes churn"
+  - vpn_panel_conditional: "VPN panel in System.svelte hidden when state is DISABLED (user hasn't configured VPN)"
+  - schema_driven_config: "VPN config tab auto-appears via schema-driven Config page - no manual UI changes needed"
+
+findings:
+  - config_gen_collision: "gen_config_c.py generates CONFIG_GET_{NAME} macros - duplicate 'enabled' across wifi/vpn families causes redefinition error"
+  - sdkconfig_requirements: "WireGuard needs LWIP stack ≥5120, 3 SNTP servers, and CONFIG_WIREGUARD_ESP_NETIF=y"
+  - frontend_auto_vite: "CMake build auto-runs npm build via custom command when frontend sources change"
+
+worked:
+  - "Collision-only macro prefixing in generator (minimal impact on existing code)"
+  - "VPN status API pattern matching existing api_system.c style"
+  - "Conditional VPN panel rendering (hidden when disabled)"
+  - "Schema-driven config means zero Config.svelte changes for new VPN params"
+
+failed: []
+
+next:
+  - "Flash to ESP32-S3 hardware and test VPN connectivity"
+  - "Configure a WireGuard peer and verify handshake completes"
+  - "Test WebUI: VPN config tab appears, System page shows VPN status"
+  - "Consider squashing WIP commits before merging to main"
+  - "Fix pre-existing ws_server.c unused function warning (ws_client_is_registered)"
+
+files:
+  created:
+    - components/keyer_webui/src/api_vpn.c
+  modified:
+    - parameters.yaml
+    - scripts/gen_config_c.py
+    - components/keyer_vpn/include/vpn.h
+    - components/keyer_vpn/src/vpn.c
+    - main/main.c
+    - sdkconfig.defaults
+    - sdkconfig
+    - components/keyer_webui/CMakeLists.txt
+    - components/keyer_webui/src/http_server.c
+    - components/keyer_webui/frontend/src/lib/types.ts
+    - components/keyer_webui/frontend/src/lib/api.ts
+    - components/keyer_webui/frontend/src/pages/System.svelte
+
+commits:
+  - hash: 2ec3705
+    message: "WIP(vpn): separate VPN into own config family"
+  - hash: 63db11a
+    message: "WIP(vpn): add WireGuard sdkconfig defaults"
+  - hash: 7a48a1a
+    message: "WIP(vpn): add WebUI status endpoint and System page panel"
