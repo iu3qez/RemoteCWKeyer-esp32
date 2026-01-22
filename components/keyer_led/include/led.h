@@ -31,6 +31,7 @@ typedef enum {
     LED_STATE_WIFI_FAILED,      /**< Brief red flash */
     LED_STATE_DEGRADED,         /**< Dim yellow steady */
     LED_STATE_AP_MODE,          /**< Alternating orange/blue */
+    LED_STATE_PROVISIONING,     /**< Provisioning: blue breathing */
     LED_STATE_CONNECTED,        /**< Green flash sequence */
     LED_STATE_IDLE,             /**< Dim green steady */
 } led_state_t;

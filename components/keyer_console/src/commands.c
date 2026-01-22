@@ -27,6 +27,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs.h"
+#include "nvs_flash.h"
 #include "usb_console.h"
 #include "usb_log.h"
 #include "usb_uf2.h"
@@ -528,18 +529,15 @@ static console_error_t cmd_factory_reset(const console_parsed_cmd_t *cmd) {
         return CONSOLE_ERR_REQUIRES_CONFIRM;
     }
 #ifdef ESP_PLATFORM
-    printf("Erasing NVS and rebooting...\r\n");
+    printf("Erasing all NVS and rebooting...\r\n");
 
-    /* Erase the keyer config namespace */
-    nvs_handle_t handle;
-    esp_err_t err = nvs_open(CONFIG_NVS_NAMESPACE, NVS_READWRITE, &handle);
-    if (err == ESP_OK) {
-        nvs_erase_all(handle);
-        nvs_commit(handle);
-        nvs_close(handle);
+    /* Full NVS erase - cleaner than namespace erase_all */
+    esp_err_t err = nvs_flash_erase();
+    if (err != ESP_OK) {
+        printf("NVS erase failed: %s\r\n", esp_err_to_name(err));
     }
 
-    vTaskDelay(pdMS_TO_TICKS(100));
+    vTaskDelay(pdMS_TO_TICKS(200));
     esp_restart();
 #else
     printf("factory-reset not available on host\r\n");
