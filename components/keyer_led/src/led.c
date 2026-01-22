@@ -448,6 +448,14 @@ void led_tick(int64_t now_us, bool dit, bool dah)
         break;
     }
 
+    case LED_STATE_PROVISIONING: {
+        /* Blue breathing for provisioning mode */
+        uint8_t breath_brightness = calculate_breathing(elapsed_us, brightness);
+        uint32_t color = apply_brightness(COLOR_BLUE, breath_brightness);
+        set_all_leds(color);
+        break;
+    }
+
     case LED_STATE_CONNECTED: {
         /* 3 quick green flashes, then auto-transition to IDLE */
         int64_t flash_cycle = FLASH_DURATION_US + FLASH_GAP_US;

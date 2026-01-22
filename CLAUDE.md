@@ -45,6 +45,23 @@ The pure C implementation uses ESP-IDF v5.x with strict coding standards for emb
 └── test_host/              # Unity-based host tests
 ```
 
+### Environment Setup
+
+ESP-IDF is installed at:
+```bash
+# Source ESP-IDF environment before building
+source /home/sf/esp/esp-idf/export.sh
+```
+
+### Frontend Dependencies
+
+The web UI requires Node.js dependencies (first time only):
+
+```bash
+cd components/keyer_webui/frontend
+npm install
+```
+
 ### Building
 
 ```bash
@@ -53,7 +70,7 @@ cd keyer_c
 # Configure (first time only)
 idf.py set-target esp32s3
 
-# Build
+# Build (requires frontend deps installed)
 idf.py build
 
 # Flash and monitor
@@ -69,13 +86,16 @@ idf.py build
 Configuration is generated from [parameters.yaml](parameters.yaml):
 
 ```bash
-# Regenerate config (done automatically during build)
-python scripts/gen_config_c.py
+# Regenerate config manually
+python scripts/gen_config_c.py parameters.yaml components/keyer_config
 
 # Generated files in components/keyer_config/
-# - config.h      - Atomic config struct
-# - config.c      - Default values
-# - config_nvs.h  - NVS persistence
+# - config.h        - Atomic config struct
+# - config_meta.h   - Parameter metadata
+# - config_nvs.h    - NVS key definitions
+# - config_nvs.c    - NVS load/save implementation
+# - config_console.h - Console command support
+# - config_schema.h  - JSON schema for web UI
 ```
 
 ---

@@ -62,3 +62,4 @@ components/keyer_webui/src/assets_generated.c
 ..claude/settings.json
 .tldrignore
 .claude/settings.json
+components/src/config.c
