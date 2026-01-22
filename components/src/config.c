@@ -28,6 +28,7 @@ void config_init_defaults(keyer_config_t *cfg) {
     atomic_init(&cfg->system.debug_logging, false);
     strncpy(cfg->system.callsign, "N0CALL", 12);
     cfg->system.callsign[12] = '\0';
+    atomic_init(&cfg->system.ui_theme, 0);  /* matrix_green */
     atomic_init(&cfg->leds.gpio_data, 38);
     atomic_init(&cfg->leds.count, 7);
     atomic_init(&cfg->leds.brightness, 50);

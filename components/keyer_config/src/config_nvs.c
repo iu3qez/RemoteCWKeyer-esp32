@@ -128,6 +128,12 @@ int config_load_from_nvs(void) {
         loaded++;
     }
 
+    /* Load system.ui_theme */
+    if (nvs_get_u8(handle, NVS_SYSTEM_UI_THEME, &u8_val) == ESP_OK) {
+        atomic_store_explicit(&g_config.system.ui_theme, u8_val, memory_order_relaxed);
+        loaded++;
+    }
+
     /* Load leds.gpio_data */
     if (nvs_get_u8(handle, NVS_LEDS_GPIO_DATA, &u8_val) == ESP_OK) {
         atomic_store_explicit(&g_config.leds.gpio_data, u8_val, memory_order_relaxed);
@@ -317,6 +323,12 @@ int config_save_to_nvs(void) {
 
     /* Save system.callsign */
     if (nvs_set_str(handle, NVS_SYSTEM_CALLSIGN, g_config.system.callsign) == ESP_OK) {
+        saved++;
+    }
+
+    /* Save system.ui_theme */
+    if (nvs_set_u8(handle, NVS_SYSTEM_UI_THEME,
+            atomic_load_explicit(&g_config.system.ui_theme, memory_order_relaxed)) == ESP_OK) {
         saved++;
     }
 
