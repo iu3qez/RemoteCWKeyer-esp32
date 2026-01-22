@@ -1,0 +1,23 @@
+session: build-20260112-console-restructure
+mode: brownfield
+description: "Ristrutturazione comandi console - modularizzazione, gruppi, subcomandi"
+started: 2026-01-12T00:00:00Z
+branch: console_review
+chain:
+  - onboard
+  - research-codebase
+  - plan-agent
+  - validate-agent
+  - implement_plan
+current_phase: 0
+phases:
+  - skill: onboard
+    status: pending
+  - skill: research-codebase
+    status: pending
+  - skill: plan-agent
+    status: pending
+  - skill: validate-agent
+    status: pending
+  - skill: implement_plan
+    status: pending

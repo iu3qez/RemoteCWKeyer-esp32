@@ -121,6 +121,65 @@ void test_decoder_state_str(void);
 void test_decoder_buffer_circular(void);
 void test_decoder_get_text_with_timestamps(void);
 
+/* Morse lookup tests */
+void test_morse_lookup_A(void);
+void test_morse_lookup_B(void);
+void test_morse_lookup_E(void);
+void test_morse_lookup_T(void);
+void test_morse_lookup_0(void);
+void test_morse_lookup_5(void);
+void test_morse_lookup_1(void);
+void test_morse_lookup_period(void);
+void test_morse_lookup_question(void);
+void test_morse_lookup_slash(void);
+void test_morse_lookup_equals(void);
+void test_morse_lookup_comma(void);
+void test_morse_lookup_lowercase(void);
+void test_morse_lookup_space_returns_null(void);
+void test_morse_lookup_unsupported_returns_null(void);
+void test_morse_lookup_all_letters(void);
+void test_morse_lookup_all_digits(void);
+
+/* Morse queue tests */
+void test_morse_queue_init(void);
+void test_morse_queue_push_pop(void);
+void test_morse_queue_all_element_types(void);
+void test_morse_queue_pop_empty_returns_false(void);
+void test_morse_queue_fill_to_capacity(void);
+void test_morse_queue_wraparound(void);
+void test_morse_queue_clear(void);
+void test_morse_queue_interleaved_ops(void);
+void test_morse_queue_size_is_power_of_2(void);
+
+/* Winkeyer parser tests */
+void test_parser_init(void);
+void test_parser_host_open(void);
+void test_parser_host_close(void);
+void test_parser_admin_echo(void);
+void test_parser_admin_reset(void);
+void test_parser_speed_command(void);
+void test_parser_speed_requires_session(void);
+void test_parser_sidetone_command(void);
+void test_parser_weight_command(void);
+void test_parser_ptt_timing_command(void);
+void test_parser_pin_config_command(void);
+void test_parser_mode_command(void);
+void test_parser_text_characters(void);
+void test_parser_text_requires_session(void);
+void test_parser_text_full_alphabet(void);
+void test_parser_clear_buffer_command(void);
+void test_parser_key_immediate_down(void);
+void test_parser_key_immediate_up(void);
+void test_parser_pause_command(void);
+void test_parser_unpause_command(void);
+void test_parser_invalid_command_ignored(void);
+void test_parser_invalid_admin_sub_ignored(void);
+void test_parser_state_transitions(void);
+void test_parser_two_param_state_transitions(void);
+void test_protocol_constants(void);
+void test_parser_null_callbacks_safe(void);
+void test_parser_null_response_safe(void);
+
 void setUp(void) {
     /* Called before each test */
 }
@@ -268,6 +327,68 @@ int main(void) {
     RUN_TEST(test_decoder_state_str);
     RUN_TEST(test_decoder_buffer_circular);
     RUN_TEST(test_decoder_get_text_with_timestamps);
+
+    /* Morse lookup tests */
+    printf("\n=== Morse Lookup Tests ===\n");
+    RUN_TEST(test_morse_lookup_A);
+    RUN_TEST(test_morse_lookup_B);
+    RUN_TEST(test_morse_lookup_E);
+    RUN_TEST(test_morse_lookup_T);
+    RUN_TEST(test_morse_lookup_0);
+    RUN_TEST(test_morse_lookup_5);
+    RUN_TEST(test_morse_lookup_1);
+    RUN_TEST(test_morse_lookup_period);
+    RUN_TEST(test_morse_lookup_question);
+    RUN_TEST(test_morse_lookup_slash);
+    RUN_TEST(test_morse_lookup_equals);
+    RUN_TEST(test_morse_lookup_comma);
+    RUN_TEST(test_morse_lookup_lowercase);
+    RUN_TEST(test_morse_lookup_space_returns_null);
+    RUN_TEST(test_morse_lookup_unsupported_returns_null);
+    RUN_TEST(test_morse_lookup_all_letters);
+    RUN_TEST(test_morse_lookup_all_digits);
+
+    /* Morse queue tests */
+    printf("\n=== Morse Queue Tests ===\n");
+    RUN_TEST(test_morse_queue_init);
+    RUN_TEST(test_morse_queue_push_pop);
+    RUN_TEST(test_morse_queue_all_element_types);
+    RUN_TEST(test_morse_queue_pop_empty_returns_false);
+    RUN_TEST(test_morse_queue_fill_to_capacity);
+    RUN_TEST(test_morse_queue_wraparound);
+    RUN_TEST(test_morse_queue_clear);
+    RUN_TEST(test_morse_queue_interleaved_ops);
+    RUN_TEST(test_morse_queue_size_is_power_of_2);
+
+    /* Winkeyer parser tests */
+    printf("\n=== Winkeyer Parser Tests ===\n");
+    RUN_TEST(test_parser_init);
+    RUN_TEST(test_parser_host_open);
+    RUN_TEST(test_parser_host_close);
+    RUN_TEST(test_parser_admin_echo);
+    RUN_TEST(test_parser_admin_reset);
+    RUN_TEST(test_parser_speed_command);
+    RUN_TEST(test_parser_speed_requires_session);
+    RUN_TEST(test_parser_sidetone_command);
+    RUN_TEST(test_parser_weight_command);
+    RUN_TEST(test_parser_ptt_timing_command);
+    RUN_TEST(test_parser_pin_config_command);
+    RUN_TEST(test_parser_mode_command);
+    RUN_TEST(test_parser_text_characters);
+    RUN_TEST(test_parser_text_requires_session);
+    RUN_TEST(test_parser_text_full_alphabet);
+    RUN_TEST(test_parser_clear_buffer_command);
+    RUN_TEST(test_parser_key_immediate_down);
+    RUN_TEST(test_parser_key_immediate_up);
+    RUN_TEST(test_parser_pause_command);
+    RUN_TEST(test_parser_unpause_command);
+    RUN_TEST(test_parser_invalid_command_ignored);
+    RUN_TEST(test_parser_invalid_admin_sub_ignored);
+    RUN_TEST(test_parser_state_transitions);
+    RUN_TEST(test_parser_two_param_state_transitions);
+    RUN_TEST(test_protocol_constants);
+    RUN_TEST(test_parser_null_callbacks_safe);
+    RUN_TEST(test_parser_null_response_safe);
 
     return UNITY_END();
 }
