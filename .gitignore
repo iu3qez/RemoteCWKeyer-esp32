@@ -31,6 +31,7 @@ components/keyer_config/config_nvs.h
 components/keyer_config/config_schema.h
 components/keyer_config/include/
 components/keyer_config/src/config.c
+components/src/
 components/keyer_config/src/config_console.c
 components/keyer_config/src/config_nvs.c
 components/keyer_console/include/log_tags.h
