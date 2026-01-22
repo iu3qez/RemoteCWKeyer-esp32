@@ -1,0 +1,29 @@
+session: build-20260121-wireguard-vpn
+mode: brownfield
+options: []
+description: "Add WireGuard VPN support with console and WebUI configuration"
+started: 2026-01-21T22:15:00Z
+branch: wireguard-vpn
+chain:
+  - onboard
+  - research-external
+  - plan-agent
+  - validate-agent
+  - implement_plan
+current_phase: 0
+phases:
+  - skill: onboard
+    status: pending
+    purpose: "Analyze existing codebase structure for VPN integration points"
+  - skill: research-external
+    status: pending
+    purpose: "Research ESP-IDF WireGuard libraries and best practices"
+  - skill: plan-agent
+    status: pending
+    purpose: "Create implementation plan for WireGuard support"
+  - skill: validate-agent
+    status: pending
+    purpose: "Validate tech choices against ESP-IDF constraints"
+  - skill: implement_plan
+    status: pending
+    purpose: "Implement WireGuard VPN component"

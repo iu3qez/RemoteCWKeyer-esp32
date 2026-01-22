@@ -1,0 +1,67 @@
+---
+session: general
+date: 2026-01-17
+status: partial
+outcome: PARTIAL_MINUS
+---
+
+goal: Fix Timeline WebUI data reception and add debugging features
+now: Fix time scale grid visibility - lines drawn but not appearing on canvas
+
+test: idf.py flash monitor # then check http://192.168.4.1/timeline
+
+done_this_session:
+  - task: Fixed WebSocket timestamp mismatch (device ms-since-boot vs browser Date.now())
+    files: [components/keyer_webui/frontend/src/lib/api.ts]
+  - task: Added time sync with preserved relative offsets for batched events
+    files: [components/keyer_webui/frontend/src/lib/api.ts:183-225]
+  - task: Added auto-pause feature (freezes scrolling after 500ms inactivity)
+    files: [components/keyer_webui/frontend/src/pages/Timeline.svelte:43-44, 97-102]
+  - task: Added git hash + build time display to Timeline header (now visible)
+    files: [components/keyer_webui/frontend/src/pages/Timeline.svelte:6-9, 309, 398-405]
+  - task: Added vite build-time variable injection for version tracking
+    files: [components/keyer_webui/frontend/vite.config.ts:3-21]
+  - task: Attempted time scale grid lines (code exists but not visible)
+    files: [components/keyer_webui/frontend/src/pages/Timeline.svelte:174-210]
+
+blockers:
+  - Grid lines in drawGrid() function not appearing despite multiple color adjustments
+
+questions:
+  - Is drawGrid() being called? Is config?.wpm returning valid value?
+  - Are canvas coordinates correct for grid lines?
+  - Is stroke() being called after beginPath()/lineTo()?
+
+decisions:
+  - time_sync_approach: "Anchor first device timestamp to browser time, then preserve relative offsets"
+  - auto_pause_design: "Freeze at lastEventTime + 500ms delay, not immediately"
+  - version_display: "Git hash + build time in header helps verify correct firmware deployed"
+
+findings:
+  - timestamp_root_cause: "Device sends ts in ms since boot (~292392), browser uses epoch ms (~1737146994000) - 5 orders of magnitude difference"
+  - batched_events: "WebSocket delivers events in batches, all getting same Date.now() collapsed gaps to zero"
+  - grid_mystery: "drawGrid() called at line 112, colors changed to #557755/#88aa88, but still invisible"
+
+worked:
+  - Time sync with baseline anchoring preserves device timing relationships
+  - Git hash injection via vite define config
+  - Build info now visible with cyan box styling
+
+failed:
+  - First grid color attempt (#3a5a3a) too dark
+  - Second attempt (#557755) still not visible - likely deeper issue
+
+next:
+  - Debug drawGrid() function - add console.log to verify it's called
+  - Check if config.wpm is loaded (affects grid spacing calculation)
+  - Verify canvas stroke rendering (lineWidth, beginPath, stroke sequence)
+  - Consider drawing grid AFTER track backgrounds, not before (z-order)
+
+files:
+  created: []
+  modified:
+    - components/keyer_webui/frontend/src/lib/api.ts
+    - components/keyer_webui/frontend/src/pages/Timeline.svelte
+    - components/keyer_webui/frontend/vite.config.ts
+
+commits: []

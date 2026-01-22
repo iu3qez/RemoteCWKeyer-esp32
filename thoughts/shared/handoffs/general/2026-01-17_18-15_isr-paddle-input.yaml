@@ -1,0 +1,59 @@
+---
+session: feature/isr-paddle-input
+date: 2026-01-17
+status: partial
+outcome: PARTIAL_PLUS
+---
+
+goal: Implement ISR-based paddle detection with spurious element prevention
+now: Flash and test fresh press detection fix on device
+
+test: idf.py flash monitor
+
+done_this_session:
+  - task: Fixed ISR crash by implementing ISR-safe handoff pattern
+    files: [components/keyer_hal/src/hal_gpio.c, components/keyer_hal/include/hal_gpio.h, main/rt_task.c, main/main.c]
+  - task: Merged main branch to get WebUI fixes (SSE->WebSocket migration)
+    files: []
+  - task: Implemented fresh press detection to prevent spurious elements
+    files: [components/keyer_iambic/src/iambic.c, components/keyer_iambic/include/iambic.h]
+
+blockers: []
+
+questions:
+  - Does fresh press detection fully fix spurious elements at QRQ speeds?
+
+decisions:
+  - isr_safe_handoff: "esp_timer_start_once() uses spinlocks, not ISR-safe. Solution: ISR sets atomic flag, RT task starts timer from task context"
+  - fresh_press_tracking: "Track dit_press_start_us/dah_press_start_us. Memory only arms if press started AFTER element_start_us"
+
+findings:
+  - isr_crash_root_cause: "Original crash was in httpd (PC=0x0), not ISR directly. Old WebUI SSE code had bugs fixed in main"
+  - memory_rearming_bug: "Contact bounce during element causes polling to see re-press, arming memory for same press"
+
+worked:
+  - ISR-safe handoff pattern (ISR->atomic flag->RT task->timer)
+  - Merging main to get WebUI fixes before re-implementing ISR
+
+failed:
+  - First fix attempt without merging main still crashed (httpd bug was separate issue)
+
+next:
+  - Flash and test fresh press detection on device
+  - Verify no DRIFT warnings or spurious elements
+  - If working, squash WIP commit into proper commit
+  - Consider increasing blanking period if bounce still occurs
+
+files:
+  created: []
+  modified:
+    - components/keyer_hal/include/hal_gpio.h
+    - components/keyer_hal/src/hal_gpio.c
+    - components/keyer_iambic/include/iambic.h
+    - components/keyer_iambic/src/iambic.c
+    - main/rt_task.c
+    - main/main.c
+
+commits:
+  - "152e478 feat(isr): implement ISR-safe paddle detection"
+  - "da13f25 wip: fresh press detection to prevent spurious elements"
