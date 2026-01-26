@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { api } from '../lib/api';
-  import type { SystemStats, DeviceStatus } from '../lib/types';
+  import type { SystemStats, DeviceStatus, VpnStatus } from '../lib/types';
 
   let status = $state<DeviceStatus | null>(null);
   let stats = $state<SystemStats | null>(null);
+  let vpnStatus = $state<VpnStatus | null>(null);
   let error = $state<string | null>(null);
   let pollInterval: number | null = null;
   let autoRefresh = $state(true);
@@ -26,9 +27,10 @@
 
   async function refresh() {
     try {
-      [status, stats] = await Promise.all([
+      [status, stats, vpnStatus] = await Promise.all([
         api.getStatus(),
-        api.getSystemStats()
+        api.getSystemStats(),
+        api.getVpnStatus().catch(() => null)
       ]);
       error = null;
       lastUpdate = new Date().toTimeString().split(' ')[0];
@@ -135,6 +137,30 @@
         <div class="loading">Loading...</div>
       {/if}
     </div>
+
+    <!-- VPN Panel -->
+    {#if vpnStatus && vpnStatus.state !== 'DISABLED'}
+      <div class="panel vpn-panel">
+        <div class="panel-header">
+          <span class="panel-icon">[V]</span>
+          <span class="panel-title">VPN</span>
+        </div>
+        <div class="stat-rows">
+          <div class="stat-row">
+            <span class="stat-label">STATE</span>
+            <span class="stat-value" class:online={vpnStatus.connected}>
+              {vpnStatus.connected ? '● ' : '○ '}{vpnStatus.state}
+            </span>
+          </div>
+          {#if vpnStatus.stats}
+            <div class="stat-row">
+              <span class="stat-label">HANDSHAKES</span>
+              <span class="stat-value">{vpnStatus.stats.handshakes}</span>
+            </div>
+          {/if}
+        </div>
+      </div>
+    {/if}
 
     <!-- Memory Panel -->
     <div class="panel memory-panel">

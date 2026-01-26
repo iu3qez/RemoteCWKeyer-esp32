@@ -1,0 +1,84 @@
+---
+session: build-20260121-wireguard-vpn
+date: 2026-01-22
+status: partial
+outcome: PARTIAL_PLUS
+---
+
+goal: WireGuard VPN component with NTP sync, console commands, config integration
+now: Fix code generator to merge vpn_* params INTO config_wifi_t (not separate struct), then update code references and build
+
+test: cd /home/sf/src/RustRemoteCWKeyer && idf.py build 2>&1 | tail -20
+
+done_this_session:
+  - task: Added VPN parameters under wifi family in parameters.yaml (vpn_enabled, vpn_endpoint, vpn_port, vpn_server_key, vpn_private_key, vpn_address, vpn_allowed_ips, vpn_keepalive)
+    files: [parameters.yaml]
+  - task: Created keyer_vpn component with esp_wireguard v0.9.0 dependency
+    files: [components/keyer_vpn/CMakeLists.txt, components/keyer_vpn/idf_component.yml]
+  - task: Implemented vpn.c - NTP time sync, WireGuard handshake, state machine, auto-reconnect, Core 1 task
+    files: [components/keyer_vpn/src/vpn.c, components/keyer_vpn/include/vpn.h]
+  - task: Integrated VPN init into main.c (after WiFi, non-blocking vpn_app_start)
+    files: [main/main.c]
+  - task: Added VPN state monitoring in bg_task.c
+    files: [main/bg_task.c]
+  - task: Added 'vpn' console command with status/connect/disconnect subcommands
+    files: [components/keyer_console/src/commands.c, components/keyer_console/CMakeLists.txt]
+  - task: Committed WIP on branch wireguard-vpn (786dfd3)
+    files: []
+
+blockers:
+  - "Code generator (gen_config_c.py) creates separate config_vpn_t struct instead of merging vpn_* fields into config_wifi_t"
+  - "Duplicate CONFIG_GET_ENABLED() macro - defined for both wifi.enabled and vpn.enabled"
+  - "Code references use g_config.vpn.* but generator creates vpn_enabled/vpn_endpoint/etc field names"
+
+questions:
+  - "Should vpn_* params remain as fields in config_wifi_t with vpn_ prefix, or should generator create a nested vpn sub-struct within wifi?"
+  - "Alternative: keep vpn as separate family in gen but expose as wifi.vpn_* in console path?"
+
+decisions:
+  - vpn_under_wifi: "User requested VPN params under wifi family to avoid CONFIG_GET_ENABLED collision and logical grouping"
+  - esp_wireguard_v0_9: "Using trombik/esp_wireguard ^0.9.0 from ESP Component Registry"
+  - ntp_before_wg: "NTP time sync required before WireGuard handshake (crypto needs valid time)"
+  - core1_only: "VPN task pinned to Core 1, zero impact on RT path"
+
+findings:
+  - gen_bug: "gen_config_c.py creates per-family structs from the families list, but vpn_* params under wifi still generate a separate vpn struct - likely the generator detects vpn_ prefix and auto-splits"
+  - macro_collision: "CONFIG_GET_ENABLED is generated for both wifi.enabled and vpn.enabled (now vpn_enabled) causing redefinition"
+  - field_names: "Generator uses param name as struct field: vpn_enabled becomes field 'vpn_enabled' in wifi struct OR 'enabled' in vpn struct depending on how generator handles prefix"
+
+worked:
+  - "vpn.h/vpn.c API design with state machine and atomic state"
+  - "NTP sync with timeout and valid-time check"
+  - "Console command integration pattern"
+
+failed:
+  - "Moving vpn params under wifi family didn't fix the issue because gen_config_c.py still creates a separate struct"
+
+next:
+  - "Fix gen_config_c.py: either (a) keep vpn as separate family but fix macro names to use VPN_ENABLED prefix, or (b) truly merge vpn_* fields into config_wifi_t struct"
+  - "Option (a) is simpler: keep config_vpn_t, fix macro collision by prefixing with family name (CONFIG_GET_VPN_ENABLED vs CONFIG_GET_WIFI_ENABLED)"
+  - "Update main.c references: g_config.vpn.vpn_enabled -> g_config.vpn.enabled (if keeping separate family)"
+  - "Update commands.c references similarly"
+  - "Run idf.py build and fix remaining compilation errors"
+  - "WebUI integration (future phase)"
+
+files:
+  created:
+    - components/keyer_vpn/CMakeLists.txt
+    - components/keyer_vpn/idf_component.yml
+    - components/keyer_vpn/include/vpn.h
+    - components/keyer_vpn/src/vpn.c
+    - components/src/config_console.c
+  modified:
+    - parameters.yaml
+    - components/keyer_config/src/config_nvs.c
+    - components/keyer_console/CMakeLists.txt
+    - components/keyer_console/src/commands.c
+    - components/src/config.c
+    - main/CMakeLists.txt
+    - main/bg_task.c
+    - main/main.c
+
+commits:
+  - hash: 786dfd3
+    message: "WIP(vpn): WireGuard VPN component with NTP sync and console commands"

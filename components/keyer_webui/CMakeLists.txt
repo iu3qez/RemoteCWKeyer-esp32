@@ -7,6 +7,7 @@ idf_component_register(
         "src/api_decoder.c"
         "src/api_timeline.c"
         "src/ws_server.c"
+        "src/api_vpn.c"
         "src/assets.c"
     INCLUDE_DIRS
         "include"
@@ -17,6 +18,7 @@ idf_component_register(
         keyer_core
         keyer_decoder
         keyer_wifi
+        keyer_vpn
         keyer_text
 )
 

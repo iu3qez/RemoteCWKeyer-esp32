@@ -26,6 +26,7 @@
 #include "text_memory.h"
 #include "led.h"
 #include "wifi.h"
+#include "vpn.h"
 #include "hal_gpio.h"
 #include "config.h"
 #include "webui.h"
@@ -82,6 +83,7 @@ void bg_task(void *arg) {
 
     uint32_t stats_counter = 0;
     wifi_state_t prev_wifi_state = WIFI_STATE_DISABLED;
+    vpn_state_t prev_vpn_state = VPN_STATE_DISABLED;
     bool wifi_connected_flash_done = false;
 
     for (;;) {
@@ -110,6 +112,31 @@ void bg_task(void *arg) {
                 }
 
                 prev_wifi_state = ws;
+            }
+
+            /* Monitor VPN state changes */
+            vpn_state_t vs = vpn_get_state();
+            if (vs != prev_vpn_state) {
+                switch (vs) {
+                    case VPN_STATE_WAITING_WIFI:
+                        RT_INFO(&g_bg_log_stream, now_us, "VPN: waiting for WiFi");
+                        break;
+                    case VPN_STATE_WAITING_TIME:
+                        RT_INFO(&g_bg_log_stream, now_us, "VPN: syncing time (NTP)");
+                        break;
+                    case VPN_STATE_CONNECTING:
+                        RT_INFO(&g_bg_log_stream, now_us, "VPN: WireGuard handshake");
+                        break;
+                    case VPN_STATE_CONNECTED:
+                        RT_INFO(&g_bg_log_stream, now_us, "VPN: tunnel established");
+                        break;
+                    case VPN_STATE_FAILED:
+                        RT_WARN(&g_bg_log_stream, now_us, "VPN: connection failed");
+                        break;
+                    default:
+                        break;
+                }
+                prev_vpn_state = vs;
             }
 
             /* After connected flash sequence, transition to idle */

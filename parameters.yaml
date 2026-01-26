@@ -902,3 +902,188 @@ families:
             it: "IP server DNS (es. 8.8.8.8)"
           widget: text
           advanced: true
+
+  vpn:
+    order: 8
+    icon: "shield"
+    label:
+      en: "VPN"
+      it: "VPN"
+    description:
+      en: "WireGuard VPN tunnel"
+      it: "Tunnel VPN WireGuard"
+    aliases: [wg]
+
+    parameters:
+      enabled:
+        type: bool
+        default: false
+        nvs_key: "vpn_en"
+        runtime_change: reboot
+        priority: 60
+        gui:
+          label_short:
+            en: "Enable"
+            it: "Abilita"
+          label_long:
+            en: "VPN Enabled"
+            it: "VPN Abilitato"
+          description:
+            en: "Enable WireGuard VPN tunnel"
+            it: "Abilita tunnel VPN WireGuard"
+          widget: toggle
+          widget_config:
+            on_label:
+              en: "On"
+              it: "Attivo"
+            off_label:
+              en: "Off"
+              it: "Spento"
+          advanced: false
+
+      server_endpoint:
+        type: string
+        max_length: 64
+        default: ""
+        nvs_key: "vpn_ep"
+        runtime_change: reboot
+        priority: 61
+        gui:
+          label_short:
+            en: "Server"
+            it: "Server"
+          label_long:
+            en: "Server Endpoint"
+            it: "Endpoint Server"
+          description:
+            en: "WireGuard server hostname or IP address"
+            it: "Hostname o indirizzo IP del server WireGuard"
+          widget: text
+          advanced: false
+
+      server_port:
+        type: u16
+        default: 51820
+        range: [1, 65535]
+        nvs_key: "vpn_port"
+        runtime_change: reboot
+        priority: 62
+        gui:
+          label_short:
+            en: "Port"
+            it: "Porta"
+          label_long:
+            en: "Server Port"
+            it: "Porta Server"
+          description:
+            en: "WireGuard server UDP port (default: 51820)"
+            it: "Porta UDP del server WireGuard (default: 51820)"
+          widget: spinbox
+          widget_config:
+            step: 1
+          advanced: false
+
+      server_public_key:
+        type: string
+        max_length: 48
+        default: ""
+        nvs_key: "vpn_spub"
+        runtime_change: reboot
+        sensitive: true
+        priority: 63
+        gui:
+          label_short:
+            en: "Server Key"
+            it: "Chiave Server"
+          label_long:
+            en: "Server Public Key"
+            it: "Chiave Pubblica Server"
+          description:
+            en: "WireGuard server public key (Base64)"
+            it: "Chiave pubblica del server WireGuard (Base64)"
+          widget: password
+          advanced: false
+
+      client_private_key:
+        type: string
+        max_length: 48
+        default: ""
+        nvs_key: "vpn_cpriv"
+        runtime_change: reboot
+        sensitive: true
+        priority: 64
+        gui:
+          label_short:
+            en: "Private Key"
+            it: "Chiave Privata"
+          label_long:
+            en: "Client Private Key"
+            it: "Chiave Privata Client"
+          description:
+            en: "This device's WireGuard private key (Base64)"
+            it: "Chiave privata WireGuard di questo dispositivo (Base64)"
+          widget: password
+          advanced: false
+
+      client_address:
+        type: string
+        max_length: 18
+        default: "10.0.0.2/24"
+        nvs_key: "vpn_addr"
+        runtime_change: reboot
+        priority: 65
+        gui:
+          label_short:
+            en: "Address"
+            it: "Indirizzo"
+          label_long:
+            en: "Client Address"
+            it: "Indirizzo Client"
+          description:
+            en: "VPN tunnel IP address with CIDR (e.g., 10.0.0.2/24)"
+            it: "Indirizzo IP del tunnel VPN con CIDR (es. 10.0.0.2/24)"
+          widget: text
+          advanced: false
+
+      allowed_ips:
+        type: string
+        max_length: 64
+        default: "0.0.0.0/0"
+        nvs_key: "vpn_aips"
+        runtime_change: reboot
+        priority: 66
+        gui:
+          label_short:
+            en: "Allowed IPs"
+            it: "IP Consentiti"
+          label_long:
+            en: "Allowed IPs"
+            it: "IP Consentiti"
+          description:
+            en: "Traffic to route through VPN (CIDR, e.g., 0.0.0.0/0 for all)"
+            it: "Traffico da instradare attraverso VPN (CIDR, es. 0.0.0.0/0 per tutto)"
+          widget: text
+          advanced: true
+
+      persistent_keepalive:
+        type: u16
+        default: 25
+        range: [0, 3600]
+        nvs_key: "vpn_ka"
+        runtime_change: reboot
+        priority: 67
+        gui:
+          label_short:
+            en: "Keepalive"
+            it: "Keepalive"
+          label_long:
+            en: "Persistent Keepalive (s)"
+            it: "Keepalive Persistente (s)"
+          description:
+            en: "Send keepalive packet interval (0=off, 25 recommended for NAT)"
+            it: "Intervallo pacchetti keepalive (0=off, 25 consigliato per NAT)"
+          widget: spinbox
+          widget_config:
+            step: 5
+            suffix: " s"
+          advanced: true

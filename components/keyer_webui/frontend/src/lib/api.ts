@@ -6,7 +6,8 @@ import type {
   ConfigSchema,
   ConfigValues,
   TextKeyerStatus,
-  MemorySlot
+  MemorySlot,
+  VpnStatus
 } from './types';
 
 class ApiClient {
@@ -120,6 +121,11 @@ class ApiClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ slot })
     });
+  }
+
+  // VPN
+  async getVpnStatus(): Promise<VpnStatus> {
+    return this.fetchJson('/api/vpn/status');
   }
 
   // WebSocket streaming

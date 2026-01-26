@@ -61,6 +61,13 @@ CONFIG_LWIP_SO_REUSE=y
 CONFIG_LWIP_SO_RCVBUF=y
 CONFIG_LWIP_NETIF_LOOPBACK=y
 CONFIG_LWIP_NETIF_STATUS_CALLBACK=y
+# TCPIP task stack: 5KB minimum for WireGuard X25519 crypto operations
+CONFIG_LWIP_TCPIP_TASK_STACK_SIZE=5120
+# SNTP: allow multiple NTP servers for WireGuard time sync
+CONFIG_LWIP_SNTP_MAX_SERVERS=3
+
+# WireGuard VPN
+CONFIG_WIREGUARD_ESP_NETIF=y
 
 # HTTP Server Configuration
 # Modern browsers send long headers (User-Agent, Accept-*, etc.); 512 default causes 431 errors

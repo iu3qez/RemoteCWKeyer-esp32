@@ -1,0 +1,37 @@
+session: build-20260121-cwnet-tcp-client
+mode: brownfield
+options: []
+description: "TCP client CWNet con configurazione username, IP, porta"
+started: 2026-01-21T21:10:00Z
+chain:
+  - research-codebase
+  - plan-agent
+  - validate-agent
+  - implement_plan
+current_phase: 3
+phases:
+  - skill: research-codebase
+    status: complete
+  - skill: plan-agent
+    status: skipped
+    note: "Direct implementation based on research"
+  - skill: validate-agent
+    status: skipped
+    note: "TDD approach - tests validate implementation"
+  - skill: implement_plan
+    status: complete
+
+artifacts:
+  parameters:
+    - parameters.yaml (added remote family with 4 params)
+  headers:
+    - components/keyer_cwnet/include/cwnet_client.h
+  implementation:
+    - components/keyer_cwnet/src/cwnet_client.c
+  tests:
+    - test_host/test_cwnet_client.c (20 tests, all passing)
+
+test_results:
+  total: 189
+  failures: 8 (pre-existing in other modules)
+  cwnet_client_tests: 20/20 passing

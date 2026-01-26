@@ -342,28 +342,39 @@ void config_bump_generation(keyer_config_t *cfg);
 
 """
 
+    # Detect parameter name collisions across families
+    name_counts = {}
+    for p in params:
+        n = p['name'].upper()
+        name_counts[n] = name_counts.get(n, 0) + 1
+
     # Add accessor macros with family path for v2
     for p in params:
         name = p['name']
         family = p.get('family', None)
         upper = name.upper()
+        # Only prefix with family when name collides across families
+        if families and family and name_counts.get(upper, 0) > 1:
+            macro_upper = f"{family.upper()}_{upper}"
+        else:
+            macro_upper = upper
 
         if is_string_type(p):
             max_len = get_string_max_length(p)
             if families and family:
                 # V2: nested access for strings
-                code += f"#define CONFIG_GET_{upper}() \\\n"
+                code += f"#define CONFIG_GET_{macro_upper}() \\\n"
                 code += f"    (g_config.{family}.{name})\n\n"
-                code += f"#define CONFIG_SET_{upper}(v) do {{ \\\n"
+                code += f"#define CONFIG_SET_{macro_upper}(v) do {{ \\\n"
                 code += f"    strncpy(g_config.{family}.{name}, (v), {max_len}); \\\n"
                 code += f"    g_config.{family}.{name}[{max_len}] = '\\0'; \\\n"
                 code += f"    config_bump_generation(&g_config); \\\n"
                 code += f"}} while(0)\n\n"
             else:
                 # V1: flat access for strings
-                code += f"#define CONFIG_GET_{upper}() \\\n"
+                code += f"#define CONFIG_GET_{macro_upper}() \\\n"
                 code += f"    (g_config.{name})\n\n"
-                code += f"#define CONFIG_SET_{upper}(v) do {{ \\\n"
+                code += f"#define CONFIG_SET_{macro_upper}(v) do {{ \\\n"
                 code += f"    strncpy(g_config.{name}, (v), {max_len}); \\\n"
                 code += f"    g_config.{name}[{max_len}] = '\\0'; \\\n"
                 code += f"    config_bump_generation(&g_config); \\\n"
@@ -371,17 +382,17 @@ void config_bump_generation(keyer_config_t *cfg);
         else:
             if families and family:
                 # V2: nested access
-                code += f"#define CONFIG_GET_{upper}() \\\n"
+                code += f"#define CONFIG_GET_{macro_upper}() \\\n"
                 code += f"    atomic_load_explicit(&g_config.{family}.{name}, memory_order_relaxed)\n\n"
-                code += f"#define CONFIG_SET_{upper}(v) do {{ \\\n"
+                code += f"#define CONFIG_SET_{macro_upper}(v) do {{ \\\n"
                 code += f"    atomic_store_explicit(&g_config.{family}.{name}, (v), memory_order_relaxed); \\\n"
                 code += f"    config_bump_generation(&g_config); \\\n"
                 code += f"}} while(0)\n\n"
             else:
                 # V1: flat access
-                code += f"#define CONFIG_GET_{upper}() \\\n"
+                code += f"#define CONFIG_GET_{macro_upper}() \\\n"
                 code += f"    atomic_load_explicit(&g_config.{name}, memory_order_relaxed)\n\n"
-                code += f"#define CONFIG_SET_{upper}(v) do {{ \\\n"
+                code += f"#define CONFIG_SET_{macro_upper}(v) do {{ \\\n"
                 code += f"    atomic_store_explicit(&g_config.{name}, (v), memory_order_relaxed); \\\n"
                 code += f"    config_bump_generation(&g_config); \\\n"
                 code += f"}} while(0)\n\n"

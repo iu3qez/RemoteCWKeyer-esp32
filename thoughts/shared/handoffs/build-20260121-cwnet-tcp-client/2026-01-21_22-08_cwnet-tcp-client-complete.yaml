@@ -1,0 +1,83 @@
+---
+session: build-20260121-cwnet-tcp-client
+date: 2026-01-21
+status: complete
+outcome: SUCCEEDED
+---
+
+goal: Implement CWNet TCP client with frame parser, PING/timer sync, and ESP-IDF integration
+now: Flash firmware and test with real CWNet server
+
+test: cd test_host && cmake --build build && ./build/test_runner 2>&1 | grep -E "(PASS|FAIL|Tests)"
+
+done_this_session:
+  - task: Added remote family to parameters.yaml (cwnet_enabled, server_host, server_port, username)
+    files: [parameters.yaml]
+  - task: Implemented streaming frame parser with fragmentation support
+    files: [components/keyer_cwnet/include/cwnet_frame.h, components/keyer_cwnet/src/cwnet_frame.c]
+  - task: Implemented PING handling and timer synchronization (critical for protocol)
+    files: [components/keyer_cwnet/include/cwnet_ping.h, components/keyer_cwnet/src/cwnet_ping.c]
+  - task: Implemented client state machine (DISCONNECTED -> CONNECTING -> READY)
+    files: [components/keyer_cwnet/include/cwnet_client.h, components/keyer_cwnet/src/cwnet_client.c]
+  - task: Created TCP socket integration for ESP-IDF (non-blocking, auto-reconnect)
+    files: [components/keyer_cwnet/include/cwnet_socket.h, components/keyer_cwnet/src/cwnet_socket.c]
+  - task: Integrated CWNet into bg_task.c with key event forwarding
+    files: [main/bg_task.c, main/CMakeLists.txt]
+  - task: Wrote comprehensive TDD tests (114 CWNet tests passing)
+    files: [test_host/test_cwnet_frame_parser.c, test_host/test_cwnet_ping.c, test_host/test_cwnet_client.c]
+  - task: Committed as WIP (b155613)
+    files: []
+
+blockers: []
+
+questions:
+  - Does the CWNet server expect lowercase username/callsign?
+  - What is the correct CW event frame format (command codes 0x14/0x15)?
+
+decisions:
+  - socket_abstraction: "Client state machine is socket-agnostic via callbacks, enabling unit testing without network"
+  - timer_sync_on_every_ping: "Per protocol spec, client MUST sync to server time on every PING REQUEST"
+  - renamed_enabled_param: "Changed remote.enabled to remote.cwnet_enabled to avoid macro collision with wifi.enabled"
+
+findings:
+  - frame_format: "Command byte = (category << 6) | command, where category 0=no payload, 1=short, 2=long"
+  - ping_format: "16 bytes: type(1) + id(1) + reserved(2) + t0(4) + t1(4) + t2(4), little-endian"
+  - latency_calc: "RTT = t2 - t0 from RESPONSE_2"
+
+worked:
+  - TDD approach for protocol implementation
+  - Socket-agnostic state machine design for testability
+  - Using cwnet_timer_sync_to_server() on every PING REQUEST
+
+failed: []
+
+next:
+  - Flash firmware and configure via console (set remote.server_host, etc.)
+  - Test connection to real CWNet server
+  - Implement cw_event_cb to handle received CW from other operators
+  - Add exponential backoff for reconnection
+
+files:
+  created:
+    - components/keyer_cwnet/include/cwnet_frame.h
+    - components/keyer_cwnet/include/cwnet_ping.h
+    - components/keyer_cwnet/include/cwnet_client.h
+    - components/keyer_cwnet/include/cwnet_socket.h
+    - components/keyer_cwnet/src/cwnet_frame.c
+    - components/keyer_cwnet/src/cwnet_ping.c
+    - components/keyer_cwnet/src/cwnet_client.c
+    - components/keyer_cwnet/src/cwnet_socket.c
+    - test_host/test_cwnet_frame_parser.c
+    - test_host/test_cwnet_ping.c
+    - test_host/test_cwnet_client.c
+  modified:
+    - parameters.yaml
+    - components/keyer_cwnet/CMakeLists.txt
+    - main/CMakeLists.txt
+    - main/bg_task.c
+    - test_host/CMakeLists.txt
+    - test_host/test_main.c
+
+commits:
+  - hash: b155613
+    message: "WIP(cwnet): TCP client with frame parser, PING, and timer sync"
