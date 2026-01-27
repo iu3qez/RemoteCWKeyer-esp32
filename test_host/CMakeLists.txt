@@ -41,8 +41,9 @@ include_directories(
     ${COMPONENT_DIR}/keyer_audio/include
     ${COMPONENT_DIR}/keyer_logging/include
     ${COMPONENT_DIR}/keyer_console/include
-    ${COMPONENT_DIR}/keyer_config/include
+    ${COMPONENT_DIR}/keyer_config           # Generated headers in root
     ${COMPONENT_DIR}/keyer_decoder/include
+    ${COMPONENT_DIR}/keyer_cwnet/include
     ${CMAKE_SOURCE_DIR}/stubs
 )
 
@@ -78,15 +79,23 @@ set(CONSOLE_SOURCES
     # ${COMPONENT_DIR}/keyer_console/src/completion.c  # Excluded: requires commands.c
 )
 
-set(CONFIG_SOURCES
-    ${COMPONENT_DIR}/keyer_config/src/config.c
-    ${COMPONENT_DIR}/keyer_config/src/config_console.c
-)
+# Config sources - generated files, tests disabled
+# set(CONFIG_SOURCES
+#     ${COMPONENT_DIR}/keyer_config/src/config_nvs.c  # Requires NVS stubs
+# )
 
 set(DECODER_SOURCES
     ${COMPONENT_DIR}/keyer_decoder/src/morse_table.c
     ${COMPONENT_DIR}/keyer_decoder/src/timing_classifier.c
     ${COMPONENT_DIR}/keyer_decoder/src/decoder.c
+)
+
+# CWNet sources (TDD - implementation files added as they are created)
+set(CWNET_SOURCES
+    ${COMPONENT_DIR}/keyer_cwnet/src/cwnet_timestamp.c
+    ${COMPONENT_DIR}/keyer_cwnet/src/cwnet_frame.c
+    ${COMPONENT_DIR}/keyer_cwnet/src/cwnet_ping.c
+    ${COMPONENT_DIR}/keyer_cwnet/src/cwnet_client.c
 )
 
 # Test sources
@@ -105,6 +114,10 @@ set(TEST_SOURCES
     test_morse_table.c
     test_timing_classifier.c
     test_decoder.c
+    test_cwnet_timestamp.c
+    test_cwnet_frame_parser.c
+    test_cwnet_ping.c
+    test_cwnet_client.c
     stubs/esp_stubs.c
 )
 
@@ -116,8 +129,9 @@ add_executable(test_runner
     ${AUDIO_SOURCES}
     ${LOGGING_SOURCES}
     ${CONSOLE_SOURCES}
-    ${CONFIG_SOURCES}
+    # ${CONFIG_SOURCES}  # Disabled: requires NVS stubs
     ${DECODER_SOURCES}
+    ${CWNET_SOURCES}
 )
 
 target_link_libraries(test_runner PRIVATE unity)

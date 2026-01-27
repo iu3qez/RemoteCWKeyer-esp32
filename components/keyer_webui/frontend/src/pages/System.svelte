@@ -162,6 +162,32 @@
       </div>
     {/if}
 
+    <!-- CWNet Panel -->
+    <div class="panel cwnet-panel">
+      <div class="panel-header">
+        <span class="panel-icon">[C]</span>
+        <span class="panel-title">CWNET</span>
+      </div>
+      {#if status?.cwnet}
+        <div class="stat-rows">
+          <div class="stat-row">
+            <span class="stat-label">STATE</span>
+            <span class="stat-value" class:cwnet-ready={status.cwnet.state === 'READY'} class:cwnet-error={status.cwnet.state === 'ERROR'}>
+              {status.cwnet.state}
+            </span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">RTT</span>
+            <span class="stat-value rtt">
+              {status.cwnet.latency_ms >= 0 ? status.cwnet.latency_ms + ' ms' : '---'}
+            </span>
+          </div>
+        </div>
+      {:else}
+        <div class="loading">Disabled</div>
+      {/if}
+    </div>
+
     <!-- Memory Panel -->
     <div class="panel memory-panel">
       <div class="panel-header">
@@ -438,6 +464,18 @@
 
   .stat-value.online {
     color: var(--text-primary);
+  }
+
+  .stat-value.cwnet-ready {
+    color: var(--text-primary);
+  }
+
+  .stat-value.cwnet-error {
+    color: var(--accent-red);
+  }
+
+  .stat-value.rtt {
+    color: var(--accent-cyan);
   }
 
   /* Memory Bar */
