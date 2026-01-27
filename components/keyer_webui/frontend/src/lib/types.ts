@@ -1,7 +1,13 @@
+export interface CWNetStatus {
+  state: string;
+  latency_ms: number;
+}
+
 export interface DeviceStatus {
   mode: string;
   ip: string;
   ready: boolean;
+  cwnet?: CWNetStatus;
 }
 
 export interface SystemUptime {

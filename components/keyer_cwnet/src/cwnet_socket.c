@@ -344,7 +344,14 @@ bool cwnet_socket_send_key_event(bool key_down) {
     if (s_ctx.state != CWNET_SOCK_READY) {
         return false;
     }
-    return cwnet_client_send_key_event(&s_ctx.client, key_down) == CWNET_CLIENT_OK;
+
+    cwnet_client_err_t err = cwnet_client_send_key_event(&s_ctx.client, key_down);
+    if (err == CWNET_CLIENT_OK) {
+        int64_t now_us = esp_timer_get_time();
+        RT_DEBUG(&g_bg_log_stream, now_us, "CWNet TX: %s", key_down ? "DOWN" : "UP");
+        return true;
+    }
+    return false;
 }
 
 cwnet_socket_state_t cwnet_socket_get_state(void) {

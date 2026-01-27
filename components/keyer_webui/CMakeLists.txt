@@ -15,6 +15,7 @@ idf_component_register(
         json
         keyer_config
         keyer_core
+        keyer_cwnet
         keyer_decoder
         keyer_wifi
         keyer_text

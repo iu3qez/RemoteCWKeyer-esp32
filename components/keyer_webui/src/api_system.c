@@ -7,6 +7,7 @@
 #include "freertos/task.h"
 #include "cJSON.h"
 #include "wifi.h"
+#include "cwnet_socket.h"
 
 static const char *TAG = "api_system";
 
@@ -39,6 +40,13 @@ esp_err_t api_status_handler(httpd_req_t *req) {
     cJSON_AddStringToObject(root, "mode", wifi_state_to_string(state));
     cJSON_AddStringToObject(root, "ip", ip_buf);
     cJSON_AddBoolToObject(root, "ready", ready);
+
+    /* CWNet status */
+    cJSON *cwnet = cJSON_CreateObject();
+    cwnet_socket_state_t cwnet_state = cwnet_socket_get_state();
+    cJSON_AddStringToObject(cwnet, "state", cwnet_socket_state_str(cwnet_state));
+    cJSON_AddNumberToObject(cwnet, "latency_ms", cwnet_socket_get_latency_ms());
+    cJSON_AddItemToObject(root, "cwnet", cwnet);
 
     char *json_str = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
