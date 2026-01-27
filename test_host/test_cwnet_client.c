@@ -190,8 +190,8 @@ void test_client_sends_ident_on_connect(void) {
     /* Should have sent IDENT frame */
     TEST_ASSERT_GREATER_THAN(0, mock_tx_len);
 
-    /* Verify frame structure: CMD_IDENT (0x60 | 1) = 0x61, followed by username */
-    TEST_ASSERT_EQUAL(0x61, mock_tx_buffer[0]);  /* IDENT with category 1 (short payload) */
+    /* Verify frame structure: CONNECT (0x01) with short payload (cat=1): (1<<6)|0x01 = 0x41 */
+    TEST_ASSERT_EQUAL(0x41, mock_tx_buffer[0]);  /* CONNECT with category 1 (short payload) */
 }
 
 void test_client_receives_welcome_transitions_to_ready(void) {
@@ -238,11 +238,11 @@ void test_client_responds_to_ping_request(void) {
     mock_tx_len = 0;
 
     /* Simulate PING REQUEST from server */
-    /* CMD_PING = 0x09, category 2 = long payload -> (2 << 6) | 0x09 = 0x89 */
-    /* Frame: cmd(1) + len_lo(1) + len_hi(1) + payload(16) */
-    uint8_t ping_request[3 + CWNET_PING_PAYLOAD_SIZE] = {
-        (2 << 6) | 0x09,  /* CMD_PING with long payload category */
-        0x10, 0x00,       /* Length: 16 bytes (little-endian) */
+    /* CMD_PING = 0x03, category 1 = short payload -> (1 << 6) | 0x03 = 0x43 */
+    /* Frame: cmd(1) + len(1) + payload(16) */
+    uint8_t ping_request[2 + CWNET_PING_PAYLOAD_SIZE] = {
+        0x43,  /* CMD_PING with short payload category */
+        0x10,  /* Length: 16 bytes */
         /* PING payload: type=REQUEST, id=1, t0=1000, t1=0, t2=0 */
         0x00, 0x01, 0x00, 0x00,  /* type, id, reserved */
         0xE8, 0x03, 0x00, 0x00,  /* t0 = 1000 (little-endian) */
@@ -257,9 +257,9 @@ void test_client_responds_to_ping_request(void) {
     TEST_ASSERT_GREATER_THAN(0, mock_tx_len);
 
     /* Verify response has type=RESPONSE_1 and preserves t0 */
-    /* Skip frame header (3 bytes), check payload */
-    TEST_ASSERT_EQUAL(0x01, mock_tx_buffer[3]);  /* type = RESPONSE_1 */
-    TEST_ASSERT_EQUAL(0x01, mock_tx_buffer[4]);  /* id preserved */
+    /* Skip frame header (2 bytes for short payload), check payload */
+    TEST_ASSERT_EQUAL(0x01, mock_tx_buffer[2]);  /* type = RESPONSE_1 */
+    TEST_ASSERT_EQUAL(0x01, mock_tx_buffer[3]);  /* id preserved */
 }
 
 void test_client_syncs_timer_on_ping_request(void) {
@@ -284,9 +284,9 @@ void test_client_syncs_timer_on_ping_request(void) {
     TEST_ASSERT_EQUAL(0, synced_before);
 
     /* Receive PING with server time = 5000 */
-    uint8_t ping_request[3 + CWNET_PING_PAYLOAD_SIZE] = {
-        (2 << 6) | 0x09,  /* CMD_PING with long payload category */
-        0x10, 0x00,       /* Length: 16 bytes (little-endian) */
+    uint8_t ping_request[2 + CWNET_PING_PAYLOAD_SIZE] = {
+        0x43,  /* CMD_PING with short payload category */
+        0x10,  /* Length: 16 bytes */
         0x00, 0x01, 0x00, 0x00,
         0x88, 0x13, 0x00, 0x00,  /* t0 = 5000 */
         0x00, 0x00, 0x00, 0x00,
@@ -322,9 +322,9 @@ void test_client_updates_latency_on_ping_response2(void) {
 
     /* Receive PING RESPONSE_2 with RTT data */
     /* t0 = 1000 (when we sent), t2 = 1050 (server echoed back) */
-    uint8_t ping_response2[3 + CWNET_PING_PAYLOAD_SIZE] = {
-        (2 << 6) | 0x09,  /* CMD_PING with long payload category */
-        0x10, 0x00,       /* Length: 16 bytes (little-endian) */
+    uint8_t ping_response2[2 + CWNET_PING_PAYLOAD_SIZE] = {
+        0x43,  /* CMD_PING with short payload category */
+        0x10,  /* Length: 16 bytes */
         0x02, 0x01, 0x00, 0x00,  /* type = RESPONSE_2, id = 1 */
         0xE8, 0x03, 0x00, 0x00,  /* t0 = 1000 */
         0x14, 0x04, 0x00, 0x00,  /* t1 = 1044 */
@@ -365,8 +365,8 @@ void test_client_sends_key_down_event(void) {
     TEST_ASSERT_GREATER_THAN(0, mock_tx_len);
 
     /* Verify it's a CW_DOWN command with timestamp */
-    /* CMD_CW_DOWN = 0x15 with category 1 (short payload with timestamp) */
-    TEST_ASSERT_EQUAL((0x15 << 2) | 0x01, mock_tx_buffer[0]);
+    /* CMD_CW_DOWN = 0x15 with category 1: (1 << 6) | 0x15 = 0x55 */
+    TEST_ASSERT_EQUAL(0x55, mock_tx_buffer[0]);
 }
 
 void test_client_sends_key_up_event(void) {
@@ -392,8 +392,8 @@ void test_client_sends_key_up_event(void) {
     TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, err);
     TEST_ASSERT_GREATER_THAN(0, mock_tx_len);
 
-    /* CMD_CW_UP = 0x14 with category 1 */
-    TEST_ASSERT_EQUAL((0x14 << 2) | 0x01, mock_tx_buffer[0]);
+    /* CMD_CW_UP = 0x14 with category 1: (1 << 6) | 0x14 = 0x54 */
+    TEST_ASSERT_EQUAL(0x54, mock_tx_buffer[0]);
 }
 
 void test_client_rejects_events_when_not_ready(void) {
@@ -509,9 +509,9 @@ void test_client_handles_ping_in_fragments(void) {
     mock_tx_len = 0;
 
     /* Send PING REQUEST in fragments */
-    uint8_t ping_full[3 + CWNET_PING_PAYLOAD_SIZE] = {
-        (2 << 6) | 0x09,  /* CMD_PING with long payload category */
-        0x10, 0x00,       /* Length: 16 bytes (little-endian) */
+    uint8_t ping_full[2 + CWNET_PING_PAYLOAD_SIZE] = {
+        0x43,  /* CMD_PING with short payload category */
+        0x10,  /* Length: 16 bytes */
         0x00, 0x01, 0x00, 0x00,
         0xE8, 0x03, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00,
@@ -519,12 +519,12 @@ void test_client_handles_ping_in_fragments(void) {
     };
 
     /* First fragment: header only */
-    cwnet_client_on_data(&client, ping_full, 3);
+    cwnet_client_on_data(&client, ping_full, 2);
     TEST_ASSERT_EQUAL(0, mock_tx_len);  /* No response yet */
 
     /* Second fragment: payload */
     mock_time_ms = 1050;
-    cwnet_client_on_data(&client, ping_full + 3, CWNET_PING_PAYLOAD_SIZE);
+    cwnet_client_on_data(&client, ping_full + 2, CWNET_PING_PAYLOAD_SIZE);
 
     /* Now should have responded */
     TEST_ASSERT_GREATER_THAN(0, mock_tx_len);

@@ -47,18 +47,27 @@
 /*===========================================================================*/
 
 /**
- * @brief CWNet command codes (high 6 bits of command byte)
+ * @brief CWNet command codes (bits 5-0 of command byte)
  *
- * Command byte format: [CMD:6][CAT:2]
- * CAT indicates payload category (see cwnet_frame.h)
+ * Command byte format: [CAT:2][CMD:6]
+ *   - Bits 7-6: Block type (category)
+ *   - Bits 5-0: Command code
+ *
+ * To build command byte: (category << 6) | command
  */
 typedef enum {
     CWNET_CMD_WELCOME = 0x00,   /**< Server -> Client: connection accepted */
-    CWNET_CMD_PING = 0x09,      /**< Bidirectional: time sync */
+    CWNET_CMD_CONNECT = 0x01,   /**< Client -> Server: connection request */
+    CWNET_CMD_DISCONNECT = 0x02,/**< Bidirectional: disconnect */
+    CWNET_CMD_PING = 0x03,      /**< Bidirectional: time sync */
     CWNET_CMD_CW_UP = 0x14,     /**< Key up event */
     CWNET_CMD_CW_DOWN = 0x15,   /**< Key down event */
-    CWNET_CMD_IDENT = 0x18,     /**< Client -> Server: identification */
 } cwnet_cmd_t;
+
+/** CONNECT payload field sizes */
+#define CWNET_CONNECT_USERNAME_LEN  44
+#define CWNET_CONNECT_CALLSIGN_LEN  44
+#define CWNET_CONNECT_PAYLOAD_LEN   92  /**< 44 + 44 + 4 */
 
 /*===========================================================================*/
 /* Client State                                                              */

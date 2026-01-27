@@ -5,6 +5,13 @@
 
 #include "cwnet_client.h"
 #include <string.h>
+#include <stdio.h>
+#include <inttypes.h>
+
+/* Diagnostic logging - uses RT-safe logging from bg task context */
+#include "rt_log.h"
+#include "esp_timer.h"
+extern log_stream_t g_bg_log_stream;
 
 /*===========================================================================*/
 /* Internal Helpers                                                          */
@@ -51,33 +58,55 @@ static int32_t get_local_time(cwnet_client_t *client) {
 /*===========================================================================*/
 
 /**
- * @brief Build and send IDENT frame
- *
- * IDENT frame format:
- *   - cmd byte: (IDENT << 2) | CAT_SHORT (0x61)
- *   - length: username length (1 byte)
- *   - payload: username bytes
+ * @brief Build command byte from category and command
  */
-static cwnet_client_err_t send_ident(cwnet_client_t *client) {
+static inline uint8_t make_cmd_byte(cwnet_frame_category_t cat, cwnet_cmd_t cmd) {
+    return (uint8_t)((cat << 6) | (cmd & 0x3F));
+}
+
+/**
+ * @brief Build and send CONNECT frame
+ *
+ * CONNECT frame format (94 bytes total):
+ *   - cmd byte: 0x41 (short block, CONNECT command)
+ *   - length: 92 (0x5C)
+ *   - payload[0-43]: username (44 bytes, null-padded)
+ *   - payload[44-87]: callsign (44 bytes, null-padded)
+ *   - payload[88-91]: permissions (4 bytes, uint32 LE)
+ */
+static cwnet_client_err_t send_connect(cwnet_client_t *client) {
+    /* Frame: cmd(1) + len(1) + payload(92) = 94 bytes */
+    uint8_t frame[2 + CWNET_CONNECT_PAYLOAD_LEN];
+    memset(frame, 0, sizeof(frame));
+
+    /* Command byte: CONNECT with short payload */
+    frame[0] = make_cmd_byte(CWNET_FRAME_CAT_SHORT_PAYLOAD, CWNET_CMD_CONNECT);
+    frame[1] = CWNET_CONNECT_PAYLOAD_LEN;  /* 92 */
+
+    /* Username field (44 bytes, null-terminated, zero-padded) */
     size_t username_len = strlen(client->username);
-
-    /* Frame: cmd(1) + len(1) + username(n) */
-    uint8_t frame[2 + CWNET_MAX_USERNAME_LEN];
-    size_t frame_len = 2 + username_len;
-
-    /* Command byte: IDENT with short payload category */
-    frame[0] = (uint8_t)((CWNET_CMD_IDENT << 2) | CWNET_FRAME_CAT_SHORT_PAYLOAD);
-    frame[1] = (uint8_t)username_len;
-
-    if (username_len > 0) {
-        memcpy(&frame[2], client->username, username_len);
+    if (username_len > CWNET_CONNECT_USERNAME_LEN - 1) {
+        username_len = CWNET_CONNECT_USERNAME_LEN - 1;
     }
+    memcpy(&frame[2], client->username, username_len);
 
-    int sent = send_frame(client, frame, frame_len);
-    if (sent < 0 || (size_t)sent != frame_len) {
+    /* Callsign field (44 bytes) - use same as username for now */
+    memcpy(&frame[2 + CWNET_CONNECT_USERNAME_LEN], client->username, username_len);
+
+    /* Permissions field (4 bytes) - leave as zero */
+
+    int64_t now_us = esp_timer_get_time();
+    RT_DEBUG(&g_bg_log_stream, now_us,
+             "CONNECT: cmd=0x%02X user=\"%s\"",
+             frame[0], client->username);
+
+    int sent = send_frame(client, frame, sizeof(frame));
+    if (sent < 0 || (size_t)sent != sizeof(frame)) {
+        RT_ERROR(&g_bg_log_stream, now_us, "CONNECT send failed: %d", sent);
         return CWNET_CLIENT_ERR_SEND_FAILED;
     }
 
+    RT_DEBUG(&g_bg_log_stream, now_us, "CONNECT sent: %d bytes", sent);
     return CWNET_CLIENT_OK;
 }
 
@@ -96,17 +125,23 @@ static cwnet_client_err_t send_ping_response(cwnet_client_t *client,
         return CWNET_CLIENT_ERR_PROTOCOL;
     }
 
-    /* Frame: cmd(1) + len_hi(1) + len_lo(1) + payload(16) */
-    uint8_t frame[3 + CWNET_PING_PAYLOAD_SIZE];
-    frame[0] = (uint8_t)((CWNET_CMD_PING << 2) | CWNET_FRAME_CAT_LONG_PAYLOAD);
-    frame[1] = 0x00;  /* Length high byte */
-    frame[2] = CWNET_PING_PAYLOAD_SIZE;  /* Length low byte */
-    memcpy(&frame[3], payload, CWNET_PING_PAYLOAD_SIZE);
+    /* Frame: cmd(1) + len(1) + payload(16) - short block */
+    uint8_t frame[2 + CWNET_PING_PAYLOAD_SIZE];
+    frame[0] = make_cmd_byte(CWNET_FRAME_CAT_SHORT_PAYLOAD, CWNET_CMD_PING);
+    frame[1] = CWNET_PING_PAYLOAD_SIZE;
+    memcpy(&frame[2], payload, CWNET_PING_PAYLOAD_SIZE);
 
     int sent = send_frame(client, frame, sizeof(frame));
     if (sent < 0 || (size_t)sent != sizeof(frame)) {
+        int64_t now_us = esp_timer_get_time();
+        RT_ERROR(&g_bg_log_stream, now_us, "PING RSP1 send failed: %d", sent);
         return CWNET_CLIENT_ERR_SEND_FAILED;
     }
+
+    int64_t now_us = esp_timer_get_time();
+    RT_DEBUG(&g_bg_log_stream, now_us,
+             "PING RSP1 sent: id=%u t0=%" PRId32 " t1=%" PRId32,
+             request->id, request->t0_ms, our_time);
 
     return CWNET_CLIENT_OK;
 }
@@ -127,7 +162,7 @@ static cwnet_client_err_t send_cw_event(cwnet_client_t *client, bool key_down) {
     /* Frame: cmd(1) + len(1) + timestamp(4) */
     uint8_t frame[6];
     cwnet_cmd_t cmd = key_down ? CWNET_CMD_CW_DOWN : CWNET_CMD_CW_UP;
-    frame[0] = (uint8_t)((cmd << 2) | CWNET_FRAME_CAT_SHORT_PAYLOAD);
+    frame[0] = make_cmd_byte(CWNET_FRAME_CAT_SHORT_PAYLOAD, cmd);
     frame[1] = 4;  /* 4-byte timestamp */
 
     /* Little-endian timestamp */
@@ -166,15 +201,28 @@ static void handle_ping(cwnet_client_t *client,
                         size_t len) {
     cwnet_ping_t ping;
     if (!cwnet_ping_parse(&ping, payload, len)) {
+        int64_t now_us = esp_timer_get_time();
+        RT_WARN(&g_bg_log_stream, now_us, "CWNet PING: parse failed (len=%zu)", len);
         return;  /* Invalid PING, ignore */
     }
+
+    int64_t now_us = esp_timer_get_time();
 
     switch (ping.type) {
         case CWNET_PING_REQUEST:
             /* Sync timer to server time BEFORE responding */
             {
                 int32_t local_time = get_local_time(client);
+                int64_t old_offset = client->timer.offset_ms;
+
                 cwnet_timer_sync_to_server(&client->timer, ping.t0_ms, local_time);
+
+                int64_t new_offset = client->timer.offset_ms;
+                int32_t synced_time = cwnet_timer_read_synced_ms(&client->timer, local_time);
+
+                RT_DEBUG(&g_bg_log_stream, now_us,
+                         "PING sync: offset=%" PRId64 " delta=%" PRId64 " synced=%" PRId32,
+                         new_offset, new_offset - old_offset, synced_time);
             }
             /* Send RESPONSE_1 */
             send_ping_response(client, &ping);
@@ -186,12 +234,14 @@ static void handle_ping(cwnet_client_t *client,
                 int32_t latency = cwnet_ping_calc_latency(&ping);
                 if (latency >= 0) {
                     client->latency_ms = latency;
+                    RT_DEBUG(&g_bg_log_stream, now_us, "RTT=%" PRId32 "ms", latency);
                 }
             }
             break;
 
         case CWNET_PING_RESPONSE_1:
             /* Client shouldn't receive RESPONSE_1, ignore */
+            RT_DEBUG(&g_bg_log_stream, now_us, "PING RSP1: unexpected (id=%u)", ping.id);
             break;
     }
 }
@@ -347,8 +397,8 @@ void cwnet_client_on_connected(cwnet_client_t *client) {
     /* Transition to CONNECTING */
     set_state(client, CWNET_STATE_CONNECTING);
 
-    /* Send IDENT frame */
-    send_ident(client);
+    /* Send CONNECT frame */
+    send_connect(client);
 }
 
 void cwnet_client_on_disconnected(cwnet_client_t *client) {
@@ -370,25 +420,37 @@ void cwnet_client_on_data(cwnet_client_t *client,
         return;
     }
 
-    /* Feed data to parser */
-    cwnet_parse_result_t result = cwnet_frame_parse(&client->parser, data, len);
+    int64_t now_us = esp_timer_get_time();
+    (void)now_us;  /* Used by RT_* macros below */
 
-    switch (result.status) {
-        case CWNET_PARSE_OK:
-            /* Frame complete, process it */
-            process_frame(client, &result);
-            /* Reset parser for next frame */
-            cwnet_frame_parser_reset(&client->parser);
-            break;
+    /* Process all frames in buffer */
+    size_t offset = 0;
+    while (offset < len) {
+        /* Feed remaining data to parser */
+        cwnet_parse_result_t result = cwnet_frame_parse(&client->parser,
+                                                         data + offset,
+                                                         len - offset);
 
-        case CWNET_PARSE_NEED_MORE:
-            /* Waiting for more data, nothing to do */
-            break;
+        switch (result.status) {
+            case CWNET_PARSE_OK:
+                /* Frame complete, process it */
+                RT_DEBUG(&g_bg_log_stream, now_us,
+                         "FRAME: cmd=0x%02X len=%u", result.command, result.payload_len);
+                process_frame(client, &result);
+                cwnet_frame_parser_reset(&client->parser);
+                offset += result.bytes_consumed;
+                break;
 
-        case CWNET_PARSE_ERROR:
-            /* Parse error, reset and try to recover */
-            cwnet_frame_parser_reset(&client->parser);
-            break;
+            case CWNET_PARSE_NEED_MORE:
+                /* Waiting for more data, exit loop */
+                return;
+
+            case CWNET_PARSE_ERROR:
+                /* Parse error - skip one byte to try to resync */
+                cwnet_frame_parser_reset(&client->parser);
+                offset++;  /* Skip one byte and try again */
+                break;
+        }
     }
 }
 
