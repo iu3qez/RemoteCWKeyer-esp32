@@ -51,6 +51,7 @@ file(GLOB_RECURSE FRONTEND_SOURCES
 # Custom command: Build frontend with npm (stamp file in build dir, not dist)
 add_custom_command(
     OUTPUT "${FRONTEND_STAMP}"
+    COMMAND ${CMAKE_COMMAND} -E env npm install --no-audit --no-fund
     COMMAND npm run build
     COMMAND ${CMAKE_COMMAND} -E touch "${FRONTEND_STAMP}"
     WORKING_DIRECTORY "${FRONTEND_DIR}"

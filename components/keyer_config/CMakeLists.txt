@@ -30,7 +30,9 @@ add_custom_command(
         "${GEN_OUTPUT_DIR}/config_meta.h"
         "${GEN_OUTPUT_DIR}/config_nvs.h"
         "${GEN_OUTPUT_DIR}/config_console.h"
+        "${GEN_OUTPUT_DIR}/config_schema.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/config.c"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/config_nvs.c"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/config_console.c"
     COMMAND ${Python3_EXECUTABLE} ${GEN_SCRIPT} ${PARAMS_YAML} ${GEN_OUTPUT_DIR}
     COMMAND_ERROR_IS_FATAL ANY
