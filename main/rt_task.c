@@ -160,8 +160,12 @@ void rt_task(void *arg) {
     /* Initialize sidetone generator from config */
     sidetone_gen_t sidetone;
     uint32_t sidetone_freq = CONFIG_GET_SIDETONE_FREQ_HZ();
-    uint16_t fade_samples = (uint16_t)(CONFIG_GET_FADE_DURATION_MS() * 8);  /* 8kHz sample rate */
-    if (fade_samples < 8) fade_samples = 8;  /* Minimum 1ms fade */
+    uint32_t fade_ms = CONFIG_GET_FADE_DURATION_MS();
+    if (fade_ms > UINT16_MAX / SAMPLES_PER_TICK) {
+        fade_ms = UINT16_MAX / SAMPLES_PER_TICK;
+    }
+    uint16_t fade_samples = (uint16_t)(fade_ms * SAMPLES_PER_TICK);
+    if (fade_samples < SAMPLES_PER_TICK) fade_samples = SAMPLES_PER_TICK;  /* Minimum 1ms fade */
     sidetone_init(&sidetone, sidetone_freq, 8000, fade_samples);
 
     /* Initialize PTT controller from config */
@@ -191,6 +195,13 @@ void rt_task(void *arg) {
             iambic_cfg.squeeze_mode = (squeeze_mode_t)CONFIG_GET_SQUEEZE_MODE();
             iambic_cfg.mem_window_start_pct = CONFIG_GET_MEM_WINDOW_START_PCT();
             iambic_cfg.mem_window_end_pct = CONFIG_GET_MEM_WINDOW_END_PCT();
+
+            /* Verify generation didn't change mid-read (optimistic read) */
+            uint16_t gen_after = atomic_load_explicit(&g_config.generation, memory_order_acquire);
+            if (gen_after != current_gen) {
+                continue;  /* Torn read - retry next tick */
+            }
+
             iambic_set_config(&iambic, &iambic_cfg);
 
             /* Reload sidetone frequency */

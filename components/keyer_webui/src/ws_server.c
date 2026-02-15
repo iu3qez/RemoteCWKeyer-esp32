@@ -148,20 +148,21 @@ esp_err_t ws_handler(httpd_req_t *req) {
 
     /* Handle text frames (client commands) */
     if (ws_pkt.type == HTTPD_WS_TYPE_TEXT && ws_pkt.len > 0) {
-        uint8_t *buf = malloc(ws_pkt.len + 1);
-        if (buf == NULL) {
-            ESP_LOGE(TAG, "malloc failed for %zu bytes", ws_pkt.len);
-            return ESP_ERR_NO_MEM;
+        static uint8_t s_cmd_buf[256];
+
+        if (ws_pkt.len >= sizeof(s_cmd_buf)) {
+            ESP_LOGW(TAG, "WS message too large: %zu bytes (max %zu)",
+                     ws_pkt.len, sizeof(s_cmd_buf) - 1);
+            return ESP_ERR_INVALID_SIZE;
         }
 
-        ws_pkt.payload = buf;
+        ws_pkt.payload = s_cmd_buf;
         ret = httpd_ws_recv_frame(req, &ws_pkt, ws_pkt.len);
         if (ret == ESP_OK) {
-            buf[ws_pkt.len] = '\0';
-            ESP_LOGD(TAG, "Received from fd=%d: %s", fd, buf);
+            s_cmd_buf[ws_pkt.len] = '\0';
+            ESP_LOGD(TAG, "Received from fd=%d: %s", fd, (char *)s_cmd_buf);
             /* Future: parse JSON commands here */
         }
-        free(buf);
     }
 
     return ESP_OK;

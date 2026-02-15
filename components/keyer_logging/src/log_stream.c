@@ -24,7 +24,7 @@ bool log_stream_push(log_stream_t *stream, int64_t timestamp_us,
                      log_level_t level, const char *msg, size_t len) {
     /* Check if buffer is full */
     uint32_t write = atomic_load_explicit(&stream->write_idx, memory_order_relaxed);
-    uint32_t read = atomic_load_explicit(&stream->read_idx, memory_order_acquire);
+    uint32_t read = atomic_load_explicit(&stream->read_idx, memory_order_relaxed);
 
     if (write - read >= LOG_BUFFER_SIZE) {
         /* Buffer full - drop message */

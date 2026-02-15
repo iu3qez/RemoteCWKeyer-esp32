@@ -144,6 +144,15 @@ esp_err_t api_parameter_set_handler(httpd_req_t *req) {
 
 /* POST /api/config/save */
 esp_err_t api_config_save_handler(httpd_req_t *req) {
+    /* Rate-limit NVS saves to prevent flash wear */
+    static int64_t last_save_us = 0;
+    int64_t now_us = esp_timer_get_time();
+    if (last_save_us > 0 && (now_us - last_save_us) < (int64_t)10 * 1000000) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                            "Save rate limited (10s interval)");
+        return ESP_FAIL;
+    }
+
     /* Check for reboot query param */
     char query[32] = {0};
     bool do_reboot = false;
@@ -156,6 +165,7 @@ esp_err_t api_config_save_handler(httpd_req_t *req) {
     }
 
     int saved = config_save_to_nvs();
+    last_save_us = esp_timer_get_time();
     if (saved < 0) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "NVS save failed");
         return ESP_FAIL;
