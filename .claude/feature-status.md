@@ -31,13 +31,12 @@
 | Keyer page (testo, memory M1-M8) | Completa end-to-end (8 API, NVS, UI) |
 | WiFi status API | Implementata (stato, IP, CWNet latency) |
 | CWNet TX (locale→remoto) | Funzionante via `cwnet_socket_send_key_event()` |
-| wireguard-vpn core | Mergiato su main (commit `1412461`) |
+| wireguard-vpn | Mergiato su main (commit `2678037`) — componente, console, WebUI, config |
 
 ## Branch non mergiati
 
 | Branch | Commit avanti di main | Stato |
 |--------|----------------------|-------|
-| `origin/wireguard-vpn` | 4 (WebUI panel, sdkconfig, config family, handoff) | Parziale — core mergiato, UI/config no |
 | `origin/winkeyer-server` | 4 (morse queue, parser, ui_theme, morse refactor) | WIP fasi 1-2, fase 3+ mancante |
 
 ## Console — FUNZIONANTE (cleanup fatto)
