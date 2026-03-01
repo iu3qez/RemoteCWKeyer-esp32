@@ -84,10 +84,9 @@ static cwnet_client_err_t send_connect(cwnet_client_t *client) {
     frame[1] = CWNET_CONNECT_PAYLOAD_LEN;  /* 92 */
 
     /* Username field (44 bytes, null-terminated, zero-padded) */
+    _Static_assert(sizeof(((cwnet_client_t *)0)->username) <= CWNET_CONNECT_USERNAME_LEN,
+                   "username buffer must fit in connect frame field");
     size_t username_len = strlen(client->username);
-    if (username_len > CWNET_CONNECT_USERNAME_LEN - 1) {
-        username_len = CWNET_CONNECT_USERNAME_LEN - 1;
-    }
     memcpy(&frame[2], client->username, username_len);
 
     /* Callsign field (44 bytes) - use same as username for now */
