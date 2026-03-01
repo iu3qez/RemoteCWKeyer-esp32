@@ -570,20 +570,6 @@ int config_load_from_nvs(void);
  */
 int config_save_to_nvs(void);
 
-/**
- * @brief Load single parameter by name
- * @param name Parameter name
- * @return ESP_OK on success
- */
-esp_err_t config_load_param(const char *name);
-
-/**
- * @brief Save single parameter by name
- * @param name Parameter name
- * @return ESP_OK on success
- */
-esp_err_t config_save_param(const char *name);
-
 /* NVS key definitions */
 """
 
@@ -774,17 +760,6 @@ int config_save_to_nvs(void) {
     return (err == ESP_OK) ? saved : -1;
 }
 
-esp_err_t config_load_param(const char *name) {
-    /* TODO: Implement single parameter load */
-    (void)name;
-    return ESP_ERR_NOT_SUPPORTED;
-}
-
-esp_err_t config_save_param(const char *name) {
-    /* TODO: Implement single parameter save */
-    (void)name;
-    return ESP_ERR_NOT_SUPPORTED;
-}
 """
 
     with open(src_dir / "config_nvs.c", "w") as f:

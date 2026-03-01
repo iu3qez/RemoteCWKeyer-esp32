@@ -12,7 +12,7 @@
 | Feature | Stato | File |
 |---------|-------|------|
 | Timeline page (waveform RT) | ~90% — bug: grid lines non visibili | `pages/Timeline.svelte` |
-| config_load/save_param() singoli | Return `ESP_ERR_NOT_SUPPORTED` | `config_nvs.c:551,557` |
+| ~~config_load/save_param()~~ | Rimossi — bulk load/save_all sufficiente | — |
 
 ## MEDIUM — Polish
 
@@ -31,7 +31,14 @@
 | Keyer page (testo, memory M1-M8) | Completa end-to-end (8 API, NVS, UI) |
 | WiFi status API | Implementata (stato, IP, CWNet latency) |
 | CWNet TX (locale→remoto) | Funzionante via `cwnet_socket_send_key_event()` |
-| wireguard-vpn | Mergiato su main (commit `1412461`) |
+| wireguard-vpn core | Mergiato su main (commit `1412461`) |
+
+## Branch non mergiati
+
+| Branch | Commit avanti di main | Stato |
+|--------|----------------------|-------|
+| `origin/wireguard-vpn` | 4 (WebUI panel, sdkconfig, config family, handoff) | Parziale — core mergiato, UI/config no |
+| `origin/winkeyer-server` | 4 (morse queue, parser, ui_theme, morse refactor) | WIP fasi 1-2, fase 3+ mancante |
 
 ## Console — FUNZIONANTE (cleanup fatto)
 
