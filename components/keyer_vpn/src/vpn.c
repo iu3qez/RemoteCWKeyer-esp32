@@ -45,6 +45,8 @@ static struct {
     _Atomic vpn_state_t state;
     vpn_stats_t stats;
     bool time_synced;
+    char ip_str[16];
+    char mask_str[16];
 } s_vpn;
 
 /* Forward declarations */
@@ -309,41 +311,42 @@ static esp_err_t setup_wireguard(void)
     memset(&s_vpn.wg_config, 0, sizeof(wireguard_config_t));
 
     /* Parse client address for IP and netmask */
-    char ip_str[16] = {0};
-    char mask_str[16] = "255.255.255.0";  /* Default /24 */
+    memset(s_vpn.ip_str, 0, sizeof(s_vpn.ip_str));
+    strncpy(s_vpn.mask_str, "255.255.255.0", sizeof(s_vpn.mask_str) - 1);
+    s_vpn.mask_str[sizeof(s_vpn.mask_str) - 1] = '\0';
 
     /* Find CIDR separator */
     const char *slash = strchr(s_vpn.config.client_address, '/');
     if (slash != NULL) {
         size_t ip_len = (size_t)(slash - s_vpn.config.client_address);
-        if (ip_len >= sizeof(ip_str)) {
-            ip_len = sizeof(ip_str) - 1;
+        if (ip_len >= sizeof(s_vpn.ip_str)) {
+            ip_len = sizeof(s_vpn.ip_str) - 1;
         }
-        memcpy(ip_str, s_vpn.config.client_address, ip_len);
-        ip_str[ip_len] = '\0';
+        memcpy(s_vpn.ip_str, s_vpn.config.client_address, ip_len);
+        s_vpn.ip_str[ip_len] = '\0';
 
         /* Convert CIDR to netmask */
         int cidr = atoi(slash + 1);
         if (cidr >= 0 && cidr <= 32) {
             uint32_t mask_val = (cidr == 0) ? 0 : (0xFFFFFFFFU << (32 - cidr));
-            snprintf(mask_str, sizeof(mask_str), "%u.%u.%u.%u",
+            snprintf(s_vpn.mask_str, sizeof(s_vpn.mask_str), "%u.%u.%u.%u",
                      (unsigned)((mask_val >> 24) & 0xFFU),
                      (unsigned)((mask_val >> 16) & 0xFFU),
                      (unsigned)((mask_val >> 8) & 0xFFU),
                      (unsigned)(mask_val & 0xFFU));
         }
     } else {
-        strncpy(ip_str, s_vpn.config.client_address, sizeof(ip_str) - 1);
+        strncpy(s_vpn.ip_str, s_vpn.config.client_address, sizeof(s_vpn.ip_str) - 1);
     }
 
-    ESP_LOGI(TAG, "Client IP: %s, Netmask: %s", ip_str, mask_str);
+    ESP_LOGI(TAG, "Client IP: %s, Netmask: %s", s_vpn.ip_str, s_vpn.mask_str);
 
     /* Configure WireGuard */
     s_vpn.wg_config.private_key = s_vpn.config.client_private_key;
     s_vpn.wg_config.listen_port = 0;  /* Random local port */
     s_vpn.wg_config.public_key = s_vpn.config.server_public_key;
-    s_vpn.wg_config.allowed_ip = ip_str;
-    s_vpn.wg_config.allowed_ip_mask = mask_str;
+    s_vpn.wg_config.allowed_ip = s_vpn.ip_str;
+    s_vpn.wg_config.allowed_ip_mask = s_vpn.mask_str;
     s_vpn.wg_config.endpoint = s_vpn.config.server_endpoint;
     s_vpn.wg_config.port = s_vpn.config.server_port;
     s_vpn.wg_config.persistent_keepalive = s_vpn.config.persistent_keepalive;
