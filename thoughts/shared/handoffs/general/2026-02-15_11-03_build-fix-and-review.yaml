@@ -1,0 +1,68 @@
+---
+session: general
+date: 2026-02-15
+status: complete
+outcome: SUCCEEDED
+---
+
+goal: Fix build errors, run full codebase review, and fix identified issues
+now: Consider remaining review items (web UI auth, host tests, latency monitoring)
+test: source /home/sf/esp/esp-idf/export.sh && idf.py build
+
+done_this_session:
+  - task: Fix CMake build - auto-generate config_nvs.c and install frontend deps
+    files: [components/keyer_config/CMakeLists.txt, components/keyer_webui/CMakeLists.txt]
+  - task: Full codebase review (3 parallel agents - code quality, architecture, security)
+    files: []
+  - task: Fix WebSocket unbounded malloc - replace with static buffer + size limit
+    files: [components/keyer_webui/src/ws_server.c]
+  - task: Fix config hot-reload torn read - add optimistic generation re-check
+    files: [main/rt_task.c]
+  - task: Fix fade_duration_ms uint16_t overflow - clamp before cast
+    files: [main/rt_task.c]
+  - task: Fix log_stream_push memory ordering - relaxed for read_idx in producer
+    files: [components/keyer_logging/src/log_stream.c]
+  - task: Add NVS save rate limiting (10s interval) to prevent flash wear
+    files: [components/keyer_webui/src/api_config.c]
+
+blockers: []
+
+questions:
+  - Should web UI authentication be added? (Review flagged as CRITICAL for production)
+  - Is I2S hal_audio_write() blocking? Needs empirical measurement on hardware
+  - Are host tests in test_host/ up to date?
+
+decisions:
+  - ws_static_buffer: 256-byte static buffer matches ws_async_msg_t.message size, sufficient for JSON commands
+  - nvs_rate_limit_10s: 10 seconds balances user experience vs flash protection (~100K write cycles)
+  - config_optimistic_read: Re-check generation after reading fields; retry on mismatch via continue
+  - dismissed_security_issues: User dismissed all security review items except WebSocket size limit (#5)
+
+findings:
+  - architecture_excellent: All 10 architecture principles (stream-is-truth, RT safety, core separation, FAULT philosophy) verified PASS
+  - security_gaps: No web UI auth, CWNet no auth, plaintext NVS credentials, sensitive config exposed via API - user aware, dismissed for now
+  - stream_buffer_4096: 4096 samples = ~4s raw, but silence compression makes effective capacity 30-60s+ - adequate for best-effort consumers
+  - log_stream_spsc: Producer only needs relaxed on read_idx (distance check), acquire only needed on drain side
+
+worked:
+  - Parallel review agents (critic + 2x plan-reviewer) gave comprehensive coverage
+  - gen_config_c.py generates all config files correctly when CMake OUTPUT list is complete
+
+failed: []
+
+next:
+  - Add web UI authentication if deploying beyond trusted home network
+  - Add latency monitoring in rt_task.c (esp_timer before/after hal_audio_write)
+  - Write/update host tests in test_host/ for iambic FSM edge cases
+  - Redact sensitive config fields in GET /api/config response
+  - Consider explicit watchdog timer config in sdkconfig.defaults
+
+files:
+  created: []
+  modified:
+    - components/keyer_config/CMakeLists.txt
+    - components/keyer_webui/CMakeLists.txt
+    - components/keyer_webui/src/ws_server.c
+    - components/keyer_webui/src/api_config.c
+    - components/keyer_logging/src/log_stream.c
+    - main/rt_task.c
