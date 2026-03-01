@@ -119,6 +119,18 @@ When looking up API docs for ESP-IDF, FreeRTOS, or any library, **always use Con
 
 ---
 
+## Session Memory
+
+Persistent notes live in `.claude/` and are tracked in git:
+
+- **[.claude/MEMORY.md](.claude/MEMORY.md)** — Memory index (loaded into every conversation)
+- **[.claude/feature-status.md](.claude/feature-status.md)** — Feature checklist by priority
+- **[.claude/code-quality.md](.claude/code-quality.md)** — Cleanup items, stubs, recent fixes
+
+Update these files as features are completed or new issues are found. Keep MEMORY.md concise (under 200 lines).
+
+---
+
 ## Detailed References
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — Immutable design principles, stream semantics, fault model

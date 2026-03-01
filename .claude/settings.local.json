@@ -1,0 +1,56 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import sys, json; text=json.loads\\(''{\"\"t\"\":'' + sys.stdin.read\\(\\).split\\(''\"\"text\"\":'',1\\)[1].rstrip\\(''}''\\) + ''}''\\)[''t'']; print\\(text\\)\")",
+      "Bash(python3:*)",
+      "Bash(source:*)",
+      "Bash(idf.py build:*)",
+      "Bash(ls:*)",
+      "Bash(xargs basename:*)",
+      "mcp__plugin_claude-mem_mcp-search__smart_search",
+      "mcp__plugin_claude-mem_mcp-search__smart_outline",
+      "Bash(claude mcp:*)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(git *)",
+      "mcp__plugin_serena_serena__check_onboarding_performed",
+      "mcp__plugin_serena_serena__activate_project",
+      "mcp__plugin_serena_serena__onboarding",
+      "mcp__plugin_serena_serena__list_dir",
+      "mcp__plugin_serena_serena__read_file",
+      "mcp__plugin_serena_serena__write_memory",
+      "mcp__plugin_serena_serena__list_memories",
+      "mcp__plugin_serena_serena__read_memory",
+      "mcp__plugin_serena_serena__get_current_config",
+      "WebSearch",
+      "Bash(gh issue:*)",
+      "Bash(grep:*)",
+      "Bash(xargs cat:*)",
+      "Bash(git check-ignore:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE=$(echo \"$CLAUDE_TOOL_INPUT\" | python3 -c \"import sys,json; print(json.load(sys.stdin).get('file_path',''))\" 2>/dev/null) || exit 0; case \"$FILE\" in */keyer_config/include/config.h|*/keyer_config/include/config_meta.h|*/keyer_config/include/config_nvs.h|*/keyer_config/config_nvs.c|*/keyer_config/include/config_console.h|*/keyer_config/include/config_schema.h) echo 'BLOCKED: This file is auto-generated from parameters.yaml. Edit parameters.yaml instead, then run: python3 scripts/gen_config_c.py parameters.yaml components/keyer_config'; exit 2;; esac"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE=$(echo \"$CLAUDE_TOOL_INPUT\" | python3 -c \"import sys,json; print(json.load(sys.stdin).get('file_path',''))\" 2>/dev/null) || exit 0; case \"$FILE\" in */parameters.yaml) echo 'Auto-regenerating config from parameters.yaml...' && python3 scripts/gen_config_c.py parameters.yaml components/keyer_config;; esac"
+          }
+        ]
+      }
+    ]
+  }
+}
