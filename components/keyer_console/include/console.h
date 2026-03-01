@@ -186,10 +186,10 @@ void console_history_reset_nav(void);
 /**
  * @brief Complete current token with matching command or parameter
  *
- * Completes the token at cursor position:
- * - First token: complete commands from console_get_commands()
- * - After "set " or "show ": complete parameter names from CONSOLE_PARAMS
- * - Tab cycles through matches
+ * Completes the token at cursor position using show-all approach:
+ * - First token: complete commands
+ * - After "set"/"show": complete parameter names (with alias expansion)
+ * - Single match: auto-complete; multiple: show all and complete common prefix
  *
  * @param line Line buffer (modified in-place)
  * @param pos Pointer to cursor position (updated after completion)
@@ -199,9 +199,9 @@ void console_history_reset_nav(void);
 bool console_complete(char *line, size_t *pos, size_t max_len);
 
 /**
- * @brief Reset completion cycling state
+ * @brief Reset completion state (no-op in show-all mode)
  *
- * Call this when user types any character other than Tab.
+ * Called on any non-Tab input. Retained for API stability.
  */
 void console_complete_reset(void);
 

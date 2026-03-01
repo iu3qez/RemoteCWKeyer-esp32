@@ -17,7 +17,6 @@ idf_component_register(
         "src/console.c"
         "src/parser.c"
         "src/commands.c"
-        "src/line_buffer.c"
         "src/history.c"
         "src/completion.c"
     INCLUDE_DIRS "include"
