@@ -599,6 +599,29 @@ families:
                   it: "Fosforo Bianco"
           advanced: false
 
+      ota_confirm_timeout_s:
+        type: u16
+        default: 60
+        range: [10, 300]
+        nvs_key: "ota_timeout"
+        runtime_change: reboot
+        priority: 33
+        gui:
+          label_short:
+            en: "OTA Timeout"
+            it: "Timeout OTA"
+          label_long:
+            en: "OTA Confirm Timeout"
+            it: "Timeout Conferma OTA"
+          description:
+            en: "Seconds to wait for network before rolling back OTA update"
+            it: "Secondi di attesa per la rete prima di annullare aggiornamento OTA"
+          widget: slider
+          widget_config:
+            step: 5
+            unit: "s"
+          advanced: true
+
   leds:
     order: 6
     icon: "lightbulb"
