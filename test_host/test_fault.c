@@ -47,11 +47,12 @@ void test_fault_count(void) {
     fault_set(&s_fault, FAULT_PRODUCER_OVERRUN, 3);
     TEST_ASSERT_EQUAL(3, fault_get_count(&s_fault));
 
-    /* Clear and verify count resets */
+    /* Clear does NOT reset count — count is cumulative lifetime counter */
     fault_clear(&s_fault);
-    TEST_ASSERT_EQUAL(0, fault_get_count(&s_fault));
+    TEST_ASSERT_EQUAL(3, fault_get_count(&s_fault));
+    TEST_ASSERT_FALSE(fault_is_active(&s_fault));
 
-    /* New fault starts count at 1 */
+    /* New fault increments cumulative count */
     fault_set(&s_fault, FAULT_OVERRUN, 100);
-    TEST_ASSERT_EQUAL(1, fault_get_count(&s_fault));
+    TEST_ASSERT_EQUAL(4, fault_get_count(&s_fault));
 }

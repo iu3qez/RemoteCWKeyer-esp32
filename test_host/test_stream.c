@@ -73,9 +73,10 @@ void test_stream_overrun_detection(void) {
     /* Initially no overrun */
     TEST_ASSERT_FALSE(stream_is_overrun(&s_stream, 0));
 
-    /* Push samples */
+    /* Push samples with varying content to defeat silence compression */
     for (size_t i = 0; i < 10; i++) {
         stream_sample_t sample = STREAM_SAMPLE_EMPTY;
+        sample.local_key = (uint8_t)(i & 1);  /* Alternate 0/1 to trigger writes */
         stream_push(&s_stream, sample);
     }
 
