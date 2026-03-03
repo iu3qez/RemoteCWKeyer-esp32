@@ -322,6 +322,7 @@ static iambic_element_t *decide_next_element(iambic_processor_t *proc, iambic_el
                                 : (proc->dit_pressed && proc->dah_pressed);
         if (!current_squeeze) {
             proc->squeeze_seen = false;
+            proc->event_flags |= FLAG_MODE_B_BONUS;
             *out = iambic_element_opposite(proc->last_element);
             return out;
         }

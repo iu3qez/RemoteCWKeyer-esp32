@@ -323,3 +323,33 @@ void test_iambic_event_flags_mem_armed(void) {
     TEST_ASSERT_BITS(FLAG_MEM_ARMED, FLAG_MEM_ARMED, sample.flags);
     TEST_ASSERT_TRUE(s_iambic.dah_memory);
 }
+
+void test_iambic_event_flags_mode_b_bonus(void) {
+    iambic_config_t config = IAMBIC_CONFIG_DEFAULT;
+    config.wpm = 20;
+    config.mode = IAMBIC_MODE_B;
+    iambic_init(&s_iambic, &config);
+
+    int64_t time = T0;
+
+    /* Squeeze: both paddles */
+    gpio_state_t gpio = gpio_from_paddles(true, true);
+    esp_timer_set_time(time);
+    iambic_tick(&s_iambic, time, gpio);
+    /* Now sending DIT with squeeze_seen=true */
+
+    /* Complete DIT */
+    time += DIT_DURATION_20WPM + 1000;
+    esp_timer_set_time(time);
+    iambic_tick(&s_iambic, time, gpio);
+    /* Now in GAP */
+
+    /* Release both paddles during gap */
+    gpio = gpio_from_paddles(false, false);
+    time += DIT_DURATION_20WPM + 1000;
+    esp_timer_set_time(time);
+    stream_sample_t sample = iambic_tick(&s_iambic, time, gpio);
+
+    /* GAP complete -> decide_next_element should trigger Mode B bonus */
+    TEST_ASSERT_BITS(FLAG_MODE_B_BONUS, FLAG_MODE_B_BONUS, sample.flags);
+}
