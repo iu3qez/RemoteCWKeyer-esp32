@@ -99,6 +99,9 @@ esp_err_t wifi_app_init(const wifi_config_app_t *config)
         return ESP_FAIL;
     }
 
+    /* Set hostname for DHCP client (default is "espressif") */
+    esp_netif_set_hostname(s_wifi.sta_netif, "RemoteCwKeyer");
+
     s_wifi.ap_netif = esp_netif_create_default_wifi_ap();
     if (s_wifi.ap_netif == NULL) {
         ESP_LOGE(TAG, "Failed to create AP netif");
