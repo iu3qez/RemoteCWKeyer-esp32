@@ -256,3 +256,16 @@ void test_iambic_squeeze_prolonged(void) {
 
     (void)sample;
 }
+
+void test_iambic_event_flags_squeeze(void) {
+    iambic_config_t config = IAMBIC_CONFIG_DEFAULT;
+    config.wpm = 20;
+    iambic_init(&s_iambic, &config);
+
+    /* Press both paddles — squeeze */
+    gpio_state_t gpio = gpio_from_paddles(true, true);
+    esp_timer_set_time(T0);
+    stream_sample_t sample = iambic_tick(&s_iambic, T0, gpio);
+
+    TEST_ASSERT_BITS(FLAG_SQUEEZE, FLAG_SQUEEZE, sample.flags);
+}

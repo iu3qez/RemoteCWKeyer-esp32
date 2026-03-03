@@ -62,6 +62,9 @@ void iambic_set_config(iambic_processor_t *proc, const iambic_config_t *config) 
 stream_sample_t iambic_tick(iambic_processor_t *proc, int64_t now_us, gpio_state_t gpio) {
     assert(proc != NULL);
 
+    /* Clear per-tick event flags */
+    proc->event_flags = 0;
+
     /* Update paddle state and memory */
     update_gpio(proc, gpio, now_us);
 
@@ -87,6 +90,7 @@ stream_sample_t iambic_tick(iambic_processor_t *proc, int64_t now_us, gpio_state
     sample.local_key = proc->key_down ? 1 : 0;
     /* audio_level filled by audio envelope later */
     /* flags and config_gen set by RT loop */
+    sample.flags |= proc->event_flags;
 
     return sample;
 }
@@ -182,6 +186,10 @@ static void update_gpio(iambic_processor_t *proc, gpio_state_t gpio, int64_t now
     proc->dah_pressed = new_dah_pressed;
 
     bool is_squeeze = proc->dit_pressed && proc->dah_pressed;
+
+    if (is_squeeze) {
+        proc->event_flags |= FLAG_SQUEEZE;
+    }
 
     /* Track squeeze for Mode B */
     if (is_squeeze && !was_squeeze) {
