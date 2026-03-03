@@ -8,6 +8,7 @@ idf_component_register(
         "src/api_timeline.c"
         "src/ws_server.c"
         "src/api_vpn.c"
+        "src/api_firmware.c"
         "src/assets.c"
     INCLUDE_DIRS
         "include"

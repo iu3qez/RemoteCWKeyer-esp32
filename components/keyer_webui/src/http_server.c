@@ -28,6 +28,12 @@ extern esp_err_t api_text_memory_list_handler(httpd_req_t *req);
 extern esp_err_t api_text_memory_set_handler(httpd_req_t *req);
 extern esp_err_t api_text_play_handler(httpd_req_t *req);
 extern esp_err_t api_vpn_status_handler(httpd_req_t *req);
+extern esp_err_t api_firmware_status_handler(httpd_req_t *req);
+extern esp_err_t api_firmware_upload_handler(httpd_req_t *req);
+extern esp_err_t api_firmware_url_handler(httpd_req_t *req);
+extern esp_err_t api_firmware_rollback_handler(httpd_req_t *req);
+extern esp_err_t api_firmware_uf2_handler(httpd_req_t *req);
+extern esp_err_t api_firmware_confirm_handler(httpd_req_t *req);
 
 /* SPA routes that should serve index.html */
 static const char *SPA_ROUTES[] = {
@@ -272,6 +278,55 @@ static void register_api_routes(httpd_handle_t server) {
         .user_ctx = NULL,
     };
     httpd_register_uri_handler(server, &text_play);
+
+    /* Firmware API */
+    httpd_uri_t fw_status = {
+        .uri = "/api/firmware/status",
+        .method = HTTP_GET,
+        .handler = api_firmware_status_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &fw_status);
+
+    httpd_uri_t fw_upload = {
+        .uri = "/api/firmware/upload",
+        .method = HTTP_POST,
+        .handler = api_firmware_upload_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &fw_upload);
+
+    httpd_uri_t fw_url = {
+        .uri = "/api/firmware/url",
+        .method = HTTP_POST,
+        .handler = api_firmware_url_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &fw_url);
+
+    httpd_uri_t fw_rollback = {
+        .uri = "/api/firmware/rollback",
+        .method = HTTP_POST,
+        .handler = api_firmware_rollback_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &fw_rollback);
+
+    httpd_uri_t fw_uf2 = {
+        .uri = "/api/firmware/uf2",
+        .method = HTTP_POST,
+        .handler = api_firmware_uf2_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &fw_uf2);
+
+    httpd_uri_t fw_confirm = {
+        .uri = "/api/firmware/confirm",
+        .method = HTTP_POST,
+        .handler = api_firmware_confirm_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &fw_confirm);
 }
 
 esp_err_t webui_init(void) {
