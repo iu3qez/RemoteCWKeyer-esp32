@@ -115,11 +115,55 @@ static bool validate_callsign(const char *callsign)
     return true;
 }
 
+#define AP_IP "192.168.4.1"
+
+/**
+ * @brief Check if request is from captive portal detector and redirect
+ *
+ * Returns true (and sends 302) if Host header doesn't match our AP IP.
+ */
+static bool captive_redirect(httpd_req_t *req)
+{
+    char host[64] = {0};
+    if (httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host)) != ESP_OK) {
+        return false;
+    }
+
+    /* Allow requests directly to our IP */
+    if (strcmp(host, AP_IP) == 0
+        || strncmp(host, AP_IP ":", 13) == 0) {
+        return false;
+    }
+
+    /* Foreign domain (DNS-hijacked) — redirect to our AP */
+    ESP_LOGI(TAG, "Captive redirect: %s (Host: %s)", req->uri, host);
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "http://" AP_IP "/");
+    httpd_resp_send(req, "Redirecting...", HTTPD_RESP_USE_STRLEN);
+    return true;
+}
+
+/**
+ * @brief Catch-all handler for unknown URIs (captive portal detection endpoints)
+ */
+static esp_err_t handle_catchall(httpd_req_t *req)
+{
+    /* Always redirect unknown URIs to root */
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "http://" AP_IP "/");
+    httpd_resp_send(req, "Redirecting...", HTTPD_RESP_USE_STRLEN);
+    return ESP_OK;
+}
+
 /**
  * @brief Handler for GET / - serve HTML form
  */
 static esp_err_t handle_root(httpd_req_t *req)
 {
+    if (captive_redirect(req)) {
+        return ESP_OK;
+    }
+
     ESP_LOGI(TAG, "GET /");
 
     const char *html = prov_get_html_form();
@@ -224,7 +268,7 @@ void prov_http_start(void)
     }
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 4;
+    config.max_uri_handlers = 5;
     config.stack_size = 8192;
 
     esp_err_t err = httpd_start(&s_server, &config);
@@ -257,6 +301,15 @@ void prov_http_start(void)
         .user_ctx = NULL,
     };
     httpd_register_uri_handler(s_server, &save);
+
+    /* Catch-all for captive portal detection URLs (/generate_204, /hotspot-detect.html, etc.) */
+    httpd_uri_t catchall = {
+        .uri = "/*",
+        .method = HTTP_GET,
+        .handler = handle_catchall,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(s_server, &catchall);
 
     ESP_LOGI(TAG, "HTTP server started on port %d", config.server_port);
 }
