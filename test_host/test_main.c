@@ -22,6 +22,7 @@ void test_iambic_memory(void);
 void test_iambic_squeeze_prolonged(void);
 void test_iambic_event_flags_squeeze(void);
 void test_iambic_event_flags_mem_window(void);
+void test_iambic_event_flags_mem_armed(void);
 
 void test_preset_init(void);
 void test_preset_activate(void);
@@ -275,6 +276,7 @@ int main(void) {
     RUN_TEST(test_iambic_squeeze_prolonged);
     RUN_TEST(test_iambic_event_flags_squeeze);
     RUN_TEST(test_iambic_event_flags_mem_window);
+    RUN_TEST(test_iambic_event_flags_mem_armed);
 
     /* Iambic Preset tests */
     printf("\n=== Iambic Preset Tests ===\n");

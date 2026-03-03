@@ -237,9 +237,11 @@ static void update_gpio(iambic_processor_t *proc, gpio_state_t gpio, int64_t now
             /* Inside window: arm memory if paddle pressed AND it's a fresh press */
             if (can_arm_dit && check_dit && dit_is_fresh && iambic_dit_memory_enabled(proc->config.memory_mode)) {
                 proc->dit_memory = true;
+                proc->event_flags |= FLAG_MEM_ARMED;
             }
             if (can_arm_dah && check_dah && dah_is_fresh && iambic_dah_memory_enabled(proc->config.memory_mode)) {
                 proc->dah_memory = true;
+                proc->event_flags |= FLAG_MEM_ARMED;
             }
         }
 

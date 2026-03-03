@@ -300,3 +300,26 @@ void test_iambic_event_flags_mem_window(void) {
 
     TEST_ASSERT_BITS_LOW(FLAG_MEM_WINDOW, sample2.flags);
 }
+
+void test_iambic_event_flags_mem_armed(void) {
+    iambic_config_t config = IAMBIC_CONFIG_DEFAULT;
+    config.wpm = 20;
+    config.mode = IAMBIC_MODE_B;
+    config.mem_window_start_pct = 30;
+    config.mem_window_end_pct = 70;
+    iambic_init(&s_iambic, &config);
+
+    /* Start DIT (dit only) */
+    gpio_state_t gpio = gpio_from_paddles(true, false);
+    esp_timer_set_time(T0);
+    iambic_tick(&s_iambic, T0, gpio);
+
+    /* Press DAH at 50% of DIT — inside memory window, should arm */
+    gpio = gpio_from_paddles(true, true);
+    int64_t mid = T0 + DIT_DURATION_20WPM / 2;
+    esp_timer_set_time(mid);
+    stream_sample_t sample = iambic_tick(&s_iambic, mid, gpio);
+
+    TEST_ASSERT_BITS(FLAG_MEM_ARMED, FLAG_MEM_ARMED, sample.flags);
+    TEST_ASSERT_TRUE(s_iambic.dah_memory);
+}
