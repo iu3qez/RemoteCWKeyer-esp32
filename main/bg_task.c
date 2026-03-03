@@ -48,6 +48,7 @@ static bool s_timeline_initialized = false;
 /* Previous state for edge detection */
 static gpio_state_t s_tl_prev_gpio = {0};
 static uint8_t s_tl_prev_local_key = 0;
+static uint16_t s_tl_prev_iambic_flags = 0;
 
 /**
  * @brief Map WiFi state to LED state
@@ -222,9 +223,33 @@ void bg_task(void *arg) {
                     cwnet_socket_send_key_event(sample.local_key != 0);
                 }
 
+                /* Check for iambic event edges */
+                static const struct {
+                    uint16_t mask;
+                    const char *name;
+                } iambic_events[] = {
+                    { FLAG_MEM_WINDOW,   "mem_window" },
+                    { FLAG_SQUEEZE,      "squeeze" },
+                    { FLAG_MEM_ARMED,    "mem_armed" },
+                    { FLAG_MODE_B_BONUS, "mode_b_bonus" },
+                };
+                for (int e = 0; e < 4; e++) {
+                    uint16_t cur = sample.flags & iambic_events[e].mask;
+                    uint16_t prev = s_tl_prev_iambic_flags & iambic_events[e].mask;
+                    if (cur != prev) {
+                        snprintf(json, sizeof(json),
+                            "{\"ts\":%lld,\"event\":\"%s\",\"state\":%d}",
+                            (long long)(now_us / 1000),
+                            iambic_events[e].name,
+                            cur ? 1 : 0);
+                        webui_timeline_push("iambic", json);
+                    }
+                }
+
                 /* Update previous state */
                 s_tl_prev_gpio = sample.gpio;
                 s_tl_prev_local_key = sample.local_key;
+                s_tl_prev_iambic_flags = sample.flags & (FLAG_MEM_WINDOW | FLAG_SQUEEZE | FLAG_MEM_ARMED | FLAG_MODE_B_BONUS);
             }
         }
 

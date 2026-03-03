@@ -7,7 +7,7 @@
 
 stream_sample_t sample_with_edges_from(stream_sample_t current,
                                        const stream_sample_t *previous) {
-    uint8_t flags = current.flags;
+    uint16_t flags = current.flags;
 
     /* Check for GPIO edge */
     if (current.gpio.bits != previous->gpio.bits) {

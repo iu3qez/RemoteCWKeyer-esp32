@@ -56,6 +56,7 @@ CONFIG_ESP_WIFI_NVS_ENABLED=n
 # Disable WiFi NVS storage - we manage WiFi config via custom Storage class
 
 # TCP/IP Stack
+CONFIG_LWIP_LOCAL_HOSTNAME="RemoteCwKeyer"
 CONFIG_LWIP_MAX_SOCKETS=10
 CONFIG_LWIP_SO_REUSE=y
 CONFIG_LWIP_SO_RCVBUF=y

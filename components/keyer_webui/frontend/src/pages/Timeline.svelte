@@ -34,6 +34,19 @@
   let events = $state<TimelineEvent[]>([]);
   const MAX_EVENTS = 2000;
 
+  // Iambic event buffer
+  interface IambicEvent {
+    ts: number;
+    event: 'mem_window' | 'squeeze' | 'mem_armed' | 'mode_b_bonus';
+    state: number;
+  }
+  let iambicEvents = $state<IambicEvent[]>([]);
+  let showIambicOverlay = $state(
+    typeof localStorage !== 'undefined'
+      ? localStorage.getItem('timeline_iambic_overlay') !== 'false'
+      : true
+  );
+
   // Canvas
   let canvasRef: HTMLCanvasElement;
   let animationFrame: number | null = null;
@@ -65,6 +78,17 @@
     const now = Date.now();
     const cutoff = now - (duration * 2000);
     events = events.filter(e => e.ts > cutoff);
+  }
+
+  function pushIambicEvent(event: IambicEvent) {
+    if (paused) return;
+    lastEventTime = Date.now();
+    iambicEvents.push(event);
+    if (iambicEvents.length > MAX_EVENTS) {
+      iambicEvents = iambicEvents.slice(-MAX_EVENTS);
+    }
+    const cutoff = Date.now() - (duration * 2000);
+    iambicEvents = iambicEvents.filter(e => e.ts > cutoff);
   }
 
   function startRenderLoop() {
@@ -162,6 +186,48 @@
       }
     }
 
+    // Draw iambic overlay (if enabled)
+    if (showIambicOverlay) {
+      const outTrackY = 2 * trackHeight;  // OUT is track index 2
+
+      for (const evt of iambicEvents) {
+        const x = (evt.ts - windowStart) * pxPerMs;
+        if (x < -50 || x > width + 50) continue;
+
+        if (evt.event === 'mem_window') {
+          ctx.strokeStyle = evt.state ? 'rgba(255, 200, 50, 0.5)' : 'rgba(255, 200, 50, 0.3)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          ctx.moveTo(x, outTrackY);
+          ctx.lineTo(x, outTrackY + trackHeight);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else if (evt.event === 'squeeze' && evt.state === 1) {
+          ctx.fillStyle = 'rgba(255, 100, 255, 0.7)';
+          ctx.beginPath();
+          ctx.moveTo(x, outTrackY + 2);
+          ctx.lineTo(x + 4, outTrackY + 6);
+          ctx.lineTo(x, outTrackY + 10);
+          ctx.lineTo(x - 4, outTrackY + 6);
+          ctx.closePath();
+          ctx.fill();
+        } else if (evt.event === 'mem_armed' && evt.state === 1) {
+          ctx.fillStyle = 'rgba(50, 255, 150, 0.7)';
+          ctx.beginPath();
+          ctx.moveTo(x, outTrackY + trackHeight - 10);
+          ctx.lineTo(x + 4, outTrackY + trackHeight - 2);
+          ctx.lineTo(x - 4, outTrackY + trackHeight - 2);
+          ctx.closePath();
+          ctx.fill();
+        } else if (evt.event === 'mode_b_bonus' && evt.state === 1) {
+          ctx.fillStyle = 'rgba(255, 150, 50, 0.8)';
+          ctx.font = 'bold 10px "JetBrains Mono", monospace';
+          ctx.fillText('B', x - 3, outTrackY + 14);
+        }
+      }
+    }
+
     // Draw current time marker
     ctx.strokeStyle = '#ffb000';
     ctx.lineWidth = 2;
@@ -248,6 +314,7 @@
 
   function clearBuffer() {
     events = [];
+    iambicEvents = [];
     baseTime = 0;
     lastEventTime = 0;
     drawTimeline();
@@ -278,6 +345,9 @@
           track: 2,  // OUT track
           state
         });
+      },
+      onIambic: (ts, event, state) => {
+        pushIambicEvent({ ts, event: event as IambicEvent['event'], state });
       },
       onConnect: () => {
         connected = true;
@@ -340,6 +410,28 @@
           <span class="legend-desc">{track.label}</span>
         </div>
       {/each}
+      {#if showIambicOverlay}
+        <div class="legend-item">
+          <span class="legend-color" style="background: rgba(255, 200, 50, 0.5)"></span>
+          <span class="legend-name">MEM</span>
+          <span class="legend-desc">Memory window edges</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-color" style="background: rgba(255, 100, 255, 0.7)"></span>
+          <span class="legend-name">SQZ</span>
+          <span class="legend-desc">Squeeze detected</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-color" style="background: rgba(50, 255, 150, 0.7)"></span>
+          <span class="legend-name">ARM</span>
+          <span class="legend-desc">Memory armed</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-color" style="background: rgba(255, 150, 50, 0.8)"></span>
+          <span class="legend-name">B</span>
+          <span class="legend-desc">Mode B bonus</span>
+        </div>
+      {/if}
     </div>
   </div>
 
@@ -365,6 +457,14 @@
         <button class="action-btn" onclick={clearBuffer}>
           <span class="btn-icon">⌫</span>
           <span>CLEAR</span>
+        </button>
+        <button class="action-btn" class:active={showIambicOverlay}
+                onclick={() => {
+                  showIambicOverlay = !showIambicOverlay;
+                  localStorage.setItem('timeline_iambic_overlay', String(showIambicOverlay));
+                }}>
+          <span class="btn-icon">&#9881;</span>
+          <span>{showIambicOverlay ? 'FSM ON' : 'FSM OFF'}</span>
         </button>
       </div>
     </div>

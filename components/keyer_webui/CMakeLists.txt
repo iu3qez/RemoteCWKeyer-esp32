@@ -8,7 +8,6 @@ idf_component_register(
         "src/api_timeline.c"
         "src/ws_server.c"
         "src/api_vpn.c"
-        "src/assets.c"
     INCLUDE_DIRS
         "include"
     REQUIRES
@@ -35,7 +34,7 @@ set(FRONTEND_DIR "${CMAKE_CURRENT_SOURCE_DIR}/frontend")
 set(FRONTEND_DIST "${FRONTEND_DIR}/dist")
 set(FRONTEND_STAMP "${CMAKE_CURRENT_BINARY_DIR}/frontend.stamp")
 set(ASSETS_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed_assets.py")
-set(ASSETS_OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/src/assets.c")
+set(ASSETS_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/assets.c")
 
 # Glob frontend source files for dependency tracking
 file(GLOB_RECURSE FRONTEND_SOURCES
@@ -48,6 +47,24 @@ file(GLOB_RECURSE FRONTEND_SOURCES
     "${FRONTEND_DIR}/vite.config.ts"
 )
 
+# Track git HEAD so frontend rebuilds when commit hash changes (works in worktrees)
+set(GIT_HASH_FILE "${CMAKE_CURRENT_BINARY_DIR}/git_hash.txt")
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    OUTPUT_VARIABLE _GIT_HASH_NOW
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if(EXISTS "${GIT_HASH_FILE}")
+    file(READ "${GIT_HASH_FILE}" _GIT_HASH_OLD)
+    string(STRIP "${_GIT_HASH_OLD}" _GIT_HASH_OLD)
+else()
+    set(_GIT_HASH_OLD "")
+endif()
+if(NOT "${_GIT_HASH_NOW}" STREQUAL "${_GIT_HASH_OLD}")
+    file(WRITE "${GIT_HASH_FILE}" "${_GIT_HASH_NOW}")
+endif()
+
 # Custom command: Build frontend with npm (stamp file in build dir, not dist)
 add_custom_command(
     OUTPUT "${FRONTEND_STAMP}"
@@ -55,7 +72,7 @@ add_custom_command(
     COMMAND npm run build
     COMMAND ${CMAKE_COMMAND} -E touch "${FRONTEND_STAMP}"
     WORKING_DIRECTORY "${FRONTEND_DIR}"
-    DEPENDS ${FRONTEND_SOURCES}
+    DEPENDS ${FRONTEND_SOURCES} "${GIT_HASH_FILE}"
     COMMENT "Building frontend with Vite..."
 )
 
@@ -69,6 +86,9 @@ add_custom_command(
 
 # Custom target to trigger asset generation
 add_custom_target(frontend_assets DEPENDS "${ASSETS_OUTPUT}")
+
+# Add generated assets.c as a source (lives in build dir, regenerated on clean)
+target_sources(${COMPONENT_LIB} PRIVATE "${ASSETS_OUTPUT}")
 
 # Make component depend on frontend assets
 add_dependencies(${COMPONENT_LIB} frontend_assets)

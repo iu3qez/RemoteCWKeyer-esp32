@@ -196,6 +196,9 @@ typedef struct {
 
     /* Output state */
     bool key_down;             /**< Current key output state */
+
+    /* Event flags for timeline visualization (cleared each tick) */
+    uint16_t event_flags;      /**< Accumulated iambic event flags */
 } iambic_processor_t;
 
 /**

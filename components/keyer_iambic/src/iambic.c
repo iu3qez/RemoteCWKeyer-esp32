@@ -62,6 +62,9 @@ void iambic_set_config(iambic_processor_t *proc, const iambic_config_t *config) 
 stream_sample_t iambic_tick(iambic_processor_t *proc, int64_t now_us, gpio_state_t gpio) {
     assert(proc != NULL);
 
+    /* Clear per-tick event flags */
+    proc->event_flags = 0;
+
     /* Update paddle state and memory */
     update_gpio(proc, gpio, now_us);
 
@@ -87,6 +90,7 @@ stream_sample_t iambic_tick(iambic_processor_t *proc, int64_t now_us, gpio_state
     sample.local_key = proc->key_down ? 1 : 0;
     /* audio_level filled by audio envelope later */
     /* flags and config_gen set by RT loop */
+    sample.flags |= proc->event_flags;
 
     return sample;
 }
@@ -183,6 +187,10 @@ static void update_gpio(iambic_processor_t *proc, gpio_state_t gpio, int64_t now
 
     bool is_squeeze = proc->dit_pressed && proc->dah_pressed;
 
+    if (is_squeeze) {
+        proc->event_flags |= FLAG_SQUEEZE;
+    }
+
     /* Track squeeze for Mode B */
     if (is_squeeze && !was_squeeze) {
         proc->squeeze_seen = true;
@@ -202,6 +210,9 @@ static void update_gpio(iambic_processor_t *proc, gpio_state_t gpio, int64_t now
      * During gap, we rely on Priority 3 (current paddle state) for squeeze alternation. */
     if (proc->state == IAMBIC_STATE_SEND_DIT || proc->state == IAMBIC_STATE_SEND_DAH) {
         bool in_window = is_in_memory_window(proc, now_us);
+        if (in_window) {
+            proc->event_flags |= FLAG_MEM_WINDOW;
+        }
         bool can_arm_dit = (proc->state != IAMBIC_STATE_SEND_DIT);
         bool can_arm_dah = (proc->state != IAMBIC_STATE_SEND_DAH);
 
@@ -226,9 +237,11 @@ static void update_gpio(iambic_processor_t *proc, gpio_state_t gpio, int64_t now
             /* Inside window: arm memory if paddle pressed AND it's a fresh press */
             if (can_arm_dit && check_dit && dit_is_fresh && iambic_dit_memory_enabled(proc->config.memory_mode)) {
                 proc->dit_memory = true;
+                proc->event_flags |= FLAG_MEM_ARMED;
             }
             if (can_arm_dah && check_dah && dah_is_fresh && iambic_dah_memory_enabled(proc->config.memory_mode)) {
                 proc->dah_memory = true;
+                proc->event_flags |= FLAG_MEM_ARMED;
             }
         }
 
@@ -309,6 +322,7 @@ static iambic_element_t *decide_next_element(iambic_processor_t *proc, iambic_el
                                 : (proc->dit_pressed && proc->dah_pressed);
         if (!current_squeeze) {
             proc->squeeze_seen = false;
+            proc->event_flags |= FLAG_MODE_B_BONUS;
             *out = iambic_element_opposite(proc->last_element);
             return out;
         }
