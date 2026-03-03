@@ -48,6 +48,24 @@ file(GLOB_RECURSE FRONTEND_SOURCES
     "${FRONTEND_DIR}/vite.config.ts"
 )
 
+# Track git HEAD so frontend rebuilds when commit hash changes (works in worktrees)
+set(GIT_HASH_FILE "${CMAKE_CURRENT_BINARY_DIR}/git_hash.txt")
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    OUTPUT_VARIABLE _GIT_HASH_NOW
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if(EXISTS "${GIT_HASH_FILE}")
+    file(READ "${GIT_HASH_FILE}" _GIT_HASH_OLD)
+    string(STRIP "${_GIT_HASH_OLD}" _GIT_HASH_OLD)
+else()
+    set(_GIT_HASH_OLD "")
+endif()
+if(NOT "${_GIT_HASH_NOW}" STREQUAL "${_GIT_HASH_OLD}")
+    file(WRITE "${GIT_HASH_FILE}" "${_GIT_HASH_NOW}")
+endif()
+
 # Custom command: Build frontend with npm (stamp file in build dir, not dist)
 add_custom_command(
     OUTPUT "${FRONTEND_STAMP}"
@@ -55,7 +73,7 @@ add_custom_command(
     COMMAND npm run build
     COMMAND ${CMAKE_COMMAND} -E touch "${FRONTEND_STAMP}"
     WORKING_DIRECTORY "${FRONTEND_DIR}"
-    DEPENDS ${FRONTEND_SOURCES}
+    DEPENDS ${FRONTEND_SOURCES} "${GIT_HASH_FILE}"
     COMMENT "Building frontend with Vite..."
 )
 
