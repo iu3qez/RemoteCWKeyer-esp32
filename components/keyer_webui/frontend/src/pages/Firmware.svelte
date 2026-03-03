@@ -167,6 +167,7 @@
   });
 
   let otaActive = $derived(fw !== null && fw.ota_state !== 'IDLE');
+  let isOtaBusy = $derived(fw !== null && (fw.ota_state === 'UPLOADING' || fw.ota_state === 'DOWNLOADING'));
   let otaProgressPercent = $derived(fw ? fw.ota_progress : 0);
 </script>
 
@@ -323,7 +324,7 @@
       <button
         class="action-btn flash-btn"
         onclick={handleUpload}
-        disabled={!selectedFile || uploading}
+        disabled={!selectedFile || uploading || isOtaBusy}
       >
         FLASH FIRMWARE
       </button>
@@ -345,7 +346,7 @@
         <button
           class="action-btn"
           onclick={handleUrlDownload}
-          disabled={!firmwareUrl.trim()}
+          disabled={!firmwareUrl.trim() || isOtaBusy}
         >
           DOWNLOAD & FLASH
         </button>

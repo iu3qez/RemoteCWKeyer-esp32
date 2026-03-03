@@ -14,6 +14,7 @@
 #include "freertos/task.h"
 #include "cJSON.h"
 #include "usb_uf2.h"
+#include <assert.h>
 #include <string.h>
 
 static const char *TAG = "api_firmware";
@@ -37,10 +38,9 @@ static struct {
     char              url[256];
 } s_ota;
 
-static void ota_init_once(void) {
-    if (s_ota.mutex == NULL) {
-        s_ota.mutex = xSemaphoreCreateMutex();
-    }
+void api_firmware_init(void) {
+    s_ota.mutex = xSemaphoreCreateMutex();
+    assert(s_ota.mutex != NULL);
 }
 
 static void ota_set_error(const char *msg) {
@@ -64,8 +64,6 @@ static const char *ota_state_to_string(ota_state_t state) {
 
 /* GET /api/firmware/status */
 esp_err_t api_firmware_status_handler(httpd_req_t *req) {
-    ota_init_once();
-
     cJSON *root = cJSON_CreateObject();
     if (root == NULL) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "JSON alloc failed");
@@ -131,7 +129,10 @@ esp_err_t api_firmware_status_handler(httpd_req_t *req) {
 
 /* POST /api/firmware/upload — chunked binary OTA upload */
 esp_err_t api_firmware_upload_handler(httpd_req_t *req) {
-    ota_init_once();
+    if (req->content_len == 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing Content-Length");
+        return ESP_FAIL;
+    }
 
     /* Reject if already busy */
     xSemaphoreTake(s_ota.mutex, portMAX_DELAY);
@@ -301,6 +302,7 @@ static void ota_download_task(void *arg) {
     char buf[1024];
     size_t received = 0;
     bool failed = false;
+    int zero_count = 0;
 
     for (;;) {
         int read_len = esp_http_client_read(client, buf, (int)sizeof(buf));
@@ -316,9 +318,19 @@ static void ota_download_task(void *arg) {
             if (esp_http_client_is_complete_data_received(client)) {
                 break;
             }
-            /* Timeout / no data yet, retry */
+            zero_count++;
+            if (zero_count > 100) {  /* 10s stall */
+                ESP_LOGE(TAG, "Download stalled");
+                esp_ota_abort(ota_handle);
+                ota_set_error("Download stalled");
+                failed = true;
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
+
+        zero_count = 0;
 
         err = esp_ota_write(ota_handle, buf, (size_t)read_len);
         if (err != ESP_OK) {
@@ -392,8 +404,6 @@ static int read_post_body(httpd_req_t *req, char *buf, size_t max_len) {
 
 /* POST /api/firmware/url — start OTA download from URL */
 esp_err_t api_firmware_url_handler(httpd_req_t *req) {
-    ota_init_once();
-
     char body[320];
     if (read_post_body(req, body, sizeof(body)) < 0) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid body");
@@ -410,6 +420,18 @@ esp_err_t api_firmware_url_handler(httpd_req_t *req) {
     if (!cJSON_IsString(url_obj) || url_obj->valuestring == NULL) {
         cJSON_Delete(json);
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing 'url' field");
+        return ESP_FAIL;
+    }
+
+    if (strlen(url_obj->valuestring) >= sizeof(s_ota.url)) {
+        cJSON_Delete(json);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "URL too long");
+        return ESP_FAIL;
+    }
+    if (strncmp(url_obj->valuestring, "http://", 7) != 0 &&
+        strncmp(url_obj->valuestring, "https://", 8) != 0) {
+        cJSON_Delete(json);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "URL must use http:// or https://");
         return ESP_FAIL;
     }
 

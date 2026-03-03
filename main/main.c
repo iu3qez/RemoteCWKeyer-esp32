@@ -214,6 +214,27 @@ void app_main(void) {
         ESP_LOGI(TAG, "VPN disabled");
     }
 
+    /* Initialize stream */
+    ESP_LOGI(TAG, "Initializing keying stream (%d samples)", STREAM_BUFFER_SIZE);
+    stream_init(&g_keying_stream, s_stream_buffer, STREAM_BUFFER_SIZE);
+
+    /* Initialize fault state */
+    fault_init(&g_fault_state);
+
+    hal_audio_config_t audio_cfg = HAL_AUDIO_CONFIG_DEFAULT;
+    hal_audio_init(&audio_cfg);
+
+    /* Enable PA for sidetone output (TODO: integrate with PTT for proper control) */
+    hal_audio_set_pa(true);
+
+    /* Initialize console */
+    console_init();
+
+    /* Initialize WebUI (requires WiFi to be connected) */
+    ESP_LOGI(TAG, "Initializing WebUI...");
+    webui_init();
+    webui_start();
+
     /* ===== OTA ROLLBACK CHECK ===== */
     {
         const esp_partition_t *running = esp_ota_get_running_partition();
@@ -243,27 +264,6 @@ void app_main(void) {
             }
         }
     }
-
-    /* Initialize stream */
-    ESP_LOGI(TAG, "Initializing keying stream (%d samples)", STREAM_BUFFER_SIZE);
-    stream_init(&g_keying_stream, s_stream_buffer, STREAM_BUFFER_SIZE);
-
-    /* Initialize fault state */
-    fault_init(&g_fault_state);
-
-    hal_audio_config_t audio_cfg = HAL_AUDIO_CONFIG_DEFAULT;
-    hal_audio_init(&audio_cfg);
-
-    /* Enable PA for sidetone output (TODO: integrate with PTT for proper control) */
-    hal_audio_set_pa(true);
-
-    /* Initialize console */
-    console_init();
-
-    /* Initialize WebUI (requires WiFi to be connected) */
-    ESP_LOGI(TAG, "Initializing WebUI...");
-    webui_init();
-    webui_start();
 
     /* Initialize decoder (creates its own stream consumer) */
     decoder_init();
