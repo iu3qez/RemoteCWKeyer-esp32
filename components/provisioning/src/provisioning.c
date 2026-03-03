@@ -21,6 +21,7 @@
 /* Internal declarations */
 extern void prov_wifi_start_ap(void);
 extern void prov_wifi_stop(void);
+extern void prov_dns_start(void);
 extern void prov_http_start(void);
 extern void prov_http_stop(void);
 
@@ -223,6 +224,9 @@ void provisioning_start(void)
 
     /* Start WiFi AP */
     prov_wifi_start_ap();
+
+    /* Start DNS server for captive portal detection */
+    prov_dns_start();
 
     /* Start HTTP server */
     prov_http_start();
