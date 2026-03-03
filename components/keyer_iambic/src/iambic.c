@@ -210,6 +210,9 @@ static void update_gpio(iambic_processor_t *proc, gpio_state_t gpio, int64_t now
      * During gap, we rely on Priority 3 (current paddle state) for squeeze alternation. */
     if (proc->state == IAMBIC_STATE_SEND_DIT || proc->state == IAMBIC_STATE_SEND_DAH) {
         bool in_window = is_in_memory_window(proc, now_us);
+        if (in_window) {
+            proc->event_flags |= FLAG_MEM_WINDOW;
+        }
         bool can_arm_dit = (proc->state != IAMBIC_STATE_SEND_DIT);
         bool can_arm_dah = (proc->state != IAMBIC_STATE_SEND_DAH);
 

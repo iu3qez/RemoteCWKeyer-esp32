@@ -269,3 +269,34 @@ void test_iambic_event_flags_squeeze(void) {
 
     TEST_ASSERT_BITS(FLAG_SQUEEZE, FLAG_SQUEEZE, sample.flags);
 }
+
+void test_iambic_event_flags_mem_window(void) {
+    iambic_config_t config = IAMBIC_CONFIG_DEFAULT;
+    config.wpm = 20;
+    config.mem_window_start_pct = 30;
+    config.mem_window_end_pct = 70;
+    iambic_init(&s_iambic, &config);
+
+    /* Start DIT */
+    gpio_state_t gpio = gpio_from_paddles(true, false);
+    esp_timer_set_time(T0);
+    iambic_tick(&s_iambic, T0, gpio);
+
+    /* Tick at 50% of DIT — inside memory window */
+    int64_t mid = T0 + DIT_DURATION_20WPM / 2;
+    esp_timer_set_time(mid);
+    stream_sample_t sample = iambic_tick(&s_iambic, mid, gpio);
+
+    TEST_ASSERT_BITS(FLAG_MEM_WINDOW, FLAG_MEM_WINDOW, sample.flags);
+
+    /* Re-init and tick at 10% of DIT — outside memory window */
+    iambic_init(&s_iambic, &config);
+    esp_timer_set_time(T0);
+    iambic_tick(&s_iambic, T0, gpio);
+
+    int64_t early = T0 + DIT_DURATION_20WPM / 10;
+    esp_timer_set_time(early);
+    stream_sample_t sample2 = iambic_tick(&s_iambic, early, gpio);
+
+    TEST_ASSERT_BITS_LOW(FLAG_MEM_WINDOW, sample2.flags);
+}
