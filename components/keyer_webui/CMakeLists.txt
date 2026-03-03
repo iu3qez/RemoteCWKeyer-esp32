@@ -21,6 +21,9 @@ idf_component_register(
         keyer_wifi
         keyer_vpn
         keyer_text
+        esp_http_client
+        app_update
+        keyer_usb
 )
 
 # Strict compiler flags
