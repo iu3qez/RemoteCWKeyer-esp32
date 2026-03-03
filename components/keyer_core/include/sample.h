@@ -90,25 +90,31 @@ static inline gpio_state_t gpio_from_paddles(bool dit, bool dah) {
 /** Local key state edge (on/off transition) */
 #define FLAG_LOCAL_EDGE     0x20
 
+/* Iambic FSM event flags (bits 6-9) */
+#define FLAG_MEM_WINDOW     0x0040  /**< Memory window is open */
+#define FLAG_SQUEEZE        0x0080  /**< Both paddles pressed (squeeze) */
+#define FLAG_MEM_ARMED      0x0100  /**< Memory armed this tick */
+#define FLAG_MODE_B_BONUS   0x0200  /**< Mode B bonus element active */
+
 /* ============================================================================
- * Stream Sample (6 bytes packed)
+ * Stream Sample (7 bytes packed)
  * ============================================================================ */
 
 /**
  * @brief Stream sample - the fundamental keying event unit
  *
- * Layout (6 bytes total):
- * - gpio:       1 byte - Physical paddle state
- * - local_key:  1 byte - Iambic keyer output (bool as u8)
- * - audio_level:1 byte - Audio output level (0-255)
- * - flags:      1 byte - Edge flags and markers
+ * Layout (7 bytes total, packed):
+ * - gpio:       1 byte  - Physical paddle state
+ * - local_key:  1 byte  - Iambic keyer output (bool as u8)
+ * - audio_level:1 byte  - Audio output level (0-255)
+ * - flags:      2 bytes - Edge flags and markers
  * - config_gen: 2 bytes - Config generation / silence ticks
  */
 typedef struct __attribute__((packed)) {
     gpio_state_t gpio;       /**< Physical paddle state */
     uint8_t      local_key;  /**< Keyer output: 1=key down, 0=key up */
     uint8_t      audio_level;/**< Audio output level (0-255) */
-    uint8_t      flags;      /**< Edge flags and markers */
+    uint16_t     flags;      /**< Edge flags and markers */
     uint16_t     config_gen; /**< Config generation or silence tick count */
 } stream_sample_t;
 
