@@ -227,6 +227,9 @@ class ApiClient {
       case 'gap':
         this.wsCallbacks.onGap?.(ts, msg.gap_type);
         break;
+      case 'iambic':
+        this.wsCallbacks.onIambic?.(ts, msg.event, msg.state);
+        break;
     }
   }
 
@@ -286,7 +289,14 @@ interface WSMessageGap {
   gap_type: number;
 }
 
-type WSMessage = WSMessageDecoded | WSMessageWord | WSMessagePattern | WSMessagePaddle | WSMessageKeying | WSMessageGap;
+interface WSMessageIambic {
+  type: 'iambic';
+  ts: number;
+  event: 'mem_window' | 'squeeze' | 'mem_armed' | 'mode_b_bonus';
+  state: number;
+}
+
+type WSMessage = WSMessageDecoded | WSMessageWord | WSMessagePattern | WSMessagePaddle | WSMessageKeying | WSMessageGap | WSMessageIambic;
 
 export interface WSCallbacks {
   onDecodedChar?: (char: string, wpm: number) => void;
@@ -295,6 +305,7 @@ export interface WSCallbacks {
   onPaddle?: (ts: number, paddle: number, state: number) => void;
   onKeying?: (ts: number, element: number, state: number) => void;
   onGap?: (ts: number, gapType: number) => void;
+  onIambic?: (ts: number, event: string, state: number) => void;
   onConnect?: () => void;
   onDisconnect?: () => void;
 }
