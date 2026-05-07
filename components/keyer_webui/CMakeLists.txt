@@ -13,7 +13,7 @@ idf_component_register(
         "include"
     REQUIRES
         esp_http_server
-        json
+        esp_timer
         keyer_config
         keyer_core
         keyer_cwnet

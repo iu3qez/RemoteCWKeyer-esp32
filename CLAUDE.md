@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ESP32-based CW (Morse code) keyer with a pure C implementation using ESP-IDF v5.x.
+ESP32-based CW (Morse code) keyer with a pure C implementation using ESP-IDF v6.x.
 
 **CRITICAL**: Before making any code changes, read [ARCHITECTURE.md](ARCHITECTURE.md). It defines immutable design principles that MUST be followed. When writing or reviewing C code, read [CODING_STYLE.md](CODING_STYLE.md) for detailed patterns and compiler requirements.
 
@@ -24,7 +24,8 @@ ESP32-based CW (Morse code) keyer with a pure C implementation using ESP-IDF v5.
 │   ├── keyer_console/          # Serial console
 │   ├── keyer_config/           # Generated config (DO NOT EDIT)
 │   ├── keyer_webui/            # Web UI (frontend/ has npm deps)
-│   └── keyer_hal/              # GPIO, I2S, ES8311
+│   ├── keyer_hal/              # GPIO, I2S, ES8311
+│   └── esp_wireguard/          # Vendored fork of trombik/esp_wireguard (v6/mbedtls4 patched)
 ├── main/
 │   ├── main.c                  # Entry point
 │   ├── rt_task.c               # Core 0 RT task
@@ -74,6 +75,18 @@ cmake --build build && ./build/test_runner
 - Components tested by providing streams (fake, recorded, synthesized)
 - Tests run on host without hardware
 - **If you need a mock, the design is wrong** — the stream is the only interface
+
+---
+
+## ESP-IDF v6 Notes
+
+The project was migrated from ESP-IDF v5 to v6. Things to know:
+
+- **Strict transitive-deps check:** every `#include "driver/X.h"` etc. must be backed by an explicit entry in `REQUIRES`/`PRIV_REQUIRES`. Common per-component additions: `esp_driver_gpio`, `esp_driver_usb_serial_jtag`, `esp_timer`, `lwip`. The v5 umbrella `driver` component still exists but no longer pulls everything transitively.
+- **`json` component removed** — cJSON now lives at `espressif/cjson` on the component registry. `keyer_webui/idf_component.yml` declares it; do not add `json` to `REQUIRES`.
+- **GPIO IOMUX rename:** `gpio_iomux_out`/`gpio_iomux_in` were removed and replaced by `gpio_iomux_output(pin, func)` / `gpio_iomux_input(pin, func, signal_idx)` in `esp_private/gpio.h`. Used in `keyer_hal/src/hal_gpio.c::force_gpio_reset`.
+- **mbedtls 4 / TF-PSA-Crypto split:** `mbedtls_entropy_*` and `mbedtls_ctr_drbg_*` are no longer linked. The vendored `components/esp_wireguard` was patched to use `esp_fill_random()` directly (HW RNG, cryptographically strong with WiFi up).
+- **Vendored wireguard (`components/esp_wireguard`):** in-tree fork of `trombik/esp_wireguard 0.9.0`. Upstream is v5-only — do not replace it with the registry version. Patches: simplified RNG (above), GCC 15 `-Wno-error=stringop-overread` and `-Wno-error=unterminated-string-initialization` applied per-file in its `CMakeLists.txt`.
 
 ---
 

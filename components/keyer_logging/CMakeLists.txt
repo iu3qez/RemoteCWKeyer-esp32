@@ -8,7 +8,7 @@ idf_component_register(
         "src/log_stream.c"
         "src/uart_logger.c"
     INCLUDE_DIRS "include"
-    REQUIRES keyer_core driver esp_driver_uart
+    REQUIRES keyer_core driver esp_driver_uart esp_driver_gpio esp_timer
 )
 
 target_compile_options(${COMPONENT_LIB} PRIVATE

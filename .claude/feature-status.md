@@ -1,4 +1,4 @@
-# Feature Status — 2026-03-01
+# Feature Status — 2026-05-07
 
 ## CRITICAL — Core mancanti
 
@@ -32,6 +32,7 @@
 | WiFi status API | Implementata (stato, IP, CWNet latency) |
 | CWNet TX (locale→remoto) | Funzionante via `cwnet_socket_send_key_event()` |
 | wireguard-vpn | Mergiato su main (commit `2678037`) — componente, console, WebUI, config |
+| ESP-IDF v6 migration | Completata — cJSON via component manager, esp_wireguard vendorato in `components/`, deps strict-check, GPIO iomux rename |
 
 ## Branch non mergiati
 

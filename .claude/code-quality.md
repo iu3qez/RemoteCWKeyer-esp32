@@ -1,6 +1,13 @@
-# Code Quality Notes — 2026-03-01
+# Code Quality Notes — 2026-05-07
 
 ## Cleanup Items
+
+### Vendored esp_wireguard — GCC 15 / ESP-IDF v6 patches
+- `components/esp_wireguard/` è un fork in-tree di `trombik/esp_wireguard 0.9.0` (l'unica versione sul registry, non aggiornata per v6).
+- Patch applicate:
+  - `wireguard-platform.c`: rimosso il giro `mbedtls_entropy/ctr_drbg`, ora usa `esp_fill_random()` (le API standalone non sono più linkate in mbedtls 4).
+  - `CMakeLists.txt`: `-Wno-error=stringop-overread` (già nell'upstream solo per IDF v5) esteso a v6, più `-Wno-error=unterminated-string-initialization` per `wireguard.c` (costanti del protocollo come byte array da 8/34/37).
+- Da fare: monitorare se upstream pubblica una versione v6-compatible per dewirevendorare.
 
 ### Risolti (commit a67bc73)
 - ~~`line_buffer.c` stub orfano~~ — cancellato

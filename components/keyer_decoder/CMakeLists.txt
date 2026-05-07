@@ -10,7 +10,7 @@ idf_component_register(
         "src/timing_classifier.c"
         "src/decoder.c"
     INCLUDE_DIRS "include"
-    REQUIRES keyer_core
+    REQUIRES keyer_core esp_timer
 )
 
 target_compile_options(${COMPONENT_LIB} PRIVATE

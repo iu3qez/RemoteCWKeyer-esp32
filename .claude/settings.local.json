@@ -28,7 +28,17 @@
       "Bash(xargs cat:*)",
       "Bash(git check-ignore:*)",
       "Bash(pip3 install:*)",
-      "Bash(pvs-studio-analyzer:*)"
+      "Bash(pvs-studio-analyzer:*)",
+      "Read(//home/sf/esp/esp-idf/components/json/**)",
+      "Read(//home/sf/esp/esp-idf/components/**)",
+      "Bash(curl -s \"https://components.espressif.com/api/components/trombik/esp_wireguard\")",
+      "Bash(curl -s \"https://components.espressif.com/api/components?search=wireguard\")",
+      "Bash(curl -s \"https://components.espressif.com/api/components/?match=wireguard\")",
+      "Bash(curl -s \"https://components.espressif.com/api/components/?keyword=wireguard\")",
+      "Bash(curl -s \"https://components.espressif.com/api/components/?match_keywords=wireguard\")",
+      "Bash(curl -s \"https://components.espressif.com/api/components/espressif/wireguard\")",
+      "Bash(awk -F: '{print $1}')",
+      "Bash(xargs -I{} dirname {})"
     ]
   },
   "hooks": {

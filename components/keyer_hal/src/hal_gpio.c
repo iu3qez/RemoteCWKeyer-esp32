@@ -19,6 +19,7 @@
 #ifdef ESP_PLATFORM
 /* ESP-IDF target build */
 #include "driver/gpio.h"
+#include "esp_private/gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include <stdatomic.h>
@@ -170,11 +171,8 @@ static esp_err_t init_isr(void) {
 
 static void force_gpio_reset(gpio_num_t pin) {
     gpio_reset_pin(pin);
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-    gpio_iomux_out(pin, 1, false);
-    gpio_iomux_in(pin, 0x100);
-#pragma GCC diagnostic pop
+    gpio_iomux_output(pin, 1);     /* func=1 is GPIO */
+    gpio_iomux_input(pin, 1, 0x100); /* signal_idx 0x100 = disconnect from input signal */
     gpio_set_direction(pin, GPIO_MODE_INPUT);
     gpio_set_pull_mode(pin, GPIO_PULLUP_ONLY);
 }

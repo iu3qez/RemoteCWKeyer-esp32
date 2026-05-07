@@ -14,6 +14,8 @@ idf_component_register(
     REQUIRES
         keyer_config
         keyer_logging
+        esp_timer
+        lwip
 )
 
 target_compile_options(${COMPONENT_LIB} PRIVATE

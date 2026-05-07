@@ -1,6 +1,6 @@
 # RemoteCWKeyer-esp32 — Memory Index
 
-## Feature Status (2026-03-01)
+## Feature Status (2026-05-07)
 See [feature-status.md](feature-status.md) for full categorized feature checklist.
 
 ## Code Quality Notes

@@ -10,7 +10,7 @@ idf_component_register(
         "src/provisioning_http.c"
         "src/provisioning_html.c"
     INCLUDE_DIRS "include"
-    REQUIRES nvs_flash esp_wifi esp_http_server esp_netif driver esp_timer keyer_led
+    REQUIRES nvs_flash esp_wifi esp_http_server esp_netif driver esp_driver_gpio esp_timer keyer_led
 )
 
 target_compile_options(${COMPONENT_LIB} PRIVATE
