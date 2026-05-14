@@ -91,3 +91,19 @@ export interface VpnStatus {
   connected: boolean;
   stats?: VpnStats;
 }
+
+export interface FirmwareStatus {
+  version: string;
+  date: string;
+  time: string;
+  idf_ver: string;
+  running_partition: string;
+  next_partition: string;
+  rollback_available: boolean;
+  pending_verify: boolean;
+  ota_state: 'IDLE' | 'UPLOADING' | 'DOWNLOADING' | 'DONE' | 'ERROR';
+  ota_progress: number;
+  ota_bytes_written: number;
+  ota_total_size: number;
+  ota_error?: string;
+}
