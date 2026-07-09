@@ -149,3 +149,40 @@ Update these files as features are completed or new issues are found. Keep MEMOR
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — Immutable design principles, stream semantics, fault model
 - **[CODING_STYLE.md](CODING_STYLE.md)** — Compiler flags, PVS-Studio, C patterns, error handling
 - **[parameters.yaml](parameters.yaml)** — Configuration source of truth
+
+<!-- BEGIN treecode:map (auto) -->
+## Module map
+
+Distributed CLAUDE.md tree — open a module's own CLAUDE.md for its detailed brief.
+Keying events flow only through `keying_stream_t`; Core 0 = hard-RT, Core 1 = background.
+
+**Real-time path (Core 0)**
+- `components/keyer_core/`  — Keying stream, samples, consumers, fault primitives  → components/keyer_core/CLAUDE.md
+- `components/keyer_iambic/`  — Iambic keyer finite-state machine  → components/keyer_iambic/CLAUDE.md
+- `components/keyer_audio/`  — Sidetone synthesis, audio ring buffer, PTT  → components/keyer_audio/CLAUDE.md
+- `components/keyer_hal/`  — GPIO / I2S / ES8311 hardware abstraction  → components/keyer_hal/CLAUDE.md
+- `components/keyer_logging/`  — RT-safe logging (RT_* macros, drop-not-block)  → components/keyer_logging/CLAUDE.md
+
+**Background consumers (Core 1)**
+- `components/keyer_text/`  — Text→CW and memory-keyer playback  → components/keyer_text/CLAUDE.md
+- `components/keyer_decoder/`  — CW decoder / morse timing classifier  → components/keyer_decoder/CLAUDE.md
+- `components/keyer_led/`  — Status LED (WS2812B via RMT)  → components/keyer_led/CLAUDE.md
+
+**User-facing interfaces (Core 1)**
+- `components/keyer_console/`  — Serial console line-editor + commands  → components/keyer_console/CLAUDE.md
+- `components/keyer_usb/`  — TinyUSB multi-CDC transport + UF2  → components/keyer_usb/CLAUDE.md
+- `components/keyer_webui/`  — HTTP server + REST/WebSocket API (backend)  → components/keyer_webui/CLAUDE.md
+- `components/keyer_webui/frontend/`  — Svelte 5 + Vite SPA, embedded into flash  → components/keyer_webui/frontend/CLAUDE.md
+
+**Networking / remote**
+- `components/keyer_cwnet/`  — Remote CW-over-network transport  → components/keyer_cwnet/CLAUDE.md
+- `components/keyer_wifi/`  — WiFi bring-up  → components/keyer_wifi/CLAUDE.md
+- `components/keyer_vpn/`  — WireGuard VPN glue  → components/keyer_vpn/CLAUDE.md
+- `components/esp_wireguard/`  — Vendored WireGuard fork (v6/mbedtls4 patched)  → components/esp_wireguard/CLAUDE.md
+- `components/provisioning/`  — Device provisioning  → components/provisioning/CLAUDE.md
+
+**App, config, tests**
+- `components/keyer_config/`  — GENERATED config (DO NOT EDIT; from parameters.yaml)  → components/keyer_config/CLAUDE.md
+- `main/`  — Entry point; rt_task (Core 0) + bg_task (Core 1)  → main/CLAUDE.md
+- `test_host/`  — Unity host tests (stream-based, no hardware)  → test_host/CLAUDE.md
+<!-- END treecode:map (auto) -->

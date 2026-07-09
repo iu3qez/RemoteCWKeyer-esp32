@@ -1,0 +1,7 @@
+{
+  "caps": {
+    "root": 240,
+    "nested": 60,
+    "hard_max": 260
+  }
+}
