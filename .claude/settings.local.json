@@ -1,4 +1,15 @@
 {
+  "extraKnownMarketplaces": {
+    "iu3qez-tools": {
+      "source": {
+        "source": "github",
+        "repo": "iu3qez/treecode"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "treecode@iu3qez-tools": true
+  },
   "permissions": {
     "allow": [
       "Bash(python3 -c \"import sys, json; text=json.loads\\(''{\"\"t\"\":'' + sys.stdin.read\\(\\).split\\(''\"\"text\"\":'',1\\)[1].rstrip\\(''}''\\) + ''}''\\)[''t'']; print\\(text\\)\")",
@@ -13,15 +24,6 @@
       "mcp__plugin_context7_context7__resolve-library-id",
       "mcp__plugin_context7_context7__query-docs",
       "Bash(git *)",
-      "mcp__plugin_serena_serena__check_onboarding_performed",
-      "mcp__plugin_serena_serena__activate_project",
-      "mcp__plugin_serena_serena__onboarding",
-      "mcp__plugin_serena_serena__list_dir",
-      "mcp__plugin_serena_serena__read_file",
-      "mcp__plugin_serena_serena__write_memory",
-      "mcp__plugin_serena_serena__list_memories",
-      "mcp__plugin_serena_serena__read_memory",
-      "mcp__plugin_serena_serena__get_current_config",
       "WebSearch",
       "Bash(gh issue:*)",
       "Bash(grep:*)",
