@@ -13,6 +13,7 @@
 #include "esp_netif.h"
 #include "esp_event.h"
 #include "nvs_flash.h"
+#include "esp_ota_ops.h"
 
 #include "keyer_core.h"
 #include "iambic.h"
@@ -233,6 +234,36 @@ void app_main(void) {
     ESP_LOGI(TAG, "Initializing WebUI...");
     webui_init();
     webui_start();
+
+    /* ===== OTA ROLLBACK CHECK ===== */
+    {
+        const esp_partition_t *running = esp_ota_get_running_partition();
+        esp_ota_img_states_t ota_state;
+        if (esp_ota_get_state_partition(running, &ota_state) == ESP_OK &&
+            ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
+
+            uint16_t timeout_s = CONFIG_GET_OTA_CONFIRM_TIMEOUT_S();
+            ESP_LOGW(TAG, "OTA pending verify — waiting %us for network", timeout_s);
+
+            bool confirmed = false;
+            for (uint16_t i = 0; i < timeout_s; i++) {
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                wifi_state_t ws = wifi_get_state();
+                if (ws == WIFI_STATE_CONNECTED || ws == WIFI_STATE_AP_MODE) {
+                    esp_ota_mark_app_valid_cancel_rollback();
+                    ESP_LOGI(TAG, "OTA confirmed — network active (%s)",
+                             ws == WIFI_STATE_CONNECTED ? "STA" : "AP");
+                    confirmed = true;
+                    break;
+                }
+            }
+
+            if (!confirmed) {
+                ESP_LOGE(TAG, "OTA not confirmed after %us — rebooting for rollback", timeout_s);
+                esp_restart();
+            }
+        }
+    }
 
     /* Initialize decoder (creates its own stream consumer) */
     decoder_init();

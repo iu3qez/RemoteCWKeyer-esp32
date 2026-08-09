@@ -7,7 +7,8 @@ import type {
   ConfigValues,
   TextKeyerStatus,
   MemorySlot,
-  VpnStatus
+  VpnStatus,
+  FirmwareStatus
 } from './types';
 
 class ApiClient {
@@ -126,6 +127,56 @@ class ApiClient {
   // VPN
   async getVpnStatus(): Promise<VpnStatus> {
     return this.fetchJson('/api/vpn/status');
+  }
+
+  // Firmware
+  async getFirmwareStatus(): Promise<FirmwareStatus> {
+    return this.fetchJson('/api/firmware/status');
+  }
+
+  async uploadFirmware(file: File, onProgress?: (pct: number) => void): Promise<void> {
+    const xhr = new XMLHttpRequest();
+    return new Promise((resolve, reject) => {
+      xhr.open('POST', `${this.baseUrl}/api/firmware/upload`);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress(Math.round(e.loaded / e.total * 100));
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          reject(new Error(`Upload failed: ${xhr.statusText}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Upload connection failed'));
+      xhr.send(file);
+    });
+  }
+
+  async downloadFirmwareFromUrl(url: string): Promise<void> {
+    await this.fetchJson('/api/firmware/url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+  }
+
+  async firmwareRollback(): Promise<void> {
+    await this.fetchJson('/api/firmware/rollback', { method: 'POST' });
+  }
+
+  async firmwareUf2Reboot(): Promise<void> {
+    await this.fetchJson('/api/firmware/uf2', { method: 'POST' });
+  }
+
+  async firmwareConfirm(): Promise<void> {
+    await this.fetchJson('/api/firmware/confirm', { method: 'POST' });
   }
 
   // WebSocket streaming
