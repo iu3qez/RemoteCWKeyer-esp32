@@ -59,6 +59,7 @@ Attenzione: tutto questo viene da lettura di sorgente, **non da osservazione sul
 - **La manipolazione a mano è esclusa** come sorgente della sequenza di prova: sotto i 32 ms il codec risolve a 1 ms, due esecuzioni manuali non danno gli stessi byte.
 - **Misurare a 293 µs non ha senso**, quindi la quantizzazione a ~10 ms del nostro turnaround al PING (dal `vTaskDelay` del bg_task) non è un problema per un numero che dimensiona un buffer.
 - **Il protocollo non definisce latenze massime**, quindi la strumentazione del PING non è un gate.
+- **Una fixture presa dal nostro codice è deterministica per costruzione** e non prova niente sulla conformità. Da qui KTD5 nel piano: `reference/` porta gli attesi, `ours/` è diagnostica, `synthetic/` prova solo il comparatore. L'harness di U3 sarà verde molto prima delle catture vere, ed è lì che il verde sintetico rischia di essere scambiato per conformità.
 
 ## Blocchi
 

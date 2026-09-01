@@ -208,6 +208,8 @@ KTD2. **Il replay entra dal livello puro, non dal socket.** I byte estratti veng
 
 KTD3. **Il verdetto è sui byte, la spiegazione è del dissector.** Il confronto pass/fail non passa mai per i campi decodificati. Cita la decisione di prodotto "Due oracoli distinti". Governa R6, R8.
 
+KTD5. **Tre categorie di fixture, tre pesi probatori diversi.** `reference/` viene dal client ufficiale ed è l'unica che può portare un valore atteso di formato. `ours/` viene dalla nostra scatola ed è diagnostica: nessun atteso può derivarne. `synthetic/` è costruita a mano e prova **il comparatore, mai il protocollo** — una fixture generata dal nostro stesso codice è tautologica, torna verde per costruzione e non dimostra nulla sulla conformità. *Perché:* l'harness di U3 sarà verde mesi prima che esista una cattura vera, ed è in quella finestra che un verde sintetico può essere scambiato per conformità — lo stesso errore dei 189 test che certificavano `0x15`. L'esito di ogni confronto dichiara da quale categoria viene la fixture che lo ha prodotto. Governa R5, R8, R10.
+
 KTD4. **La strumentazione del PING non tocca il path RT.** La misura vive su Core 1, dove il socket CWNet è già servito; nessun logging bloccante, nessuna allocazione. Governa R11.
 
 ### High-Level Technical Design
@@ -291,7 +293,7 @@ Il confronto è byte a byte fra due array. Alla prima divergenza l'harness ripor
 
 L'harness si sviluppa contro la fixture sintetica: non aspetta la sessione zero.
 
-**Test Scenarios.**
+**Test Scenarios.** Tutti contro fixture sintetiche, che provano il comparatore e non la conformità (KTD5).
 - Due array identici: nessuna divergenza.
 - Un byte diverso nel command byte del terzo frame: riporta frame 3, campo comando, offset corretto.
 - Un byte diverso dentro il payload: riporta frame e offset nel payload.
@@ -381,6 +383,6 @@ Per unità:
 
 - **U1** — nessun campo `cwnet.*` su una cattura non-CWNet; i frame su 7355 decodificano come prima.
 - **U2** — lo script produce da un pcap di prova un header che compila sotto i flag del progetto; il README dichiara la regola su `ours/`.
-- **U3** — i sei scenari passano in entrambe le varianti; l'harness riporta frame e campo, non solo "diverso".
+- **U3** — i sei scenari passano in entrambe le varianti; l'harness riporta frame e campo, non solo "diverso"; ogni esito dichiara la categoria della fixture, così un verde sintetico non è leggibile come conformità.
 - **U4** — la misura è esposta, quantizzata a ~10 ms e documentata come tale; nessuna soglia, nessun FAULT, niente sul path RT.
 - **U5, U6** — bloccate.
