@@ -73,10 +73,11 @@ void test_stream_overrun_detection(void) {
     /* Initially no overrun */
     TEST_ASSERT_FALSE(stream_is_overrun(&s_stream, 0));
 
-    /* Push samples */
+    /* Push samples. stream_push() compresses identical samples into idle
+     * ticks, so use the raw writer: this test is about lag arithmetic. */
     for (size_t i = 0; i < 10; i++) {
         stream_sample_t sample = STREAM_SAMPLE_EMPTY;
-        stream_push(&s_stream, sample);
+        stream_push_raw(&s_stream, sample);
     }
 
     /* Consumer at position 0 */

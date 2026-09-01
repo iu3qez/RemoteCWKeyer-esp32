@@ -121,7 +121,7 @@ cwnet_parse_result_t cwnet_frame_parse(cwnet_frame_parser_t *parser,
             case CWNET_PARSER_STATE_LENGTH_2: {
                 /* Long block - second length byte (little-endian) */
                 uint16_t len_high = (uint16_t)data[pos];
-                parser->payload_len = parser->length_byte_1 | (len_high << 8);
+                parser->payload_len = (uint16_t)(parser->length_byte_1 | (len_high << 8));
                 pos++;
                 parser->payload_received = 0;
 
