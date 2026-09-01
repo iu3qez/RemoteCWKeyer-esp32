@@ -6,3 +6,6 @@
 *.elf binary
 *.png binary
 *.jpg binary
+# Capture fixtures are oracles: never let eol normalisation touch them
+*.pcap binary
+*.pcapng binary
