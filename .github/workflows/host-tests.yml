@@ -1,0 +1,43 @@
+name: Host tests
+
+# Track 1 of STRATEGY.md ("Banco di prova"): every push must keep the
+# host test suite green, with and without sanitizers.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: plain
+            cflags: ""
+          - name: asan-ubsan
+            cflags: "-fsanitize=address,undefined -fno-omit-frame-pointer"
+    name: host-tests (${{ matrix.name }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends cmake ninja-build gcc
+
+      - name: Configure
+        working-directory: test_host
+        run: cmake -B build -G Ninja -DCMAKE_C_FLAGS="${{ matrix.cflags }}"
+
+      - name: Build
+        working-directory: test_host
+        run: cmake --build build
+
+      - name: Run
+        working-directory: test_host
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          ASAN_OPTIONS: detect_leaks=1
+        run: ./build/test_runner

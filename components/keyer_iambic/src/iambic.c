@@ -41,8 +41,10 @@ void iambic_init(iambic_processor_t *proc, const iambic_config_t *config) {
     proc->last_element = ELEMENT_DAH;  /* Start with DAH so first DIT press works */
     proc->dit_pressed = false;
     proc->dah_pressed = false;
-    proc->dit_release_time_us = 0;
-    proc->dah_release_time_us = 0;
+    /* No release has happened yet: park the timestamps one blanking period
+     * in the past so the release debounce does not swallow a press at t=0. */
+    proc->dit_release_time_us = -IAMBIC_DEBOUNCE_RELEASE_US;
+    proc->dah_release_time_us = -IAMBIC_DEBOUNCE_RELEASE_US;
     proc->dit_press_start_us = 0;
     proc->dah_press_start_us = 0;
     proc->dit_memory = false;
@@ -103,8 +105,8 @@ void iambic_reset(iambic_processor_t *proc) {
     proc->squeeze_seen = false;
     proc->squeeze_latched = false;
     proc->key_down = false;
-    proc->dit_release_time_us = 0;
-    proc->dah_release_time_us = 0;
+    proc->dit_release_time_us = -IAMBIC_DEBOUNCE_RELEASE_US;
+    proc->dah_release_time_us = -IAMBIC_DEBOUNCE_RELEASE_US;
     proc->dit_press_start_us = 0;
     proc->dah_press_start_us = 0;
 }
@@ -240,8 +242,10 @@ static void update_gpio(iambic_processor_t *proc, gpio_state_t gpio, int64_t now
             if (!current_squeeze) {
                 /* Squeeze released - check if before window */
                 int64_t elapsed = now_us - proc->element_start_us;
-                uint8_t progress_pct = (proc->element_duration_us > 0)
-                    ? (uint8_t)((elapsed * 100) / proc->element_duration_us)
+                /* Keep the percentage in int64: a late release can exceed
+                 * 255% and must not wrap back below the window start. */
+                int64_t progress_pct = (proc->element_duration_us > 0)
+                    ? (elapsed * 100) / proc->element_duration_us
                     : 0;
 
                 if (progress_pct < proc->config.mem_window_start_pct) {

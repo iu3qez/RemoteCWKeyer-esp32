@@ -1,4 +1,17 @@
-# Code Quality Notes — 2026-05-07
+# Code Quality Notes — 2026-09-01
+
+## Recent Fixes (2026-09-01, branch claude/remote-environment-setup-vdjx7v)
+- Host tests: 8 failures pre-esistenti risolti, suite 189/189 verde anche con ASan/UBSan.
+  - `iambic.c`: release debounce si autoattivava a t=0 (`now - release_time(0) < 5ms`); i timestamp di rilascio partono ora a `-IAMBIC_DEBOUNCE_RELEASE_US`.
+  - `iambic.c`: `progress_pct` calcolato in int64, non più troncato a uint8 (un rilascio oltre 255% wrappava sotto la finestra).
+  - `cwnet_frame.c`: cast esplicito su `payload_len` (`-Wconversion` sotto UBSan).
+  - `test_stream.c`: il test di lag usa `stream_push_raw()` (era scritto prima della silence compression).
+  - `test_fault.c`: `fault_clear()` non azzera `count` — è un contatore lifetime (`fault.h`), il test si aspettava il reset.
+- CI: `.github/workflows/host-tests.yml` (plain + asan-ubsan). Prima non esisteva alcuna CI di build/test.
+
+## Da sistemare
+- `.devcontainer/Dockerfile`: `ARG DOCKER_TAG=v5.5.1` e path `idf5.5_py3.12_env` hardcoded — non aggiornati dopo la migrazione a IDF v6. Da verificare su un'immagine `espressif/idf:v6.x` prima di cambiare.
+
 
 ## Cleanup Items
 

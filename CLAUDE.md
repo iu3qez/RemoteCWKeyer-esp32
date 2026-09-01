@@ -57,8 +57,11 @@ idf.py flash monitor
 
 Configuration is generated from [parameters.yaml](parameters.yaml). **Never edit files in `keyer_config/` directly.**
 
+`idf.py build` runs the generator automatically (see `keyer_config/CMakeLists.txt`).
+To run it by hand, target the `include/` directory — that is where CMake expects the headers:
+
 ```bash
-python scripts/gen_config_c.py parameters.yaml components/keyer_config
+python scripts/gen_config_c.py parameters.yaml components/keyer_config/include
 ```
 
 ## Testing
@@ -75,6 +78,15 @@ cmake --build build && ./build/test_runner
 - Components tested by providing streams (fake, recorded, synthesized)
 - Tests run on host without hardware
 - **If you need a mock, the design is wrong** — the stream is the only interface
+- CI (`.github/workflows/host-tests.yml`) runs the suite plain and with ASan/UBSan on every push
+
+### Definition of done
+
+From [STRATEGY.md](STRATEGY.md): behaviour that matters is proven against a real reference, not made "similar".
+
+- Host tests green in both CI variants. Never skip, disable or quarantine a failing test to get there.
+- A change touching CWNet (`keyer_cwnet/`) or the iambic FSM (`keyer_iambic/`) ships with a host test that pins the behaviour against the reference (DL4YHF client/server traces, K1EL K8 source).
+- Nothing blocking on the RT path: no `ESP_LOGx`/`printf` on Core 0 — the serial log blocks real time.
 
 ---
 
@@ -146,6 +158,7 @@ Update these files as features are completed or new issues are found. Keep MEMOR
 
 ## Detailed References
 
+- **[STRATEGY.md](STRATEGY.md)** — Purpose, positioning, boundaries, metrics and tracks; what work is on-strategy
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — Immutable design principles, stream semantics, fault model
 - **[CODING_STYLE.md](CODING_STYLE.md)** — Compiler flags, PVS-Studio, C patterns, error handling
 - **[parameters.yaml](parameters.yaml)** — Configuration source of truth
