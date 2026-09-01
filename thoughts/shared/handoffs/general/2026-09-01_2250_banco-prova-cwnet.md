@@ -5,7 +5,7 @@ title: "Ripresa del progetto: strategia, CI, e il banco di prova CWNet"
 summary: "Sessione che ha ridato una strategia al progetto, reso verde la suite host trovando due bug veri, creato la CI da zero, e pianificato il banco di prova CWNet fino a due issue bloccanti."
 keywords: ["cwnet", "banco-di-prova", "strategia", "ci", "dl4yhf", "issue-bloccanti"]
 cwd: "/home/user/RemoteCWKeyer-esp32"
-resume_focus: "Sbloccare #7 con un brainstorming dedicato, oppure partire con U1-U4 del piano che non dipendono da nessuna issue"
+resume_focus: "Riprendere il peso probatorio delle fixture (KTD5) - l'utente lo ha marcato molto importante a fine sessione - poi #7 o U1-U4"
 repository: "iu3qez/RemoteCWKeyer-esp32"
 repo_root_sha: "3525bf3ca777b861fb4448911a569e6d82b541af"
 branch: "claude/remote-environment-setup-vdjx7v"
@@ -99,7 +99,9 @@ R13 e R14 nel piano (passaggio del TX a `MORSE 0x10`, filtro peak-hold) sono lav
 
 ## Come continuare
 
-Due strade, non alternative fra loro ma con ordini diversi:
+**Da riprendere per primo, per volontà esplicita dell'utente:** il peso probatorio delle fixture, KTD5 nel piano. Chiudendo la sessione ha detto "domani ci torniamo su questo punto, molto importante". Il nocciolo: una fixture generata dal nostro codice torna verde per costruzione, e l'harness di U3 sarà verde molto prima che esista una cattura vera. La domanda aperta non è se la distinzione serva — è stabilita — ma quanto in là vada portata: come l'esito dichiara la categoria, se una fixture sintetica debba poter fallire la build quando qualcuno la usa come atteso, e se la stessa logica valga per il confronto di determinismo, dove entrambi i capi vengono da `ours/`.
+
+Poi, due strade, non alternative fra loro ma con ordini diversi:
 
 1. **Sbloccare #7 con il brainstorming dedicato**, che l'utente ha già detto di volere separato. È la strada che rende utile tutto il resto, perché senza non si può fare la sessione zero.
 2. **Partire da U1-U4**, che non dipendono da nessuna issue e costruiscono l'infrastruttura che consumerà le fixture quando arriveranno. U3 si sviluppa contro una fixture sintetica proprio per non aspettare.
