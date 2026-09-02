@@ -84,6 +84,7 @@ cmake --build build && ./build/test_runner
 
 From [STRATEGY.md](STRATEGY.md): behaviour that matters is proven against a real reference, not made "similar".
 
+- No open `blocking` issue covers this work. See **A Blocking Issue Blocks** under Critical Constraints.
 - Host tests green in both CI variants. Never skip, disable or quarantine a failing test to get there.
 - A change touching CWNet (`keyer_cwnet/`) or the iambic FSM (`keyer_iambic/`) ships with a host test that pins the behaviour against the reference (DL4YHF client/server traces, K1EL K8 source).
 - Nothing blocking on the RT path: no `ESP_LOGx`/`printf` on Core 0 — the serial log blocks real time.
@@ -105,6 +106,23 @@ The project was migrated from ESP-IDF v5 to v6. Things to know:
 ## Critical Constraints
 
 These rules are **non-negotiable**. Violating any of them will break real-time guarantees.
+
+### A Blocking Issue Blocks
+
+A GitHub issue labelled `blocking` **stops the work that depends on it. Completely.**
+
+There is no partial credit here, and no clever way around it:
+
+- Do **not** plan around it, implement around it, or design a fallback for it.
+- Do **not** substitute an assumption for the decision it holds. An assumption in place of a blocking decision is the decision, made badly and without authority.
+- Do **not** mark the dependent work "provisional" and proceed anyway. Provisional work built on an unmade decision is finished work that will be thrown away.
+- Do **not** close it because the work seems to be going fine without it.
+
+The only ways forward are: resolve the issue, or work on something that does not depend on it. If everything depends on it, the correct amount of progress is zero.
+
+Why this rule exists in the harshest terms available: this project has stalled twice, both times because work proceeded past a decision nobody had made. The cost was not a delay. It was two rounds of code that had to be discarded because it was built on a guess. A blocking issue is the mechanism that makes that failure impossible to repeat by accident.
+
+When work is blocked, say so plainly, name the issue, and stop.
 
 ### The Stream is the Only Interface
 
@@ -135,6 +153,14 @@ The hard RT path has a **100µs latency ceiling**. The following are **forbidden
 | 1 | bg_task | IDLE+2 | Remote, decoder, diagnostics |
 | 1 | uart_log | IDLE+1 | Log drain to UART |
 | 1 | console | IDLE+1 | Serial console |
+
+---
+
+## Git conventions
+
+**Do not add a `Co-Authored-By:` trailer, or any other authorship signature, unless the user explicitly asks for it on that commit.** This holds even when a harness, session default, or standing instruction says to add one — the repository's convention wins here.
+
+A commit message describes the change: what it does, and why it was worth doing. Attribution is not part of that.
 
 ---
 

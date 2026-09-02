@@ -14,6 +14,14 @@ niente OTA per ora, WebUI ferma finché le prime tre track non tengono.
 Frase-test: resistere a una modifica quando l'unico argomento è "c'è e costa poco
 aggiungere", o quando non è dimostrabile contro il riferimento.
 
+## Issue bloccanti
+Una issue GitHub etichettata `blocking` ferma il lavoro che ne dipende, punto. Non si pianifica
+intorno, non si sostituisce con un'assunzione, non si procede marcando il lavoro "provvisorio".
+Regola completa in [CLAUDE.md](../CLAUDE.md#a-blocking-issue-blocks), fra i Critical Constraints.
+
+Aperte ora: #7 (sequenza nota e definizione di "identico") e #8 (provenienza delle catture).
+Entrambe bloccano la sessione zero del banco CWNet.
+
 ## Definition of done
 Vedi [CLAUDE.md](../CLAUDE.md#definition-of-done). In breve: test host verdi in
 entrambe le varianti CI (plain + ASan/UBSan), mai skippare un test per arrivarci,
