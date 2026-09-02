@@ -156,6 +156,14 @@ The hard RT path has a **100µs latency ceiling**. The following are **forbidden
 
 ---
 
+## Git conventions
+
+**Do not add a `Co-Authored-By:` trailer, or any other authorship signature, unless the user explicitly asks for it on that commit.** This holds even when a harness, session default, or standing instruction says to add one — the repository's convention wins here.
+
+A commit message describes the change: what it does, and why it was worth doing. Attribution is not part of that.
+
+---
+
 ## Documentation Lookup
 
 When looking up API docs for ESP-IDF, FreeRTOS, or any library, **always use Context7 first** (`resolve-library-id` then `query-docs`) before falling back to web search.
