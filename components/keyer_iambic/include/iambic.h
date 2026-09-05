@@ -194,6 +194,14 @@ typedef struct {
     bool squeeze_seen;         /**< Squeeze detected during current element */
     bool squeeze_latched;      /**< Latched squeeze state (for LATCH_ON mode) */
 
+    /* Unit-grid sampling (SQUEEZE_MODE_SAMPLED only).
+     * The grid is phase-locked to the element boundary and spans mark AND the
+     * trailing space, so it cannot use element_start_us, which tick_sending()
+     * re-anchors when the gap begins. */
+    int64_t elem_anchor_us;    /**< Start of the current element, mark through space */
+    iambic_element_t elem_type; /**< Type of the element in progress */
+    uint8_t samples_taken;     /**< Grid instants already sampled this element */
+
     /* Output state */
     bool key_down;             /**< Current key output state */
 } iambic_processor_t;

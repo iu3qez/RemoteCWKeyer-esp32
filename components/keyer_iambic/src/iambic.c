@@ -52,6 +52,9 @@ void iambic_init(iambic_processor_t *proc, const iambic_config_t *config) {
     proc->squeeze_seen = false;
     proc->squeeze_latched = false;
     proc->key_down = false;
+    proc->elem_anchor_us = 0;
+    proc->elem_type = ELEMENT_DIT;
+    proc->samples_taken = 0;
 }
 
 void iambic_set_config(iambic_processor_t *proc, const iambic_config_t *config) {
@@ -109,6 +112,9 @@ void iambic_reset(iambic_processor_t *proc) {
     proc->dah_release_time_us = -IAMBIC_DEBOUNCE_RELEASE_US;
     proc->dit_press_start_us = 0;
     proc->dah_press_start_us = 0;
+    proc->elem_anchor_us = 0;
+    proc->elem_type = ELEMENT_DIT;
+    proc->samples_taken = 0;
 }
 
 /* ============================================================================
@@ -145,6 +151,62 @@ static bool is_in_memory_window(const iambic_processor_t *proc, int64_t now_us) 
     return iambic_in_memory_window(progress_pct,
                                     proc->config.mem_window_start_pct,
                                     proc->config.mem_window_end_pct);
+}
+
+/**
+ * @brief Sample the paddle level on the one-unit grid (SQUEEZE_MODE_SAMPLED)
+ *
+ * The K1EL K8 reads the paddle level once per dit-unit and at no other instant.
+ * The grid is phase-locked to the start of the element and runs through the
+ * trailing space: a dit element spans 2 units and is sampled at 1u and 2u, a
+ * dah element spans 4 units and is sampled at 1u, 2u, 3u, 4u.
+ *
+ * Only the OPPOSITE element type is armed. The K8 clears the same-type latch
+ * after the final sample (`morse8.asm:374` and `:409`), so a same-type press
+ * never survives its own element; a held paddle continues through the live
+ * state read at the element boundary instead, which is Priority 3 of
+ * decide_next_element(). See issue #32.
+ *
+ * We poll at 1 ms (main/rt_task.c:176), so instant k*u is resolved at the first
+ * tick at or after it. That quantisation is the tolerance this rule carries.
+ */
+static void sample_on_unit_grid(iambic_processor_t *proc, int64_t now_us) {
+    if (proc->state != IAMBIC_STATE_SEND_DIT &&
+        proc->state != IAMBIC_STATE_SEND_DAH &&
+        proc->state != IAMBIC_STATE_GAP) {
+        return;  /* No element in progress: nothing is phase-locked. */
+    }
+
+    const int64_t unit_us = iambic_dit_duration_us(&proc->config);
+    if (unit_us <= 0) {
+        return;
+    }
+
+    /* Total grid instants in this element, mark plus trailing space. */
+    const uint8_t total_samples = (proc->elem_type == ELEMENT_DAH) ? 4u : 2u;
+
+    int64_t elapsed = now_us - proc->elem_anchor_us;
+    if (elapsed < 0) {
+        elapsed = 0;
+    }
+    int64_t crossed = elapsed / unit_us;
+    if (crossed > (int64_t)total_samples) {
+        crossed = (int64_t)total_samples;
+    }
+
+    while ((int64_t)proc->samples_taken < crossed) {
+        proc->samples_taken++;
+
+        /* Level at this instant, not an edge somewhere inside a span. */
+        if (proc->elem_type != ELEMENT_DIT && proc->dit_pressed &&
+            iambic_dit_memory_enabled(proc->config.memory_mode)) {
+            proc->dit_memory = true;
+        }
+        if (proc->elem_type != ELEMENT_DAH && proc->dah_pressed &&
+            iambic_dah_memory_enabled(proc->config.memory_mode)) {
+            proc->dah_memory = true;
+        }
+    }
 }
 
 static void update_gpio(iambic_processor_t *proc, gpio_state_t gpio, int64_t now_us) {
@@ -202,6 +264,13 @@ static void update_gpio(iambic_processor_t *proc, gpio_state_t gpio, int64_t now
     /* Arm memory ONLY during element transmission (not gap, not idle)
      * Memory window prevents arming at beginning (debounce) and end (too late).
      * During gap, we rely on Priority 3 (current paddle state) for squeeze alternation. */
+    if (proc->config.squeeze_mode == SQUEEZE_MODE_SAMPLED) {
+        /* The K8 rule replaces the window test with a grid-crossing test, and
+         * runs through the trailing space as well as the mark. */
+        sample_on_unit_grid(proc, now_us);
+        return;
+    }
+
     if (proc->state == IAMBIC_STATE_SEND_DIT || proc->state == IAMBIC_STATE_SEND_DAH) {
         bool in_window = is_in_memory_window(proc, now_us);
         bool can_arm_dit = (proc->state != IAMBIC_STATE_SEND_DIT);
@@ -362,4 +431,11 @@ static void start_element(iambic_processor_t *proc, iambic_element_t element, in
     proc->element_start_us = now_us;
     proc->element_duration_us = duration;
     proc->element_end_us = now_us + duration;
+
+    /* Anchor the unit grid to the element boundary. Unlike element_start_us,
+     * this survives the mark-to-gap transition, because the K8 keeps sampling
+     * through the trailing space. */
+    proc->elem_anchor_us = now_us;
+    proc->elem_type = element;
+    proc->samples_taken = 0;
 }
