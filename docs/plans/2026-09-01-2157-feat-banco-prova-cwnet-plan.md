@@ -165,6 +165,20 @@ Le sette ipotesi sotto vengono dalla lettura del sorgente pubblicato dall'autore
 | H6 | Il server senza radio rimanda indietro il keying ai client connessi | la presenza di frame di keying in ingresso dopo aver manipolato | A3, R7, F1, F3 | **portante**: senza relay il loop non si chiude e R7 perde il suo banco. Il ripiego va deciso nella sessione stessa: un secondo capo (client ufficiale in ascolto sullo stesso server) o un server nostro minimo che rimandi indietro |
 | H7 | Il nostro tempo di risposta al PING entra nella latenza calcolata dall'altro capo | il confronto fra `t2-t0` col client ufficiale e con la scatola | R11 | R11 resta strumentazione utile, senza il nesso con l'altro capo |
 
+**Esiti della sessione zero parziale (2026-09-05).** Cattura reale del client ufficiale DL4YHF (utente con permesso TRANSMIT) verso un server DL4YHF senza radio, tramite un tap TCP; più lettura del sorgente pubblicato. Metodo e strumenti in [docs/solutions/architecture-patterns/reference-source-as-differential-oracle.md](../solutions/architecture-patterns/reference-source-as-differential-oracle.md).
+
+| # | Esito | Evidenza |
+|---|---|---|
+| H1 | **confermata** | keying su `MORSE 0x10` (wire `0x50`); `0x14`/`0x15` sono CI-V e spettro nel sorgente e non compaiono nel keying |
+| H2 | **confermata** | payload stream a 7 bit come da ipotesi; il nostro `cwnet_timestamp.c` è identico byte per byte a `CwStreamEnc.c` su tutto il dominio (confronto esaustivo, UBSan pulito) |
+| H3 | **confermata, precisata** | secondo key-up di fine over presente; la soglia è **14 dot-time**, non «10 dot o 500 ms» — il commento del sorgente è errato, il codice (`KeyerThread.c`) e i byte concordano |
+| H4 | **confermata** | PING = byte di fase (00 REQUEST, 01 RESPONSE_1, 02 RESPONSE_2) + tre int32 LE; `t2-t0` sull'orologio dell'iniziatore |
+| H5 | **confermata** | il valore mostrato è un peak-hold asimmetrico con un difetto di divisione intera che lo pianta a `istantaneo + <10 ms`; osservato nel log GUI (`pk` fermo a 7 ms per 90 s con istantaneo 1–5) e replicato dai byte |
+| H6 | **smentita** | il server **non** rimanda indietro il keying: `MorseTxFifo` si riempie solo se `iFunctionality == CWNET_FUNC_CLIENT` (`KeyerThread.c`), e un'istanza server non emette mai `CWNET_CMD_MORSE`. Il loop di determinismo richiede un server-echo nostro (ripiego già previsto). |
+| H7 | **non osservabile in questa sessione** | richiede la nostra scatola sul filo; il client ufficiale da solo non lo mostra |
+
+Scoperte non previste: il PTT viaggia come stringa rigctld (`set_ptt 1/0`) in frame `0x06`, non come comando dedicato; il client **impacchetta** più eventi per frame quando ne trova in coda (a ≤40 WPM se ne vede uno solo perché il poll è ~20 ms), quindi il ricevitore deve accettare N eventi per frame; i permessi sono una bitmask (TALK 1, TRANSMIT 2, CTRL_RIG 4, ADMIN 8); l'app scrive `debug_run_log.txt` se lanciata con `/debug` (contrariamente all'assunzione «non scrive log su disco»).
+
 Altre dipendenze:
 
 - Serve una macchina Windows con il Remote CW Keyer per la sessione zero e per ogni collaudo di accettazione. Il giro quotidiano non ne ha bisogno.
