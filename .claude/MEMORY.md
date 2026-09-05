@@ -19,8 +19,9 @@ Una issue GitHub etichettata `blocking` ferma il lavoro che ne dipende, punto. N
 intorno, non si sostituisce con un'assunzione, non si procede marcando il lavoro "provvisorio".
 Regola completa in [CLAUDE.md](../CLAUDE.md#a-blocking-issue-blocks), fra i Critical Constraints.
 
-Aperte ora: #7 (sequenza nota e definizione di "identico") e #8 (provenienza delle catture).
-Entrambe bloccano la sessione zero del banco CWNet.
+Nessuna `blocking` aperta dal 2026-09-06: #7 (sequenza nota, uguaglianza byte-per-byte,
+tolleranza zero) e #8 (manifesto di sessione con tutti i campi) sono chiuse con decisione
+del maintainer. U5 e U6 del banco CWNet sono sbloccate.
 
 ## Definition of done
 Vedi [CLAUDE.md](../CLAUDE.md#definition-of-done). In breve: test host verdi in

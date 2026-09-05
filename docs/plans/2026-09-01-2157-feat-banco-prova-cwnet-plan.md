@@ -19,7 +19,7 @@ execution: code
 
 **Means.** Il pcap è l'archivio, non la fixture: il flusso TCP estratto una volta sulla macchina dell'operatore diventa un header C di byte, che la suite host legge senza I/O, senza parser pcap e senza dipendenze nuove in CI (KTD1).
 
-**Blocchi aperti.** Due issue bloccanti: [#7](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/7) (contenuto della sequenza nota, definizione di "identico", tolleranza) e [#8](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/8) (provenienza da registrare accanto a una cattura). Bloccano U5 e U6. Il piano resta `requirements-only` finché sono aperte: è la regola in [CLAUDE.md](../../CLAUDE.md#a-blocking-issue-blocks) applicata a sé stesso.
+**Blocchi risolti (2026-09-06).** Le due issue bloccanti sono chiuse con decisione del maintainer: [#7](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/7) — sorgente `text_keyer_send()`, uguaglianza byte-per-byte sul payload MORSE con tolleranza zero, sequenza a due WPM che attraversa le tre fasce del codec; [#8](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/8) — un `manifest.yaml` per sessione di cattura, con tutti i campi. **U5 e U6 non sono più bloccate.** Il piano resta `requirements-only` per un motivo diverso: la doc-review delle sezioni di implementazione non è mai stata fatta ([#19](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/19)), e la sessione del 2026-09-05 ha cambiato il terreno sotto quelle sezioni — H6 smentita, H3 a 14 dot-time, frame MORSE multi-evento reali: è la regola in [CLAUDE.md](../../CLAUDE.md#a-blocking-issue-blocks) applicata a sé stesso.
 
 **Sbloccato e pronto a partire adesso:** U1, U2, U3, U4. Nessuna di queste dipende dalle due issue.
 
@@ -341,19 +341,19 @@ Non è un gate: nessuna soglia, nessun FAULT. Il protocollo non definisce latenz
 
 **Verification.** Test host in `test_cwnet_ping.c` o in un nuovo gruppo, usando `esp_timer_set_time()` come già fa la suite. Suite verde in entrambe le varianti.
 
-### U5. Sessione zero — BLOCCATA
+### U5. Sessione zero — SBLOCCATA
 
-**Bloccata da [#7](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/7) e [#8](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/8).** Non si esegue, non si pianifica intorno, non si sostituisce con assunzioni.
+**Sbloccata il 2026-09-06**, chiuse [#7](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/7) e [#8](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/8). Parte della sessione è già stata eseguita il 2026-09-05 in forma parziale: H1-H6 hanno un esito, le catture esistono ma sono machine-local. Ciò che resta è rieseguirla con la sequenza nota decisa in #7 e committare le fixture col manifesto di #8.
 
 **Goal.** Le sette ipotesi H1-H7 smettono di essere ipotesi, e il repo guadagna le prime fixture reali.
 
 **Requirements.** R1, R2, R3, R4.
 
-**Cosa serve prima.** Il contenuto della sequenza e la definizione di "identico" da #7; cosa si registra accanto alla cattura da #8.
+**Cosa serve prima.** Nulla: entrambe le decisioni sono prese. La sequenza e la definizione di "identico" sono nel commento di chiusura di #7; il manifesto è `tools/cwnet/manifest.template.yaml`.
 
-### U6. I due confronti reali — BLOCCATA
+### U6. I due confronti reali — SBLOCCATA, dipende da U5
 
-**Bloccata da U5 e da [#7](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/7)** per la tolleranza.
+**Non più bloccata da [#7](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/7)**: la tolleranza è decisa — zero, byte-per-byte sul payload MORSE, PTT escluso. Resta la dipendenza da U5, che produce le fixture. Il banco per il determinismo va costruito ([#14](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/14)): H6 è smentita, il server di riferimento non rimanda mai il keying.
 
 **Goal.** Il banco dà una risposta binaria sulla conformità di formato e sul determinismo.
 
@@ -388,7 +388,7 @@ Cancelli di qualità:
 
 Globale:
 
-- Nessuna issue `blocking` aperta copre il lavoro dichiarato fatto. U5 e U6 non sono dichiarabili fatte finché #7 e #8 sono aperte.
+- Nessuna issue `blocking` aperta copre il lavoro dichiarato fatto. #7 e #8 sono chiuse dal 2026-09-06; non esistono altre `blocking` su questo piano.
 - Il Verification Contract passa per intero.
 - Nessun codice di tentativi abbandonati resta nel diff: approcci che non hanno funzionato si rimuovono, non si commentano.
 - La documentazione tocca solo ciò che è cambiato davvero.
