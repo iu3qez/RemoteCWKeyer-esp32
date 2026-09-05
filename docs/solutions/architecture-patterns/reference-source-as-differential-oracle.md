@@ -78,4 +78,4 @@ client CWNet (VM) --> tap TCP (Mac, 192.168.179.1:7355) --> server CWNet (VM)
                               sess_N_server_to_client.bin
 ```
 
-Gli strumenti (`shim/yhf_type.h`, `difftest`, `cwnet_dump`, `pcap_to_stream.py`, `cwnet_tap.py`) sono l'unità U2 del piano banco-prova-cwnet, sbloccata, e vanno in `tools/cwnet/`. Le catture prodotte **non** si committano finché la issue #8 (provenienza) è aperta.
+Gli strumenti (`shim/yhf_type.h`, `difftest`, `cwnet_dump`, `pcap_to_stream.py`, `cwnet_tap.py`) sono l'unità U2 del piano banco-prova-cwnet, sbloccata, e vanno in `tools/cwnet/`. Le catture prodotte si committano accompagnate da un `manifest.yaml` per sessione, da `tools/cwnet/manifest.template.yaml` — decisione di #8, chiusa il 2026-09-06. Una cattura senza manifesto non è una prova.
