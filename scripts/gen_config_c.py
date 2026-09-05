@@ -596,7 +596,7 @@ int config_save_to_nvs(void);
 def generate_config_nvs_c(params: List[Dict], families: List[Dict], output_dir: Path):
     """Generate config_nvs.c - NVS persistence implementation"""
 
-    src_dir = output_dir / "src"
+    src_dir = output_dir.parent / "src"
     src_dir.mkdir(parents=True, exist_ok=True)
 
     code = """/* Auto-generated from parameters.yaml - DO NOT EDIT MANUALLY */
