@@ -41,7 +41,7 @@ ESP32-based CW (Morse code) keyer with a pure C implementation using ESP-IDF v6.
 
 ```bash
 # ESP-IDF environment
-source /home/sf/esp/esp-idf/export.sh
+source "$IDF_PATH/export.sh"
 
 # Frontend deps (first time only)
 cd components/keyer_webui/frontend && npm install && cd -
@@ -123,6 +123,25 @@ The only ways forward are: resolve the issue, or work on something that does not
 Why this rule exists in the harshest terms available: this project has stalled twice, both times because work proceeded past a decision nobody had made. The cost was not a delay. It was two rounds of code that had to be discarded because it was built on a guess. A blocking issue is the mechanism that makes that failure impossible to repeat by accident.
 
 When work is blocked, say so plainly, name the issue, and stop.
+
+### Work That Needs Deciding Becomes an Issue
+
+Real work — work someone has to **choose** to do — goes in a GitHub issue, in English, when it is found. It does not go only into a notes file, a plan's prose, or a session handoff: those are read by whoever is already inside the work, while an issue is read by whoever is deciding what to do next.
+
+A debt earns an issue when at least one is true:
+
+- It needs a **decision** before it can be done, or the fix commits us to something.
+- It is **big enough to schedule** — it will not happen inside whatever you are doing now.
+- It **cannot be validated here** (needs hardware, a Windows box, a real image build).
+- Leaving it costs something that compounds: wrong behaviour, wrong expectations, work built on a guess.
+
+Then: one issue per problem, say what is wrong and what would make it right, and if it is blocked on a decision label it `blocking` — **A Blocking Issue Blocks** applies from that moment.
+
+**Everything lighter, just fix it.** A stale path, a wrong version, a rotten README line, a typo in a doc — anything you can correct *correctly* on the spot, where the fix is obvious and needs nobody's opinion. Filing those is QRM: it buries the issues that carry a real decision under a list nobody wants to read. If you cannot fix it correctly on the spot because you would be guessing, that is precisely the signal it needed an issue.
+
+When a light debt cannot be fixed right now — wrong moment, unrelated to what you are doing — it goes as one line under **Da sistemare** in [.claude/code-quality.md](.claude/code-quality.md), never on the tracker. A session handoff carries only the subset the next session actually needs; it is not the backlog either.
+
+That file also keeps *context* — what was tried, what was learnt. Context and light debt, not the work queue.
 
 ### The Stream is the Only Interface
 
