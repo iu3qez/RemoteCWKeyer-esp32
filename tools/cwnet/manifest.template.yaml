@@ -1,0 +1,50 @@
+# manifest.yaml — provenance for one CWNet capture session.
+#
+# Copy this file to manifest.yaml next to the session's capture files
+# (e.g. sess1_1_client_to_server.bin, sess1_1_server_to_client.bin) and
+# fill in every field. A capture without a manifest is not evidence.
+
+reference:
+  # DL4YHF Remote_CW_Keyer source archive used as the golden reference.
+  # No build version string is published — for this archive the operative
+  # version is the source zip's sha256, as recorded in README.md ("archivio
+  # verificato: sha256 d960d6b9...").
+  version: null
+  build_date: null    # date embedded in the archive/sources, e.g. 2025-10-20
+  source_url: null    # where it was fetched from, e.g. the qsl.net URL in README.md
+
+host:
+  os: null            # OS of the machine running the DL4YHF reference server
+  server_relay_mode: null   # relay mode the server was configured with
+  # Bitmask of the *connected user's* permissions (not a global server
+  # setting): TALK 1, TRANSMIT 2, CTRL_RIG 4, ADMIN 8 (see
+  # tools/wireshark/README.md). The zero session used a TRANSMIT user.
+  server_permissions: null
+  server_port: null         # TCP port the server was listening on
+
+keying:
+  # One manifest covers a single rendition at a single WPM. #7's reference
+  # sequence is sent at two WPM, so a two-WPM session needs two manifests.
+  wpm: null
+  # Deterministic source per #7: text_keyer_send() from keyer_text. Hand
+  # keying is excluded — below 32 ms the codec resolves to 1 ms and two
+  # manual runs never produce the same bytes.
+  sequence_source: null
+  sequence: null          # the actual sequence keyed during the session
+
+diagnostics:
+  flags: []          # diagnostic flags active in the reference during the session, e.g. /debug
+
+capture:
+  end_captured: null # free prose identifying the captured instance/machine,
+                      # e.g. "DL4YHF client in the Windows VM" (zero session)
+  role: null         # client | server
+  tool: null         # e.g. tools/cwnet/cwnet_tap.py
+  file_naming: null  # naming scheme used, e.g. sessN_M_client_to_server.bin
+
+ours:
+  tree_sha: null        # git rev-parse HEAD at capture time
+  cwnet_tools_sha: null # git rev-parse HEAD:tools/cwnet at capture time
+
+runbook:
+  section: null # pointer to the doc that reproduces this setup, as document#section
