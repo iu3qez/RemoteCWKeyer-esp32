@@ -60,5 +60,8 @@ python3 pcap_to_stream.py cattura.pcapng --port 7355 --out sess
 
 ## Fixture
 
-Le catture prodotte **non** si committano finché la issue #8 (provenienza da
-registrare accanto a ogni cattura) è aperta. Vedi il piano del banco di prova.
+Ogni sessione di cattura è accompagnata da un `manifest.yaml` accanto ai suoi
+file, compilato a partire da
+[`manifest.template.yaml`](manifest.template.yaml). Una cattura senza
+manifesto non è una prova: non si committa. Vedi il
+[piano del banco di prova](../../docs/plans/2026-09-01-2157-feat-banco-prova-cwnet-plan.md).
