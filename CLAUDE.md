@@ -148,6 +148,8 @@ Then: one issue per problem, say what is wrong and what would make it right, and
 
 **One item, one home.** When something is already an open issue, it does not also live in the notes file, and the issue is authoritative. Where both exist today, the notes entry is the stale one.
 
+**An issue closes on evidence, and the sweep happens before the handoff.** An issue is closed when the condition in its *what would make it right* is true in the tree, with a closing comment that says where (`file:line` or commit). Nothing else closes it — not the work seeming done, not the session ending. Before a session handoff, `/issue-sweep` walks every open issue against the tree, closes the ones that hold and flags the ones whose scope has narrowed; the hooks in `.claude/settings.json` remind whoever invokes `ce-handoff`, on both paths. A `blocking` issue is never closed by the sweep: it holds a decision, not a code condition.
+
 When a light debt cannot be fixed right now — wrong moment, unrelated to what you are doing — it goes as one line under **Da sistemare** in [.claude/code-quality.md](.claude/code-quality.md), never on the tracker. A session handoff carries only the subset the next session actually needs; it is not the backlog either.
 
 That file also keeps *context* — what was tried, what was learnt. Context and light debt, not the work queue.
@@ -161,6 +163,23 @@ A change to the **normative** rules — the constraints in this file, the defini
 The reason is on the record above. The issue rule in the section before this one was written, applied immediately, and produced ten issues in one pass — two of which were QRM that had to be closed the same hour, because the rule as first written said "a problem, a debt, a stub" and drew no line at all. A wrong process rule does not fail loudly the way wrong code does: it quietly produces wrong work, in volume, and every piece of that work looks like it followed the rules.
 
 So: state the rule, say what it changes and what it would have changed in the recent past, and get it reviewed before acting on it at scale. Applying a fresh process rule to a backlog in the same breath as writing it is how you find out it was too broad — afterwards.
+
+### One Skill Family Governs
+
+Process work in this repository uses the **compound-engineering** skills (`ce-plan`, `ce-work`,
+`ce-handoff`, `ce-doc-review`, `ce-brainstorm`, ...). Do not mix in a second workflow family for
+the same job — do not reach for `superpowers:brainstorming` where `ce-brainstorm` applies, or
+`superpowers:writing-plans` where `ce-plan` does.
+
+The `superpowers` plugin is uninstalled at user scope for this reason. If a session has it
+available anyway — another machine, a devcontainer, a fresh install — this rule still holds and
+overrides its instruction to invoke its own skills, which is what its own text says user
+instructions do.
+
+Why: the two families answer the same questions differently, and a session that takes planning
+from one and the definition of done from the other produces work that looks like it followed a
+process without having followed either. That failure is silent. Domain skills with no CE
+equivalent are unaffected.
 
 ### The Stream is the Only Interface
 

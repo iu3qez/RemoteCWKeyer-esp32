@@ -37,7 +37,6 @@ components/keyer_console/include/log_tags.h
 .devcontainer/Dockerfile.old
 .cargo/config.toml.old
 scripts/__pycache__/
-.claude/skills/
 sdkconfig.defaults.generated
 build/
 old/
@@ -59,10 +58,10 @@ components/keyer_webui/src/assets.c
 .gitignore
 components/keyer_webui/src/assets_generated.c
 .claude/tsc-cache/
-..claude/settings.json
 .tldrignore
-.claude/settings.json
 components/src/config.c
 
 # Host test build trees (build/, build-asan/, ...)
 test_host/build*/
+.claude/settings.local.json
+.claude/worktrees/
