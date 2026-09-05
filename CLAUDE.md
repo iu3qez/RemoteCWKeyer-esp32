@@ -143,6 +143,14 @@ When a light debt cannot be fixed right now — wrong moment, unrelated to what 
 
 That file also keeps *context* — what was tried, what was learnt. Context and light debt, not the work queue.
 
+### Changing How We Work Requires Review
+
+A change to the way of working — the rules in this file, the definition of done, what earns an issue, how a plan or a handoff is structured — **is reviewed before it stands**, like any other change.
+
+The reason is on the record above. The issue rule in the section before this one was written, applied immediately, and produced ten issues in one pass — two of which were QRM that had to be closed the same hour, because the rule as first written said "a problem, a debt, a stub" and drew no line at all. A wrong process rule does not fail loudly the way wrong code does: it quietly produces wrong work, in volume, and every piece of that work looks like it followed the rules.
+
+So: state the rule, say what it changes and what it would have changed in the recent past, and get it reviewed before acting on it at scale. Applying a fresh process rule to a backlog in the same breath as writing it is how you find out it was too broad — afterwards.
+
 ### The Stream is the Only Interface
 
 ```
