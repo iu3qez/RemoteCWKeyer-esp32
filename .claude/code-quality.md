@@ -11,6 +11,7 @@
 
 ## Da sistemare
 - `.devcontainer/Dockerfile`: `ARG DOCKER_TAG=v5.5.1` e path `idf5.5_py3.12_env` hardcoded — non aggiornati dopo la migrazione a IDF v6. Da verificare su un'immagine `espressif/idf:v6.x` prima di cambiare.
+- `parameters.yaml`: `keyer.squeeze_mode` ha due default diversi nello stesso file — `LATCH_OFF` alla riga 120, `LATCH_ON` alla 260 (subfamily). Da capire quale vince prima di toccarlo.
 
 
 ## Cleanup Items
