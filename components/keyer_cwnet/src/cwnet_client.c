@@ -184,9 +184,19 @@ static cwnet_client_err_t send_cw_event(cwnet_client_t *client, bool key_down) {
 /*===========================================================================*/
 
 /**
- * @brief Handle WELCOME frame
+ * @brief Handle the server's CONNECT echo, which confirms the connection
  */
-static void handle_welcome(cwnet_client_t *client) {
+static void handle_connect_echo(cwnet_client_t *client,
+                                const uint8_t *payload,
+                                size_t len) {
+    /* The server returns the record we sent with the permissions field filled
+     * in; that field is how we learn what this connection is allowed to do. */
+    if (len >= CWNET_CONNECT_PAYLOAD_LEN) {
+        const uint8_t *p = &payload[CWNET_CONNECT_PERMISSIONS_OFFSET];
+        client->permissions = (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+                              ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+    }
+
     if (client->state == CWNET_STATE_CONNECTING) {
         set_state(client, CWNET_STATE_READY);
     }
@@ -277,8 +287,8 @@ static void process_frame(cwnet_client_t *client, const cwnet_parse_result_t *re
     size_t payload_len = result->payload_len;
 
     switch (cmd) {
-        case CWNET_CMD_WELCOME:
-            handle_welcome(client);
+        case CWNET_CMD_CONNECT:
+            handle_connect_echo(client, payload, payload_len);
             break;
 
         case CWNET_CMD_PING:
@@ -357,6 +367,13 @@ cwnet_client_err_t cwnet_client_init(cwnet_client_t *client,
     cwnet_frame_parser_init(&client->parser);
 
     return CWNET_CLIENT_OK;
+}
+
+uint32_t cwnet_client_get_permissions(const cwnet_client_t *client) {
+    if (client == NULL) {
+        return 0;
+    }
+    return client->permissions;
 }
 
 cwnet_client_state_t cwnet_client_get_state(const cwnet_client_t *client) {

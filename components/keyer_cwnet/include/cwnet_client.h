@@ -17,7 +17,7 @@
  *
  * Protocol flow:
  *   DISCONNECTED -> on_connected() -> CONNECTING (sends IDENT)
- *   CONNECTING -> recv WELCOME -> READY
+ *   CONNECTING -> recv CONNECT echo -> READY
  *   READY -> recv PING_REQUEST -> send RESPONSE_1, sync timer
  *   READY -> recv PING_RESPONSE_2 -> update latency
  *   READY -> send_key_event() -> send CW_DOWN/CW_UP
@@ -56,8 +56,7 @@
  * To build command byte: (category << 6) | command
  */
 typedef enum {
-    CWNET_CMD_WELCOME = 0x00,   /**< Server -> Client: connection accepted */
-    CWNET_CMD_CONNECT = 0x01,   /**< Client -> Server: connection request */
+    CWNET_CMD_CONNECT = 0x01,   /**< Client -> Server request; echoed back by the server to confirm */
     CWNET_CMD_DISCONNECT = 0x02,/**< Bidirectional: disconnect */
     CWNET_CMD_PING = 0x03,      /**< Bidirectional: time sync */
     CWNET_CMD_CW_UP = 0x14,     /**< Key up event */
@@ -68,6 +67,7 @@ typedef enum {
 #define CWNET_CONNECT_USERNAME_LEN  44
 #define CWNET_CONNECT_CALLSIGN_LEN  44
 #define CWNET_CONNECT_PAYLOAD_LEN   92  /**< 44 + 44 + 4 */
+#define CWNET_CONNECT_PERMISSIONS_OFFSET 88 /**< Permissions bitmask, uint32 LE */
 
 /*===========================================================================*/
 /* Client State                                                              */
@@ -78,8 +78,8 @@ typedef enum {
  */
 typedef enum {
     CWNET_STATE_DISCONNECTED = 0,  /**< Not connected */
-    CWNET_STATE_CONNECTING,        /**< TCP connected, waiting for WELCOME */
-    CWNET_STATE_READY,             /**< WELCOME received, can send/receive CW */
+    CWNET_STATE_CONNECTING,        /**< TCP connected, waiting for the CONNECT echo */
+    CWNET_STATE_READY,             /**< Connection confirmed, can send/receive CW */
 } cwnet_client_state_t;
 
 /**
@@ -199,6 +199,9 @@ typedef struct {
     /* Latency measurement */
     int32_t latency_ms;  /**< Last measured RTT, -1 if unknown */
 
+    /* Permissions granted by the server in its CONNECT echo */
+    uint32_t permissions;
+
     /* Frame parser for incoming data */
     cwnet_frame_parser_t parser;
 } cwnet_client_t;
@@ -278,6 +281,17 @@ void cwnet_client_on_disconnected(cwnet_client_t *client);
  * @param data Received data
  * @param len Data length
  */
+/**
+ * @brief Permissions the server granted, from its CONNECT echo
+ *
+ * Zero until the connection is confirmed. Bits: TALK 1, TRANSMIT 2,
+ * CTRL_RIG 4, ADMIN 8.
+ *
+ * @param client Client context
+ * @return uint32_t Granted permission bitmask, 0 if client is NULL
+ */
+uint32_t cwnet_client_get_permissions(const cwnet_client_t *client);
+
 void cwnet_client_on_data(cwnet_client_t *client,
                            const uint8_t *data,
                            size_t len);

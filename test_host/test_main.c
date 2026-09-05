@@ -231,7 +231,8 @@ void test_client_init_empty_username(void);
 void test_client_connect_transitions_to_connecting(void);
 void test_client_disconnect_from_any_state(void);
 void test_client_sends_ident_on_connect(void);
-void test_client_receives_welcome_transitions_to_ready(void);
+void test_client_reaches_ready_on_connect_echo(void);
+void test_client_keeps_permissions_from_connect_echo(void);
 void test_client_responds_to_ping_request(void);
 void test_client_syncs_timer_on_ping_request(void);
 void test_client_updates_latency_on_ping_response2(void);
@@ -528,7 +529,8 @@ int main(void) {
     RUN_TEST(test_client_disconnect_from_any_state);
     /* Protocol Handshake */
     RUN_TEST(test_client_sends_ident_on_connect);
-    RUN_TEST(test_client_receives_welcome_transitions_to_ready);
+    RUN_TEST(test_client_reaches_ready_on_connect_echo);
+    RUN_TEST(test_client_keeps_permissions_from_connect_echo);
     /* PING Handling */
     RUN_TEST(test_client_responds_to_ping_request);
     RUN_TEST(test_client_syncs_timer_on_ping_request);

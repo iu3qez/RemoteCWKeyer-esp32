@@ -49,6 +49,32 @@ static void test_setup(void) {
     mock_time_ms = 1000;
 }
 
+/*
+ * The reference protocol has no WELCOME: 0x00 is CWNET_CMD_NONE, "dummy command
+ * to send HTTP instead of our binary protocol" (CwNet.h). A real server confirms
+ * a connection by echoing the 92-byte CONNECT record back with the permissions
+ * field filled in, then sending a PRINT with the greeting.
+ *
+ * These are the first 94 bytes of the server-to-client direction of session 10
+ * of the 2026-09-05 capture of the official DL4YHF client and server: the
+ * CONNECT echo, user "Moritz", permissions 0x07 where the client had sent 0.
+ */
+static const uint8_t ref_connect_echo[] = {
+    0x41, 0x5C, 0x4D, 0x6F, 0x72, 0x69, 0x74, 0x7A, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4D, 0x6F,
+    0x72, 0x69, 0x74, 0x7A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00,
+};
+
+/* Drive the client to READY the way a real server does. */
+static void feed_connect_echo(void) {
+    cwnet_client_on_data(&client, ref_connect_echo, sizeof(ref_connect_echo));
+}
+
 /*===========================================================================*/
 /* Initialization Tests                                                      */
 /*===========================================================================*/
@@ -194,11 +220,15 @@ void test_client_sends_ident_on_connect(void) {
     TEST_ASSERT_EQUAL(0x41, mock_tx_buffer[0]);  /* CONNECT with category 1 (short payload) */
 }
 
-void test_client_receives_welcome_transitions_to_ready(void) {
+
+
+
+void test_client_reaches_ready_on_connect_echo(void) {
+    test_setup();
     cwnet_client_config_t config = {
         .server_host = "test.server.com",
         .server_port = 7373,
-        .username = "TEST",
+        .username = "Moritz",
         .send_cb = mock_send,
         .get_time_ms_cb = mock_get_time_ms,
         .user_data = NULL
@@ -207,12 +237,34 @@ void test_client_receives_welcome_transitions_to_ready(void) {
     cwnet_client_init(&client, &config);
     cwnet_client_on_connected(&client);
 
-    /* Simulate receiving WELCOME from server */
-    /* CMD_WELCOME = 0x00 (no payload category) */
-    uint8_t welcome[] = {0x00};
-    cwnet_client_on_data(&client, welcome, sizeof(welcome));
+    cwnet_client_on_data(&client, ref_connect_echo, sizeof(ref_connect_echo));
 
     TEST_ASSERT_EQUAL(CWNET_STATE_READY, cwnet_client_get_state(&client));
+}
+
+
+/*
+ * The permissions bitmask (H4) is how the client learns what the server allows:
+ * it sends zero and the server returns the granted bits in the echo. In the
+ * session-10 capture that is 0x07 = TALK | TRANSMIT | CTRL_RIG.
+ */
+void test_client_keeps_permissions_from_connect_echo(void) {
+    test_setup();
+    cwnet_client_config_t config = {
+        .server_host = "test.server.com",
+        .server_port = 7373,
+        .username = "Moritz",
+        .send_cb = mock_send,
+        .get_time_ms_cb = mock_get_time_ms,
+        .user_data = NULL
+    };
+
+    cwnet_client_init(&client, &config);
+    cwnet_client_on_connected(&client);
+
+    feed_connect_echo();
+
+    TEST_ASSERT_EQUAL_HEX32(0x00000007, cwnet_client_get_permissions(&client));
 }
 
 /*===========================================================================*/
@@ -233,8 +285,7 @@ void test_client_responds_to_ping_request(void) {
     cwnet_client_on_connected(&client);
 
     /* Get to READY state */
-    uint8_t welcome[] = {0x00};
-    cwnet_client_on_data(&client, welcome, sizeof(welcome));
+    feed_connect_echo();
     mock_tx_len = 0;
 
     /* Simulate PING REQUEST from server */
@@ -275,8 +326,7 @@ void test_client_syncs_timer_on_ping_request(void) {
     cwnet_client_init(&client, &config);
     cwnet_client_on_connected(&client);
 
-    uint8_t welcome[] = {0x00};
-    cwnet_client_on_data(&client, welcome, sizeof(welcome));
+    feed_connect_echo();
 
     /* Initial timer offset should be 0 */
     mock_time_ms = 0;
@@ -314,8 +364,7 @@ void test_client_updates_latency_on_ping_response2(void) {
     cwnet_client_init(&client, &config);
     cwnet_client_on_connected(&client);
 
-    uint8_t welcome[] = {0x00};
-    cwnet_client_on_data(&client, welcome, sizeof(welcome));
+    feed_connect_echo();
 
     /* Initial latency should be -1 (unknown) */
     TEST_ASSERT_EQUAL(-1, cwnet_client_get_latency_ms(&client));
@@ -354,8 +403,7 @@ void test_client_sends_key_down_event(void) {
     cwnet_client_init(&client, &config);
     cwnet_client_on_connected(&client);
 
-    uint8_t welcome[] = {0x00};
-    cwnet_client_on_data(&client, welcome, sizeof(welcome));
+    feed_connect_echo();
     mock_tx_len = 0;
 
     /* Send key down event */
@@ -382,8 +430,7 @@ void test_client_sends_key_up_event(void) {
     cwnet_client_init(&client, &config);
     cwnet_client_on_connected(&client);
 
-    uint8_t welcome[] = {0x00};
-    cwnet_client_on_data(&client, welcome, sizeof(welcome));
+    feed_connect_echo();
     mock_tx_len = 0;
 
     /* Send key up event */
@@ -430,8 +477,7 @@ void test_client_handles_invalid_frame(void) {
     cwnet_client_init(&client, &config);
     cwnet_client_on_connected(&client);
 
-    uint8_t welcome[] = {0x00};
-    cwnet_client_on_data(&client, welcome, sizeof(welcome));
+    feed_connect_echo();
 
     /* Send garbage data */
     uint8_t garbage[] = {0xFF, 0xFF, 0xFF, 0xFF};
@@ -454,8 +500,7 @@ void test_client_handles_disconnect_during_operation(void) {
     cwnet_client_init(&client, &config);
     cwnet_client_on_connected(&client);
 
-    uint8_t welcome[] = {0x00};
-    cwnet_client_on_data(&client, welcome, sizeof(welcome));
+    feed_connect_echo();
     TEST_ASSERT_EQUAL(CWNET_STATE_READY, cwnet_client_get_state(&client));
 
     cwnet_client_on_disconnected(&client);
@@ -483,11 +528,11 @@ void test_client_handles_fragmented_frame(void) {
     cwnet_client_init(&client, &config);
     cwnet_client_on_connected(&client);
 
-    /* Send WELCOME in two fragments */
-    uint8_t frag1[] = {0x00};  /* Just the command byte */
-    cwnet_client_on_data(&client, frag1, sizeof(frag1));
+    /* A 94-byte CONNECT echo does not arrive in one TCP segment. Split it. */
+    cwnet_client_on_data(&client, ref_connect_echo, 40);
+    TEST_ASSERT_EQUAL(CWNET_STATE_CONNECTING, cwnet_client_get_state(&client));
 
-    /* WELCOME has no payload, so single byte should complete it */
+    cwnet_client_on_data(&client, ref_connect_echo + 40, sizeof(ref_connect_echo) - 40);
     TEST_ASSERT_EQUAL(CWNET_STATE_READY, cwnet_client_get_state(&client));
 }
 
@@ -504,8 +549,7 @@ void test_client_handles_ping_in_fragments(void) {
     cwnet_client_init(&client, &config);
     cwnet_client_on_connected(&client);
 
-    uint8_t welcome[] = {0x00};
-    cwnet_client_on_data(&client, welcome, sizeof(welcome));
+    feed_connect_echo();
     mock_tx_len = 0;
 
     /* Send PING REQUEST in fragments */
@@ -549,7 +593,7 @@ void run_cwnet_client_tests(void) {
 
     /* Protocol Handshake */
     RUN_TEST(test_client_sends_ident_on_connect);
-    RUN_TEST(test_client_receives_welcome_transitions_to_ready);
+    RUN_TEST(test_client_reaches_ready_on_connect_echo);
 
     /* PING Handling */
     RUN_TEST(test_client_responds_to_ping_request);
