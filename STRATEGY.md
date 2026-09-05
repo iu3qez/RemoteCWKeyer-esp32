@@ -50,6 +50,15 @@ non è dimostrato. Il suo strumento è la console seriale, non la WebUI.
 - Il log seriale su ESP32 blocca il real time: nessun log bloccante sul
   path RT, mai.
 
+Un boundary vieta di **costruire**, non di **ricordare**. Aprire una issue su
+qualcosa che sta fuori dai confini non è investimento: è il modo di non
+riscoprirlo daccapo fra sei mesi, e di sapere cosa aspetta quando il confine
+si sposterà. Quello che il boundary esclude è la schedulazione - il lavoro
+parcheggiato non passa davanti a banco di prova, CWNet e K8.
+
+Il tracker registra anche ciò che non faremo adesso. Un backlog che contiene
+solo il lavoro autorizzato non è disciplina: è amnesia.
+
 _Resist a change when:_ l'unico argomento è "c'è e costa poco aggiungere",
 o non può essere dimostrata contro il riferimento (client DL4YHF, sorgente
 K8).
