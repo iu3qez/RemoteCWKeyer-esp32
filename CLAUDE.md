@@ -40,7 +40,8 @@ ESP32-based CW (Morse code) keyer with a pure C implementation using ESP-IDF v6.
 ## Build & Run
 
 ```bash
-# ESP-IDF environment
+# ESP-IDF v6 environment. IDF_PATH is per-machine: point it at your install.
+export IDF_PATH=~/esp/esp-idf
 source "$IDF_PATH/export.sh"
 
 # Frontend deps (first time only)
@@ -105,7 +106,9 @@ The project was migrated from ESP-IDF v5 to v6. Things to know:
 
 ## Critical Constraints
 
-These rules are **non-negotiable**. Violating any of them will break real-time guarantees.
+These rules are **non-negotiable**. The first three govern how work is decided and
+tracked; the rest are the real-time rules, and violating any of those will break the
+timing guarantees.
 
 ### A Blocking Issue Blocks
 
@@ -137,7 +140,13 @@ A debt earns an issue when at least one is true:
 
 Then: one issue per problem, say what is wrong and what would make it right, and if it is blocked on a decision label it `blocking` — **A Blocking Issue Blocks** applies from that moment.
 
-**Everything lighter, just fix it.** A stale path, a wrong version, a rotten README line, a typo in a doc — anything you can correct *correctly* on the spot, where the fix is obvious and needs nobody's opinion. Filing those is QRM: it buries the issues that carry a real decision under a list nobody wants to read. If you cannot fix it correctly on the spot because you would be guessing, that is precisely the signal it needed an issue.
+**Everything lighter, just fix it.** A stale path, a rotten README line, a typo in a doc — anything you can correct *correctly* on the spot, where the fix is obvious and needs nobody's opinion. Filing those is QRM: it buries the issues that carry a real decision under a list nobody wants to read. If you cannot fix it correctly on the spot because you would be guessing, that is precisely the signal it needed an issue.
+
+**The four conditions win over "lighter".** They are not two tests to weigh against each other: if any condition holds, it is an issue, however small the edit looks. A one-line version bump you cannot verify here is an issue, not a light fix — the size of the diff is not the size of the risk.
+
+**A light fix still meets the Definition of done.** "Obvious" buys you the ceremony, never the evidence: a light change touching `keyer_cwnet/` or `keyer_iambic/` still ships with the host test that pins the behaviour against the reference.
+
+**One item, one home.** When something is already an open issue, it does not also live in the notes file, and the issue is authoritative. Where both exist today, the notes entry is the stale one.
 
 When a light debt cannot be fixed right now — wrong moment, unrelated to what you are doing — it goes as one line under **Da sistemare** in [.claude/code-quality.md](.claude/code-quality.md), never on the tracker. A session handoff carries only the subset the next session actually needs; it is not the backlog either.
 
@@ -145,7 +154,9 @@ That file also keeps *context* — what was tried, what was learnt. Context and 
 
 ### Changing How We Work Requires Review
 
-A change to the way of working — the rules in this file, the definition of done, what earns an issue, how a plan or a handoff is structured — **is reviewed before it stands**, like any other change.
+A change to the **normative** rules — the constraints in this file, the definition of done, what earns an issue, how a plan or a handoff is structured — is reviewed by the **maintainer** before it is acted on at scale. Correcting a fact in this file (a command, a path, a link, a version) is not a way-of-working change: fix those on the spot like any other light debt.
+
+**What "before it stands" means here.** This file is loaded into every session from the working tree, so a rule is in force the moment it is written — there is no state in which it is written but dormant. The reviewable window is therefore the **pull request**: a new normative rule lands on a branch, is reviewed there by the maintainer, and is not applied to anything beyond the change that introduced it until that review happens. An agent reviewing its own rule does not count; the point of the rule is a human in the loop.
 
 The reason is on the record above. The issue rule in the section before this one was written, applied immediately, and produced ten issues in one pass — two of which were QRM that had to be closed the same hour, because the rule as first written said "a problem, a debt, a stub" and drew no line at all. A wrong process rule does not fail loudly the way wrong code does: it quietly produces wrong work, in volume, and every piece of that work looks like it followed the rules.
 
@@ -199,15 +210,14 @@ When looking up API docs for ESP-IDF, FreeRTOS, or any library, **always use Con
 
 ## Session Memory
 
-Persistent notes live in `.claude/` and are tracked in git:
+Durable notes and knowledge, all tracked in git. **None of these is the work queue** — that is the GitHub tracker; see **Work That Needs Deciding Becomes an Issue**.
 
-- **[.claude/MEMORY.md](.claude/MEMORY.md)** — Memory index (loaded into every conversation)
-- **[.claude/feature-status.md](.claude/feature-status.md)** — Feature checklist by priority
-- **[.claude/code-quality.md](.claude/code-quality.md)** — Cleanup items, stubs, recent fixes
+- **[.claude/MEMORY.md](.claude/MEMORY.md)** — Memory index, loaded into every conversation. Keep it under 200 lines.
+- **[.claude/code-quality.md](.claude/code-quality.md)** — Context and light debt: what was tried, what was learnt, and small things not yet fixed.
+- **[.claude/feature-status.md](.claude/feature-status.md)** — Feature checklist by priority. Predates the issue rule and still lists work that now belongs on the tracker; read it for status, do not add to it.
 - **[docs/solutions/](docs/solutions/)** — Documented solutions to past problems (bugs, best practices, patterns), by category, with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when implementing or debugging in a documented area.
 - **[CONCEPTS.md](CONCEPTS.md)** — Shared domain vocabulary (CWNet, keying stream, timing). Relevant when orienting to the codebase or discussing domain concepts.
-
-Update these files as features are completed or new issues are found. Keep MEMORY.md concise (under 200 lines).
+- **[thoughts/shared/handoffs/](thoughts/shared/handoffs/)** — Session handoffs: what a following session needs to pick the work back up, and why it was left where it was.
 
 ---
 
