@@ -8,6 +8,7 @@ idf_component_register(
         "src/api_timeline.c"
         "src/ws_server.c"
         "src/api_vpn.c"
+        "src/api_firmware.c"
         "src/assets.c"
     INCLUDE_DIRS
         "include"
@@ -21,6 +22,9 @@ idf_component_register(
         keyer_wifi
         keyer_vpn
         keyer_text
+        esp_http_client
+        app_update
+        keyer_usb
 )
 
 # Strict compiler flags
