@@ -116,8 +116,8 @@ families:
 
       squeeze_mode:
         type: enum
-        enum_values: [LATCH_OFF, LATCH_ON]
-        default: LATCH_OFF
+        enum_values: [LATCH_OFF, LATCH_ON, SAMPLED]
+        default: SAMPLED
         nvs_key: "sqz_mode"
         runtime_change: idle_only
         priority: 4
@@ -129,11 +129,15 @@ families:
             en: "Squeeze Timing"
             it: "Temporizzazione Squeeze"
           description:
-            en: "When to sample paddle state (Live=continuous, Snapshot=latch at start)"
-            it: "Quando campionare lo stato dei paddle (Live=continuo, Snapshot=latch all'inizio)"
+            en: "When to sample paddle state (Sampled=once per unit, the K1EL K8 rule; Live=continuous; Snapshot=latch at start)"
+            it: "Quando campionare lo stato dei paddle (Sampled=una volta per unita, la regola del K1EL K8; Live=continuo; Snapshot=latch all'inizio)"
           widget: dropdown
           widget_config:
             options:
+              - value: SAMPLED
+                label:
+                  en: "Sampled (K1EL K8)"
+                  it: "Campionato (K1EL K8)"
               - value: LATCH_OFF
                 label:
                   en: "Live (immediate)"
@@ -256,7 +260,7 @@ families:
             default: DOT_AND_DAH
           squeeze_mode:
             type: enum
-            enum_values: [LATCH_OFF, LATCH_ON]
+            enum_values: [LATCH_OFF, LATCH_ON, SAMPLED]
             default: LATCH_ON
           mem_block_start_pct:
             type: f32

@@ -78,7 +78,7 @@ typedef struct {
     .wpm = 20, \
     .mode = IAMBIC_MODE_B, \
     .memory_mode = MEMORY_MODE_DOT_AND_DAH, \
-    .squeeze_mode = SQUEEZE_MODE_LATCH_OFF, \
+    .squeeze_mode = SQUEEZE_MODE_SAMPLED, \
     .mem_window_start_pct = 0, \
     .mem_window_end_pct = 100 \
 }

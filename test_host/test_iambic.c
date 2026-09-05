@@ -150,6 +150,12 @@ void test_iambic_memory(void) {
     iambic_config_t config = IAMBIC_CONFIG_DEFAULT;
     config.wpm = 20;
     config.mode = IAMBIC_MODE_B;
+    /* This test asserts on dah_memory halfway through the dit mark, which is a
+     * property of the windowed edge model, not of iambic keying as such: under
+     * SQUEEZE_MODE_SAMPLED no grid instant has been crossed at 0.5u, so the
+     * memory is legitimately still clear there. Name the mode explicitly rather
+     * than letting the test track whatever the default happens to be. */
+    config.squeeze_mode = SQUEEZE_MODE_LATCH_OFF;
     iambic_init(&s_iambic, &config);
 
     /* Start DIT */

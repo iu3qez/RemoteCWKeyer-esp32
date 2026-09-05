@@ -23,5 +23,7 @@ Gotchas:
 - Mode A stops immediately on paddle release; Mode B completes the current element plus one bonus element — do not "simplify" this asymmetry away.
 - Memory window: paddle presses are only latched between start%/end% of the element; presses before start% (debounce) or after end% are dropped by design.
 - Release debounce: `IAMBIC_DEBOUNCE_RELEASE_US` (5ms) blanks re-presses of the same paddle after release to kill contact bounce.
-- squeeze_mode LATCH_OFF = live paddle sampling, LATCH_ON = snapshot at element start — different feel, both intentional.
+- squeeze_mode has three values and they are three different observation rules, not settings of one: SAMPLED (default) reads the paddle *level* on a one-unit grid phase-locked to the element boundary and at no other instant — the K1EL K8 rule, see issue #32; LATCH_OFF and LATCH_ON both detect an *edge* inside a percentage window, live and snapshot-at-element-start respectively. The window is an extension for high speeds, not a generalisation containing the reference: it captures short taps the K8 drops.
+- SAMPLED arms only the *opposite* element type. The K8 clears the same-type latch after the final sample, so a held paddle continues through the live state read at the element boundary, not through memory.
+- The grid uses `elem_anchor_us`, not `element_start_us`: the latter is re-anchored when the gap begins, while the grid spans mark *and* trailing space (a dit element = 2 units, a dah = 4).
 <!-- END treecode (auto) -->
