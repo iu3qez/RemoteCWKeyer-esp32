@@ -177,6 +177,8 @@ Persistent notes live in `.claude/` and are tracked in git:
 - **[.claude/MEMORY.md](.claude/MEMORY.md)** — Memory index (loaded into every conversation)
 - **[.claude/feature-status.md](.claude/feature-status.md)** — Feature checklist by priority
 - **[.claude/code-quality.md](.claude/code-quality.md)** — Cleanup items, stubs, recent fixes
+- **[docs/solutions/](docs/solutions/)** — Documented solutions to past problems (bugs, best practices, patterns), by category, with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when implementing or debugging in a documented area.
+- **[CONCEPTS.md](CONCEPTS.md)** — Shared domain vocabulary (CWNet, keying stream, timing). Relevant when orienting to the codebase or discussing domain concepts.
 
 Update these files as features are completed or new issues are found. Keep MEMORY.md concise (under 200 lines).
 
