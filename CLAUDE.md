@@ -164,6 +164,23 @@ The reason is on the record above. The issue rule in the section before this one
 
 So: state the rule, say what it changes and what it would have changed in the recent past, and get it reviewed before acting on it at scale. Applying a fresh process rule to a backlog in the same breath as writing it is how you find out it was too broad — afterwards.
 
+### One Skill Family Governs
+
+Process work in this repository uses the **compound-engineering** skills (`ce-plan`, `ce-work`,
+`ce-handoff`, `ce-doc-review`, `ce-brainstorm`, ...). Do not mix in a second workflow family for
+the same job — do not reach for `superpowers:brainstorming` where `ce-brainstorm` applies, or
+`superpowers:writing-plans` where `ce-plan` does.
+
+The `superpowers` plugin is uninstalled at user scope for this reason. If a session has it
+available anyway — another machine, a devcontainer, a fresh install — this rule still holds and
+overrides its instruction to invoke its own skills, which is what its own text says user
+instructions do.
+
+Why: the two families answer the same questions differently, and a session that takes planning
+from one and the definition of done from the other produces work that looks like it followed a
+process without having followed either. That failure is silent. Domain skills with no CE
+equivalent are unaffected.
+
 ### The Stream is the Only Interface
 
 ```
