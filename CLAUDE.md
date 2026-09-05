@@ -148,6 +148,8 @@ Then: one issue per problem, say what is wrong and what would make it right, and
 
 **One item, one home.** When something is already an open issue, it does not also live in the notes file, and the issue is authoritative. Where both exist today, the notes entry is the stale one.
 
+**An issue closes on evidence, and the sweep happens before the handoff.** An issue is closed when the condition in its *what would make it right* is true in the tree, with a closing comment that says where (`file:line` or commit). Nothing else closes it — not the work seeming done, not the session ending. Before a session handoff, `/issue-sweep` walks every open issue against the tree, closes the ones that hold and flags the ones whose scope has narrowed; the hooks in `.claude/settings.json` remind whoever invokes `ce-handoff`, on both paths. A `blocking` issue is never closed by the sweep: it holds a decision, not a code condition.
+
 When a light debt cannot be fixed right now — wrong moment, unrelated to what you are doing — it goes as one line under **Da sistemare** in [.claude/code-quality.md](.claude/code-quality.md), never on the tracker. A session handoff carries only the subset the next session actually needs; it is not the backlog either.
 
 That file also keeps *context* — what was tried, what was learnt. Context and light debt, not the work queue.
