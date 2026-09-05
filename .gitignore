@@ -64,3 +64,4 @@ components/src/config.c
 # Host test build trees (build/, build-asan/, ...)
 test_host/build*/
 .claude/settings.local.json
+.claude/worktrees/
