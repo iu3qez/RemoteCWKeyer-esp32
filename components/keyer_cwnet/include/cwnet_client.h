@@ -69,6 +69,12 @@ typedef enum {
 #define CWNET_CONNECT_PAYLOAD_LEN   92  /**< 44 + 44 + 4 */
 #define CWNET_CONNECT_PERMISSIONS_OFFSET 88 /**< Permissions bitmask, uint32 LE */
 
+/** Permission bits the server grants in its CONNECT echo */
+#define CWNET_PERMISSION_TALK      0x01u  /**< May talk to other users */
+#define CWNET_PERMISSION_TRANSMIT  0x02u  /**< May transmit (CW) */
+#define CWNET_PERMISSION_CTRL_RIG  0x04u  /**< May control the remote rig */
+#define CWNET_PERMISSION_ADMIN     0x08u  /**< Is the server administrator */
+
 /*===========================================================================*/
 /* Client State                                                              */
 /*===========================================================================*/
@@ -91,6 +97,7 @@ typedef enum {
     CWNET_CLIENT_ERR_NOT_READY,    /**< Not in READY state */
     CWNET_CLIENT_ERR_SEND_FAILED,  /**< Send callback failed */
     CWNET_CLIENT_ERR_PROTOCOL,     /**< Protocol error */
+    CWNET_CLIENT_ERR_NOT_PERMITTED,/**< Server did not grant TRANSMIT */
 } cwnet_client_err_t;
 
 /*===========================================================================*/

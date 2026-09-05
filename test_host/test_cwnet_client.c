@@ -267,6 +267,43 @@ void test_client_keeps_permissions_from_connect_echo(void) {
     TEST_ASSERT_EQUAL_HEX32(0x00000007, cwnet_client_get_permissions(&client));
 }
 
+
+/*
+ * Without TRANSMIT the server silently discards our keying: no rejection
+ * frame, so the operator would hear their own sidetone and believe they were
+ * on the air. Refusing is the fault-philosophy reading -- corrupted or ignored
+ * CW is worse than silence.
+ *
+ * The bytes are the session-10 echo with the permissions field changed to TALK
+ * only. That combination is one the reference supports and our capture never
+ * exercised, because the test account was granted 0x07.
+ */
+void test_client_refuses_to_key_without_transmit_permission(void) {
+    test_setup();
+    cwnet_client_config_t config = {
+        .server_host = "test.server.com",
+        .server_port = 7373,
+        .username = "Moritz",
+        .send_cb = mock_send,
+        .get_time_ms_cb = mock_get_time_ms,
+        .user_data = NULL
+    };
+
+    cwnet_client_init(&client, &config);
+    cwnet_client_on_connected(&client);
+
+    uint8_t echo[sizeof(ref_connect_echo)];
+    memcpy(echo, ref_connect_echo, sizeof(echo));
+    echo[2 + CWNET_CONNECT_PERMISSIONS_OFFSET] = CWNET_PERMISSION_TALK;
+    cwnet_client_on_data(&client, echo, sizeof(echo));
+
+    /* The connection is up: this is not a connection failure. */
+    TEST_ASSERT_EQUAL(CWNET_STATE_READY, cwnet_client_get_state(&client));
+
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_ERR_NOT_PERMITTED,
+                      cwnet_client_send_key_event(&client, true));
+}
+
 /*===========================================================================*/
 /* PING Handling Tests                                                       */
 /*===========================================================================*/

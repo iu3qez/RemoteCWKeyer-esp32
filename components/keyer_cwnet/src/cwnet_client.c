@@ -480,5 +480,12 @@ cwnet_client_err_t cwnet_client_send_key_event(cwnet_client_t *client,
         return CWNET_CLIENT_ERR_NOT_READY;
     }
 
+    /* A server that did not grant TRANSMIT discards our keying without saying
+     * so, which would leave the operator listening to their own sidetone and
+     * believing they were on the air. Refuse instead. */
+    if ((client->permissions & CWNET_PERMISSION_TRANSMIT) == 0) {
+        return CWNET_CLIENT_ERR_NOT_PERMITTED;
+    }
+
     return send_cw_event(client, key_down);
 }
