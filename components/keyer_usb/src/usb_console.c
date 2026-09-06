@@ -16,37 +16,11 @@
 static const char *TAG = "usb_console";
 
 /**
- * @brief Echo single character to CDC0
- */
-static void echo_char(char c) {
-    uint8_t buf[4];
-    size_t len = 0;
-
-    if (c >= 0x20 && c <= 0x7E) {
-        /* Printable character */
-        buf[0] = (uint8_t)c;
-        len = 1;
-    } else if (c == '\r' || c == '\n') {
-        /* Enter - echo CRLF */
-        buf[0] = '\r';
-        buf[1] = '\n';
-        len = 2;
-    } else if (c == 0x08 || c == 0x7F) {
-        /* Backspace or DEL - destructive backspace */
-        buf[0] = '\b';
-        buf[1] = ' ';
-        buf[2] = '\b';
-        len = 3;
-    }
-    /* Ctrl+C, Ctrl+U: no echo */
-
-    if (len > 0) {
-        tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_0, buf, len);
-    }
-}
-
-/**
- * @brief RX callback for CDC0 - immediate echo
+ * @brief RX callback for CDC0
+ *
+ * Bytes go straight into the console state machine, which draws them.
+ * This callback deliberately does not echo: an echo here would be a second
+ * judgement of the same keystroke, made without sight of the line buffer.
  */
 static void console_rx_callback(int itf, cdcacm_event_t *event) {
     (void)event;
@@ -64,14 +38,8 @@ static void console_rx_callback(int itf, cdcacm_event_t *event) {
     }
 
     for (size_t i = 0; i < len; i++) {
-        char c = (char)buf[i];
-
-        /* Echo immediately */
-        echo_char(c);
-
-        /* Push to console state machine */
-        bool cmd_complete = console_push_char(c);
-        if (cmd_complete) {
+        /* Push to console state machine (it echoes by repainting the line) */
+        if (console_push_char((char)buf[i])) {
             usb_console_prompt();
         }
     }

@@ -9,7 +9,8 @@ bytes only — command parsing lives in keyer_console, log formatting in keyer_l
 Key abstractions:
 - `usb_cdc_init()` / `usb_cdc_write()` / `usb_cdc_flush()` / `usb_cdc_connected()` — raw
   per-interface I/O. CDC0=console, CDC1=log, CDC2=Winkeyer (reserved).
-- `usb_console_*` — CDC0 RX callback echoes and pushes chars into console_push_char;
+- `usb_console_*` — CDC0 RX callback pushes chars into console_push_char, which owns
+  the echo (the callback deliberately does not echo);
   `usb_console_printf()` is the console output sink.
 - `usb_log_*` — CDC1 drain task pulls the RT-safe log ring buffer and applies
   global/per-tag level filters (`usb_log_set_level`, `usb_log_set_tag_level`).

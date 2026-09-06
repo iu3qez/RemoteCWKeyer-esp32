@@ -127,6 +127,10 @@ void console_task(void *arg);
 
 /**
  * @brief Process single character input
+ *
+ * Thin wrapper around console_push_char(); kept as the entry point for the
+ * getchar() loop in console_task().
+ *
  * @param c Input character
  * @return true if command was executed
  */
@@ -135,7 +139,8 @@ bool console_process_char(char c);
 /**
  * @brief Push character to console (from USB callback)
  *
- * Same as console_process_char but without echo (echo handled by USB).
+ * Owns the echo: the character is judged once, against the line buffer, and
+ * the line is repainted from that buffer. Callers must not echo themselves.
  *
  * @param c Input character
  * @return true if command was executed
@@ -144,6 +149,8 @@ bool console_push_char(char c);
 
 /**
  * @brief Print the console prompt
+ *
+ * Repaints the current line; with an empty buffer that is the prompt alone.
  */
 void console_print_prompt(void);
 

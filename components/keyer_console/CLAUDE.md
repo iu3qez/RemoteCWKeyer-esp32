@@ -6,7 +6,8 @@ interactive text console. Parses input a character at a time, maintains history 
 tab completion, dispatches parsed commands to handlers, and prints results. It is a
 user-facing interface: it runs only on Core 1 (background) and must NEVER touch the
 hard RT path or block it. It does not own the USB transport — bytes are fed in by
-keyer_usb; on-host builds it can echo directly.
+keyer_usb — but it does own the echo: one internal function repaints the whole line
+from the buffer, and no caller echoes on its own.
 
 Key abstractions:
 - `console_push_char()` / `console_process_char()` — feed one input byte; return true

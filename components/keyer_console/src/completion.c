@@ -340,12 +340,13 @@ bool console_complete(char *line, size_t *pos, size_t max_len) {
         return true;
     }
 
-    /* Multiple matches - show all and complete common prefix */
-    printf("\n");
+    /* Multiple matches - show all and complete common prefix.
+     * CRLF, not LF: the console terminal is raw, a bare LF would staircase. */
+    printf("\r\n");
     for (size_t i = 0; i < match_count; i++) {
         printf("%s ", matches[i]);
     }
-    printf("\n");
+    printf("\r\n");
     fflush(stdout);
 
     /* Complete to common prefix if longer than current */
