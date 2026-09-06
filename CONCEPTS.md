@@ -11,6 +11,9 @@ Il protocollo di rete del Remote CW Keyer di DL4YHF, che trasporta keying CW, au
 L'implementazione di riferimento — client e server DL4YHF in esecuzione — contro cui ogni comportamento che conta viene *dimostrato*, non *reso simile*. Il suo sorgente pubblicato dice cosa guardare, non cosa è vero: la verità sono i byte sul filo, non il codice né i suoi commenti.
 *Avoid:* riferimento (quando ambiguo).
 
+### Oracolo differenziale
+Un artefatto **eseguibile** derivato dal riferimento — un modulo suo ricompilato, o il suo firmware fatto girare in un emulatore — che riceve lo stesso stimolo del nostro codice perché le due uscite si possano confrontare. Non è il golden standard: è un candidato che si guadagna il posto dimostrando di riprodurre una cattura del riferimento vero. Quando risponde con un conteggio di divergenze invece che con un verdetto, quel conteggio è un cancello e non un gradiente.
+
 ## Keying
 
 ### MORSE keying stream
