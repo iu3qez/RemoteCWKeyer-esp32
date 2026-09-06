@@ -72,6 +72,10 @@ K8).
   la memoria, cosa fa lo squeeze), tempo tollerante (scarto in µs entro un
   tick di campionamento). Tolleranza scritta prima del test, non dopo. Vive
   in `test_host` contro trace del firmware K8.
+  La tolleranza e la base di confronto sono scritte in
+  [docs/k8-timing-tolerance.md](docs/k8-timing-tolerance.md): un tick,
+  1000 µs, solo a velocità allineate al tick e con l'oscillatore emulato
+  riallineato sull'elemento dit.
 - **Tetto RT** - worst-case in µs di un giro del loop su Core 0
   (GPIO → iambic → stream → audio); limite 100 µs da ARCHITECTURE.md.
   Gate non ancora dimostrato: oggi non è strumentato.
