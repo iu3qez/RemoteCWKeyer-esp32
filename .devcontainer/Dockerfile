@@ -1,4 +1,4 @@
-ARG DOCKER_TAG=v5.5.1
+ARG DOCKER_TAG=v6.0.3
 FROM espressif/idf:${DOCKER_TAG}
 
 ENV LC_ALL=C.UTF-8
@@ -72,8 +72,12 @@ RUN mkdir -p \
 	/home/${USERNAME}/.vscode-server/data/User \
 	/home/${USERNAME}/.vscode-server/data/Machine \
 	&& chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.vscode-server
-RUN /opt/esp/python_env/idf5.5_py3.12_env/bin/pip  install --no-cache-dir  jsonschema 
-RUN /opt/esp/python_env/idf5.5_py3.12_env/bin/pip  install --no-cache-dir  gcovr
+# The venv directory name embeds the IDF/Python version (e.g. idf6.0_py3.12_env)
+# and changes on every IDF or Python bump baked into the base image, so derive
+# it instead of hardcoding it.
+RUN idf_pip="$(ls -d /opt/esp/python_env/*/bin/pip)" \
+	&& "${idf_pip}" install --no-cache-dir jsonschema \
+	&& "${idf_pip}" install --no-cache-dir gcovr
 
 # Create docker group (for socket access) and add user
 RUN groupadd -f docker && usermod -aG docker ${USERNAME}
