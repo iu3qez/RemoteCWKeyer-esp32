@@ -33,7 +33,7 @@ fatta bene» (Keyrama è parcheggiata in #37).
 L'errore di questa sessione non è stato di conoscenza ma di metodo, ed è
 documentato in
 [docs/solutions/architecture-patterns/differential-oracle-count-is-not-a-gradient.md](../../../../docs/solutions/architecture-patterns/differential-oracle-count-is-not-a-gradient.md)
-(in PR #52, non ancora mergiata al momento della scrittura).
+che è su `main`.
 
 **Leggilo prima di toccare `iambic.c`.** In sintesi: il conteggio delle
 divergenze è un cancello, non un gradiente. Traccia **un** caso divergente da un
