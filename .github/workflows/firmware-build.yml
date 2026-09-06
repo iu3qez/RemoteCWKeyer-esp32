@@ -1,0 +1,60 @@
+name: Firmware build
+
+# host-tests.yml proves the logic; this proves the tree still produces a
+# linked esp32s3 binary. See issue #29 — a link failure went unnoticed for
+# four months because nothing in CI ran `idf.py build`. This job only
+# proves the tree compiles and links; whether it boots is a separate,
+# hardware-only question this workflow does not answer.
+
+on:
+  push:
+  pull_request:
+
+env:
+  # ESP-IDF Docker image tag. Keep this in step with .devcontainer/Dockerfile's
+  # DOCKER_TAG default (issue #16) by hand — both name the same release, but
+  # a Dockerfile FROM line and this workflow's `docker run` are two different
+  # places a build-arg can't bridge without a bigger restructuring than either
+  # issue asked for (see the PR body for #29/#16).
+  IDF_DOCKER_TAG: v6.0.3
+
+jobs:
+  firmware-build:
+    runs-on: ubuntu-latest
+    name: firmware-build (esp32s3)
+    steps:
+      - uses: actions/checkout@v4
+
+      # keyer_webui is a hard REQUIRES of main (main/CMakeLists.txt) and its
+      # CMakeLists unconditionally shells out to `npm install && npm run
+      # build` to produce the assets the firmware embeds
+      # (components/keyer_webui/CMakeLists.txt). There is no stubbed path:
+      # `idf.py build` cannot link without it, so the frontend build is not
+      # optional here.
+      #
+      # Run inside the image via `docker run` rather than the workflow
+      # `container:` field: GitHub Actions execs job steps into a
+      # `container:` with the image's own ENTRYPOINT bypassed, so the IDF
+      # toolchain (compilers, idf.py, the venv) never ends up on PATH — it is
+      # only put there by espressif/idf's entrypoint.sh, which a plain
+      # `docker run` (default entrypoint intact) does run. Verified locally
+      # with this exact image and command.
+      - name: Build firmware (esp32s3)
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            "espressif/idf:${IDF_DOCKER_TAG}" \
+            bash -euo pipefail -c '
+              apt-get update -qq
+              apt-get install -y --no-install-recommends nodejs npm
+              cd /workspace
+              idf.py build
+            '
+
+      - name: Upload firmware binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: keyer_c-esp32s3-${{ github.sha }}
+          path: build/keyer_c.bin
+          if-no-files-found: error
+          retention-days: 14
