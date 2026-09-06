@@ -70,3 +70,6 @@ test_host/build*/
 morse8.zip
 morse8.asm
 tools/k8/ref/
+
+# compound-engineering: per-machine overrides, never committed
+.compound-engineering/config.local.yaml

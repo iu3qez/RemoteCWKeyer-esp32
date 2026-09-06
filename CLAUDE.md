@@ -90,6 +90,8 @@ From [STRATEGY.md](STRATEGY.md): behaviour that matters is proven against a real
 - A change touching CWNet (`keyer_cwnet/`) or the iambic FSM (`keyer_iambic/`) ships with a host test that pins the behaviour against the reference (DL4YHF client/server traces, K1EL K8 source).
 - Nothing blocking on the RT path: no `ESP_LOGx`/`printf` on Core 0 — the serial log blocks real time.
 
+A pull request answers these with evidence, not checkmarks, in the shape of [.github/pull_request_template.md](.github/pull_request_template.md): test counts, the test function that pins the reference, the issue condition it makes true and where. A line that cannot be filled honestly is a PR that is not done.
+
 ---
 
 ## ESP-IDF v6 Notes
@@ -139,6 +141,8 @@ A debt earns an issue when at least one is true:
 - Leaving it costs something that compounds: wrong behaviour, wrong expectations, work built on a guess.
 
 Then: one issue per problem, say what is wrong and what would make it right, and if it is blocked on a decision label it `blocking` — **A Blocking Issue Blocks** applies from that moment.
+
+The shape and the caps are fixed by the templates in [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/) — `Work`, `Decision`, `Parked`: body under 300 words; a comment under 150 and carrying only a state change or a decision; analysis in a file the issue links, never in the thread; a decision that supersedes an earlier one written by editing the body. Read the template before `gh issue create`, and file with `--body-file` from a filled copy with the comment blocks removed. The rules bind comments and edits, not only filing.
 
 **Everything lighter, just fix it.** A stale path, a rotten README line, a typo in a doc — anything you can correct *correctly* on the spot, where the fix is obvious and needs nobody's opinion. Filing those is QRM: it buries the issues that carry a real decision under a list nobody wants to read. If you cannot fix it correctly on the spot because you would be guessing, that is precisely the signal it needed an issue.
 
