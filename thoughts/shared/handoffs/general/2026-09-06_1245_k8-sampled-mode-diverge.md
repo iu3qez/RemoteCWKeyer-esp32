@@ -33,7 +33,7 @@ fatta bene» (Keyrama è parcheggiata in #37).
 L'errore di questa sessione non è stato di conoscenza ma di metodo, ed è
 documentato in
 [docs/solutions/architecture-patterns/differential-oracle-count-is-not-a-gradient.md](../../../../docs/solutions/architecture-patterns/differential-oracle-count-is-not-a-gradient.md)
-(in PR #52, non ancora mergiata al momento della scrittura).
+che è su `main`.
 
 **Leggilo prima di toccare `iambic.c`.** In sintesi: il conteggio delle
 divergenze è un cancello, non un gradiente. Traccia **un** caso divergente da un
@@ -147,11 +147,24 @@ Nessuna issue `blocking` aperta.
 
 ## Continuazioni plausibili
 
-La sola continuazione naturale è #44, e il primo passo non è scrivere codice: è
-scegliere un caso dalla classe più numerosa, per esempio quello riprodotto in
-`FINDINGS.md` (dit a 0, dah a 0,25u, dit rilasciato a 2,0u, entrambi a 2,5u, dove
-il K8 manda `..-` e noi `.-`), e tracciarlo sui due lati fino a sapere quale riga
-è sbagliata.
+La sola continuazione naturale è #44, e il primo passo non è scrivere codice.
+
+Il caso da tracciare va scelto **dalla forma più numerosa**, non a caso: la
+comprensione che ne esce copre la maggior parte delle divergenze invece di
+spiegarne una sola. Al momento dell'abbandono quella forma era «perdiamo un
+elemento», 105 casi su 124, e il rappresentante già isolato e riprodotto in
+`tools/k8/bench/FINDINGS.md` è questo, a 25 WPM dove un'unità vale 48 ms:
+
+    dit premuto a 0
+    dah premuto a 0.25u
+    dit rilasciato a 2.0u
+    entrambi rilasciati a 2.5u
+
+Il K8 manda `..-`, noi `.-`.
+
+Tracciarlo sui due lati, nostro tick per tick e riferimento istruzione per
+istruzione in gpsim, fino a sapere **quale riga** è sbagliata. Solo dopo toccare
+`iambic.c`, e solo allora rilanciare lo sweep per confermare, mai per decidere.
 
 Il maintainer ha indicato di farlo in una sessione nuova a contesto pulito,
 affiancata da un agente di review adversariale: quel pattern oggi ha funzionato
