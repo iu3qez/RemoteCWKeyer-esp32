@@ -67,6 +67,25 @@ void console_print_prompt(void) {
     console_redraw_line();
 }
 
+void console_print_welcome(void) {
+    printf("\r\nCW Keyer Console\r\n");
+
+    /* Carry the `stats` overview: uptime, heap, wifi, ssid, ip. Executed
+     * through the registry rather than duplicated, so the banner and the
+     * command can never drift apart. */
+    console_parsed_cmd_t stats_cmd = {
+        .command = "stats",
+        .args = { NULL, NULL, NULL },
+        .argc = 0,
+    };
+    (void)console_execute(&stats_cmd);
+
+    printf("\r\nFor keyer wifi stats, use 'stats'. Type 'help' for all commands.\r\n");
+    fflush(stdout);
+
+    console_print_prompt();
+}
+
 bool console_push_char(char c) {
     /* Handle escape sequences for arrow keys */
     if (s_escape_state == ESC_BRACKET_RECEIVED) {
@@ -205,9 +224,7 @@ bool console_process_char(char c) {
 void console_task(void *arg) {
     (void)arg;
 
-    printf("\r\nCW Keyer Console\r\n");
-    printf("Type 'help' for available commands\r\n");
-    console_print_prompt();
+    console_print_welcome();
 
     for (;;) {
         int c = getchar();

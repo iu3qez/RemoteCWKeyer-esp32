@@ -47,6 +47,42 @@ static void console_rx_callback(int itf, cdcacm_event_t *event) {
     tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, 0);
 }
 
+/**
+ * @brief Previous DTR level on CDC0, for rising-edge detection
+ *
+ * tud_cdc_line_state_cb() fires on every SET_CONTROL_LINE_STATE request the
+ * host sends (tinyusb cdc_device.c:436), and a host may re-assert an already
+ * asserted DTR. Only the false->true transition is an attach.
+ *
+ * Written and read exclusively from the TinyUSB task, so no atomics needed.
+ */
+static bool s_dtr_prev = false;
+
+/**
+ * @brief Line-state callback for CDC0 - welcome the operator on attach
+ *
+ * TinyUSB treats DTR alone as "connected" (cdc_device.c:144-149), so the
+ * rising edge of DTR is the attach event. RTS is not required: some terminals
+ * assert DTR only.
+ *
+ * Runs in the TinyUSB task (Core 1 by default, CONFIG_TINYUSB_TASK_AFFINITY),
+ * the same context in which console_rx_callback() already runs whole console
+ * commands. Nothing here touches the Core 0 RT path.
+ */
+static void console_line_state_callback(int itf, cdcacm_event_t *event) {
+    if (itf != TINYUSB_CDC_ACM_0 || event == NULL) {
+        return;
+    }
+
+    const bool dtr = event->line_state_changed_data.dtr;
+    const bool rising = dtr && !s_dtr_prev;
+    s_dtr_prev = dtr;
+
+    if (rising) {
+        console_print_welcome();
+    }
+}
+
 esp_err_t usb_console_init(void) {
     ESP_LOGI(TAG, "Initializing USB console on CDC0");
 
@@ -55,6 +91,13 @@ esp_err_t usb_console_init(void) {
         TINYUSB_CDC_ACM_0,
         CDC_EVENT_RX,
         console_rx_callback
+    );
+
+    /* Register line-state callback: prints the welcome on every attach */
+    tinyusb_cdcacm_register_callback(
+        TINYUSB_CDC_ACM_0,
+        CDC_EVENT_LINE_STATE_CHANGED,
+        console_line_state_callback
     );
 
     return ESP_OK;

@@ -154,6 +154,20 @@ bool console_push_char(char c);
  */
 void console_print_prompt(void);
 
+/**
+ * @brief Print the connection welcome message
+ *
+ * Banner + the full `stats` overview (uptime, heap, wifi, ssid, ip) + a hint
+ * naming the command that reproduces it, followed by the prompt.
+ *
+ * Printed every time an operator attaches to the console, not once at boot:
+ * the answer to "did it connect, and at which address" has to be there when
+ * the cable goes in, whenever that happens.
+ *
+ * Core 1 only - it formats and writes to the console transport.
+ */
+void console_print_welcome(void);
+
 /* ============================================================================
  * History
  * ============================================================================ */
