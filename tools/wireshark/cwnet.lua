@@ -355,7 +355,4 @@ end
 local tcp_table = DissectorTable.get("tcp.port")
 tcp_table:add(7355, cwnet_proto)
 
--- Also allow manual decode-as
-register_postdissector(cwnet_proto)
-
 print("CWNet dissector loaded - port 7355")
