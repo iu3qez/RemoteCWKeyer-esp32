@@ -26,7 +26,7 @@ tags:
 Il banco differenziale del keyer (`tools/k8/bench/`) manda lo stesso stimolo di
 paddle al K1EL K8 emulato in gpsim e alla nostra FSM, poi confronta le sequenze
 di elementi. Su 436 casi a 25 WPM partiva da **124 divergenze**, con una
-diagnosi corretta della causa (issue #44) e una raccomandazione motivata su come
+diagnosi corretta della causa (issue #44, oggi iu3qez/Esp32KeyerTest#1) e una raccomandazione motivata su come
 correggerla.
 
 L'implementazione è stata misurata dopo ogni passo:
@@ -125,5 +125,5 @@ Quattro forme, tutte "manca l'ultimo elemento". Un totale di 145 non lo dice.
 - `components/keyer_iambic/tools/k8/bench/` — lo scheletro del banco, nel submodule
   Esp32KeyerTest; il suo README dice perché lo sweep sintetico è superato
 - `components/keyer_iambic/tools/k8/README.md` — come far girare l'oracolo K8 in gpsim
-- Issue #44 (il difetto), #32 (la specifica verificata del riferimento)
+- iu3qez/Esp32KeyerTest#1 (il difetto, trasferita da #44), #32 (la specifica verificata del riferimento)
 - Ramo `wip-k8-decision-order-attempt` — il tentativo abbandonato, da non mergiare
