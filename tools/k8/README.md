@@ -30,11 +30,17 @@ fetch, verify the checksum, and keep the working copy out of git.
 The file is 64176 bytes and carries a timestamp of 1999-09-06 inside the
 archive it was distributed in.
 
-> **Source URL: not yet recorded.** The archived copy was supplied to the
-> project directly rather than fetched from a public snapshot. The Wayback
-> Machine holds only 34 captures of `k1el.com` and none of them is this file, so
-> the origin cannot be reconstructed from here. Whoever has the provenance
-> should record it in this table. Until then, verify by checksum only.
+**Where to get it.** The file is available on archive.org. No specific snapshot
+URL is recorded here on purpose: archive.org is slow and not reliable enough to
+sit in the path of a build or a test run.
+
+If we ever need a copy we can depend on, the answer is a **private repository of
+our own** holding it. The licence permits that — redistribution is allowed as
+long as the file is not sold or exploited for profit — and a private mirror
+keeps the GPL conflict away from this tree, which is the whole reason the file
+is not vendored here.
+
+Either way, **verify by checksum**, not by where it came from.
 
 Anything that does not match the checksum above is a different file, and the
 tests in `test_host/test_iambic.c` that pin K8 behaviour do not describe it.
