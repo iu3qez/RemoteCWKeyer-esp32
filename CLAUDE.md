@@ -90,6 +90,8 @@ From [STRATEGY.md](STRATEGY.md): behaviour that matters is proven against a real
 - A change touching CWNet (`keyer_cwnet/`) or the iambic FSM (`keyer_iambic/`) ships with a host test that pins the behaviour against the reference (DL4YHF client/server traces, K1EL K8 source).
 - Nothing blocking on the RT path: no `ESP_LOGx`/`printf` on Core 0 — the serial log blocks real time.
 
+A pull request answers these with evidence, not checkmarks, in the shape of [.github/pull_request_template.md](.github/pull_request_template.md): test counts, the test function that pins the reference, the issue condition it makes true and where. A line that cannot be filled honestly is a PR that is not done.
+
 ---
 
 ## ESP-IDF v6 Notes

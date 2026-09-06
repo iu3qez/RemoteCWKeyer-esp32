@@ -1,0 +1,8 @@
+# Compound-engineering skill configuration for this repository.
+# Read by the ce-* skills. A git-ignored config.local.yaml beside this file
+# wins over it, per machine.
+#
+# PR bodies carry no "New concepts" teaching section. The reader is the
+# maintainer, once, at review: a PR body is evidence against the Definition
+# of done (.github/pull_request_template.md), not a lesson.
+pr_teaching_section: false
