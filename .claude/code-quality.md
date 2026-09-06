@@ -11,6 +11,8 @@
 
 ## Da sistemare
 - `.devcontainer/Dockerfile`: `ARG DOCKER_TAG=v5.5.1` e path `idf5.5_py3.12_env` hardcoded — non aggiornati dopo la migrazione a IDF v6. Da verificare su un'immagine `espressif/idf:v6.x` prima di cambiare.
+- `test_host/CLAUDE.md` e `components/keyer_core/CLAUDE.md` (blocchi `treecode` auto) nominano ancora `keyer_iambic` come dipendenza in-tree: dal 2026-09-06 è il submodule `Esp32KeyerTest`. Si risincronizzano con `map-tree`, non a mano.
+- Ramo remoto `k8-differential-bench` (`fae2f57`), senza PR: lo scheletro del banco è migrato in Esp32KeyerTest, `FINDINGS.md` (numeri superati) vive solo lì. Da cancellare quando nessuno lo cita più.
 
 
 ## Cleanup Items
