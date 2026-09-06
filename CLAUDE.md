@@ -18,7 +18,7 @@ ESP32-based CW (Morse code) keyer with a pure C implementation using ESP-IDF v6.
 ├── parameters.yaml             # Config source of truth (generates keyer_config/)
 ├── components/
 │   ├── keyer_core/             # Stream, sample, consumer, fault
-│   ├── keyer_iambic/           # Iambic FSM
+│   ├── keyer_iambic/           # Iambic FSM — SUBMODULE: iu3qez/Esp32KeyerTest, pinned
 │   ├── keyer_audio/            # Sidetone, buffer, PTT
 │   ├── keyer_logging/          # RT-safe logging
 │   ├── keyer_console/          # Serial console
@@ -87,7 +87,7 @@ From [STRATEGY.md](STRATEGY.md): behaviour that matters is proven against a real
 
 - No open `blocking` issue covers this work. See **A Blocking Issue Blocks** under Critical Constraints.
 - Host tests green in both CI variants. Never skip, disable or quarantine a failing test to get there.
-- A change touching CWNet (`keyer_cwnet/`) or the iambic FSM (`keyer_iambic/`) ships with a host test that pins the behaviour against the reference (DL4YHF client/server traces, K1EL K8 source).
+- A change touching CWNet (`keyer_cwnet/`) ships with a host test that pins the behaviour against the reference (DL4YHF client/server traces). The iambic FSM is the `Esp32KeyerTest` submodule: its behaviour is proven there, against the executed K8, under its own STRATEGY.md; here a change is a **pin bump**, and it ships with that repo's suite green at the new commit and `test_host/interface/sample.h` still identical to `keyer_core/include/sample.h` (CI checks both).
 - Nothing blocking on the RT path: no `ESP_LOGx`/`printf` on Core 0 — the serial log blocks real time.
 
 A pull request answers these with evidence, not checkmarks, in the shape of [.github/pull_request_template.md](.github/pull_request_template.md): test counts, the test function that pins the reference, the issue condition it makes true and where. A line that cannot be filled honestly is a PR that is not done.
@@ -148,7 +148,7 @@ The shape and the caps are fixed by the templates in [.github/ISSUE_TEMPLATE/](.
 
 **The four conditions win over "lighter".** They are not two tests to weigh against each other: if any condition holds, it is an issue, however small the edit looks. A one-line version bump you cannot verify here is an issue, not a light fix — the size of the diff is not the size of the risk.
 
-**A light fix still meets the Definition of done.** "Obvious" buys you the ceremony, never the evidence: a light change touching `keyer_cwnet/` or `keyer_iambic/` still ships with the host test that pins the behaviour against the reference.
+**A light fix still meets the Definition of done.** "Obvious" buys you the ceremony, never the evidence: a light change touching `keyer_cwnet/` still ships with the host test that pins the behaviour against the reference.
 
 **One item, one home.** When something is already an open issue, it does not also live in the notes file, and the issue is authoritative. Where both exist today, the notes entry is the stale one.
 
@@ -259,7 +259,7 @@ Keying events flow only through `keying_stream_t`; Core 0 = hard-RT, Core 1 = ba
 
 **Real-time path (Core 0)**
 - `components/keyer_core/`  — Keying stream, samples, consumers, fault primitives  → components/keyer_core/CLAUDE.md
-- `components/keyer_iambic/`  — Iambic keyer finite-state machine  → components/keyer_iambic/CLAUDE.md
+- `components/keyer_iambic/`  — Iambic keyer finite-state machine, **submodule** (iu3qez/Esp32KeyerTest); interface `iambic.h` + `sample.h` frozen, RT engine stays here  → components/keyer_iambic/CLAUDE.md
 - `components/keyer_audio/`  — Sidetone synthesis, audio ring buffer, PTT  → components/keyer_audio/CLAUDE.md
 - `components/keyer_hal/`  — GPIO / I2S / ES8311 hardware abstraction  → components/keyer_hal/CLAUDE.md
 - `components/keyer_logging/`  — RT-safe logging (RT_* macros, drop-not-block)  → components/keyer_logging/CLAUDE.md

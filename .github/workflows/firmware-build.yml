@@ -23,7 +23,23 @@ jobs:
     runs-on: ubuntu-latest
     name: firmware-build (esp32s3)
     steps:
+      # components/keyer_iambic is the private submodule iu3qez/Esp32KeyerTest.
+      # GITHUB_TOKEN cannot read it; a read-only deploy key on that repo can.
+      # .gitmodules keeps the https URL so a local clone works with ordinary
+      # credentials; only this job rewrites it to ssh.
       - uses: actions/checkout@v4
+
+      - name: Fetch the keyer logic submodule
+        env:
+          DEPLOY_KEY: ${{ secrets.ESP32KEYERTEST_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          git config --global url."git@github.com:".insteadOf "https://github.com/"
+          git submodule update --init --recursive
+          git -C components/keyer_iambic log --oneline -1
 
       # keyer_webui is a hard REQUIRES of main (main/CMakeLists.txt) and its
       # CMakeLists unconditionally shells out to `npm install && npm run

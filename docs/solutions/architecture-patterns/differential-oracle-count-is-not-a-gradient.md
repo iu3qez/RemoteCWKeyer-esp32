@@ -122,7 +122,8 @@ Quattro forme, tutte "manca l'ultimo elemento". Un totale di 145 non lo dice.
 
 - `docs/solutions/architecture-patterns/reference-source-as-differential-oracle.md`
   — il pattern di cui questo documenta un modo di fallire
-- `tools/k8/bench/` — il banco e `FINDINGS.md` con le tabelle complete
-- `tools/k8/README.md` — come far girare l'oracolo K8 in gpsim
+- `components/keyer_iambic/tools/k8/bench/` — lo scheletro del banco, nel submodule
+  Esp32KeyerTest; il suo README dice perché lo sweep sintetico è superato
+- `components/keyer_iambic/tools/k8/README.md` — come far girare l'oracolo K8 in gpsim
 - Issue #44 (il difetto), #32 (la specifica verificata del riferimento)
 - Ramo `wip-k8-decision-order-attempt` — il tentativo abbandonato, da non mergiare
