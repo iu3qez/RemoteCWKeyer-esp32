@@ -47,14 +47,43 @@ tests in `test_host/test_iambic.c` that pin K8 behaviour do not describe it.
 
 ## Reproducing the oracle
 
-Assembling for `gpasm` needs exactly one patch to the original: the label
-`CONFIG` must be renamed (we use `CONFIGM`), because `gpasm` reserves it. Keep
-the original file untouched and patch a copy.
+Assembling for `gpasm` needs three patches to the original. None of them touches
+the keying logic: two reproduce the programming the source header requires, and
+one removes a power-saving feature that is not part of the standard. Keep the
+original file untouched and patch a copy.
+
+1. **Rename the label `CONFIG`** (we use `CONFIGM`), because `gpasm` reserves it.
+
+2. **Add the config word**, without which the watchdog resets the part mid-run:
+   `CLRWDT` is compiled only under `ifdef BEACON`, which this build does not
+   define, while the header requires *Watchdog Disabled, Internal Reset and
+   Internal Oscillator enabled*.
+
+   ```asm
+   	#include <p12c509.inc>
+   	__CONFIG _IntRC_OSC & _WDT_OFF & _MCLRE_OFF & _CP_OFF
+   ```
+
+3. **Replace the idle `SLEEP` with `GOTO SERVLOOP`.** The part sleeps when idle,
+   and on a 12C509 waking on a pin change is a **reset**, because the chip has no
+   interrupts; gpsim 0.32.1 treats that reset as the end of the run. Spinning in
+   the service loop instead makes the oracle drivable at any instant.
+
+   *Verified, not assumed.* With the same stimulus the patched and unpatched
+   builds produce identical output at `TIMEBASE 40`: first key-down at cycle
+   482752, mark 48326 cycles, space 48262 cycles. Without the patch a press has
+   to land after the sign-on and before the sleep, and at fast timebases those
+   instants nearly coincide — the sign-on's last activity is cycle 338122, so a
+   press at 700000 killed the run. With it, a press at 1500000 keys normally, 56
+   cycles later.
 
 ```bash
 gpasm --mpasm-compatible -p p12c509 -o morse8.hex morse8_gpasm.asm
 gpsim -i -p pic12c509 -c experiment.stc morse8.hex
 ```
+
+An experiment script is self-driving: it ends with `break c <cycles>`, `run`,
+`log off`, `quit`. Do not run `gpsim -i` without one, or it waits for input.
 
 Pin map, as wired in the experiment scripts:
 
@@ -68,9 +97,17 @@ Pin map, as wired in the experiment scripts:
 
 Inputs are pulled up, so **a closed contact reads 0**.
 
-The sign-on message runs at power-up until roughly cycle 591556 with the
-transmitter squelched. Drive the paddles only after that, or the first elements
-are swallowed.
+**Retuning the emulated oscillator is free.** gpsim stimuli are expressed in
+cycles and the log counts cycles, so `frequency` does not alter the simulation at
+all — it is a scale factor applied when the trace is read. That is what makes it
+possible to align the K8's unit with ours exactly, and it is legitimate: the K8's
+own clock was a per-chip trimmed RC oscillator, so its absolute frequency was
+never a constant of the design.
+
+The speed table is `TIMEBASE = floor(1060 / WPM)`, so the labels are not speeds.
+`SPEED_DEFAULT = WPM_26` gives `TIMEBASE 40`, which is 24.83 WPM at a nominal
+4 MHz. Pick the timebase nearest the speed you want and let the clock absorb the
+remainder.
 
 ## Measured constants
 
