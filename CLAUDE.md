@@ -140,6 +140,8 @@ A debt earns an issue when at least one is true:
 
 Then: one issue per problem, say what is wrong and what would make it right, and if it is blocked on a decision label it `blocking` — **A Blocking Issue Blocks** applies from that moment.
 
+The shape and the caps are fixed by the templates in [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/) — `Work`, `Decision`, `Parked`: body under 300 words; a comment under 150 and carrying only a state change or a decision; analysis in a file the issue links, never in the thread; a decision that supersedes an earlier one written by editing the body. Read the template before `gh issue create`, and file with `--body-file` from a filled copy with the comment blocks removed. The rules bind comments and edits, not only filing.
+
 **Everything lighter, just fix it.** A stale path, a rotten README line, a typo in a doc — anything you can correct *correctly* on the spot, where the fix is obvious and needs nobody's opinion. Filing those is QRM: it buries the issues that carry a real decision under a list nobody wants to read. If you cannot fix it correctly on the spot because you would be guessing, that is precisely the signal it needed an issue.
 
 **The four conditions win over "lighter".** They are not two tests to weigh against each other: if any condition holds, it is an issue, however small the edit looks. A one-line version bump you cannot verify here is an issue, not a light fix — the size of the diff is not the size of the risk.

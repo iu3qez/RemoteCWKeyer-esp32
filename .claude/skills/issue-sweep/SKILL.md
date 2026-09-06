@@ -16,7 +16,9 @@ condition against the tree, read-only.
 1. **List.** `gh issue list --state open --json number,title,labels` (or only `$ARGUMENTS`).
 2. **Read every body.** `gh issue view N --json body,comments`. Extract the resolution condition —
    the *What would make it right* paragraph, or the equivalent. If an issue has no testable
-   condition, say so: that is a finding, not a pass.
+   condition, say so: that is a finding, not a pass. A `Parked:` issue keeps its condition under
+   *What would unpark it*; when it holds, the verdict is `narrowed` (it becomes a Work issue),
+   never `closable`.
 3. **Test the condition against the tree.** Read-only: `grep`, `ls`, `git log -S`, `git show`.
    Name the exact evidence — `file:line`, a commit SHA, a file that now exists or no longer does.
    Do not infer from titles, from memory of the session, or from a handoff's claims.
