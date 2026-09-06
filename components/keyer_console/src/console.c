@@ -38,6 +38,23 @@ typedef enum {
 
 static escape_state_t s_escape_state = ESC_NONE;
 
+/**
+ * @brief The one place that draws.
+ *
+ * Repaints the whole line from the buffer: carriage return, prompt, the
+ * s_line_pos characters the buffer actually holds, erase-to-end-of-line.
+ * Nothing else in the console emits an incremental correction, so what the
+ * operator sees is a function of (s_line_buf, s_line_pos) and cannot
+ * disagree with it. This is also the only occurrence of the prompt string.
+ */
+static void console_redraw_line(void) {
+    const char *callsign = g_config.system.callsign;
+    printf("\r%s> %.*s\033[K",
+           (callsign[0] != '\0') ? callsign : "",
+           (int)s_line_pos, s_line_buf);
+    fflush(stdout);
+}
+
 void console_init(void) {
     s_line_pos = 0;
     memset(s_line_buf, 0, sizeof(s_line_buf));
@@ -46,13 +63,8 @@ void console_init(void) {
 }
 
 void console_print_prompt(void) {
-    const char *callsign = g_config.system.callsign;
-    if (callsign[0] != '\0') {
-        printf("%s> ", callsign);
-    } else {
-        printf("> ");
-    }
-    fflush(stdout);
+    /* The prompt is the line drawn over an empty buffer. */
+    console_redraw_line();
 }
 
 bool console_push_char(char c) {
@@ -75,10 +87,7 @@ bool console_push_char(char c) {
                 s_line_buf[CONSOLE_LINE_MAX - 1] = '\0';
                 s_line_pos = strlen(s_line_buf);
 
-                /* Clear and redraw line */
-                const char *call1 = g_config.system.callsign;
-                printf("\r%s> %s\033[K", call1[0] ? call1 : "", s_line_buf);
-                fflush(stdout);
+                console_redraw_line();
             }
             return false;
         } else if (c == 'B') {
@@ -100,10 +109,7 @@ bool console_push_char(char c) {
                 }
             }
 
-            /* Clear and redraw line */
-            const char *call2 = g_config.system.callsign;
-            printf("\r%s> %s\033[K", call2[0] ? call2 : "", s_line_buf);
-            fflush(stdout);
+            console_redraw_line();
             return false;
         }
         return false;
@@ -126,13 +132,10 @@ bool console_push_char(char c) {
 
     /* Handle Tab completion */
     if (c == 0x09) {
-        /* Tab character - try to complete */
-        if (console_complete(s_line_buf, &s_line_pos, CONSOLE_LINE_MAX)) {
-            /* Completion succeeded - redraw line */
-            const char *call3 = g_config.system.callsign;
-            printf("\r%s> %s", call3[0] ? call3 : "", s_line_buf);
-            fflush(stdout);
-        }
+        /* Try to complete, then repaint whatever the buffer now holds.
+         * console_complete() may itself have printed a list of matches. */
+        (void)console_complete(s_line_buf, &s_line_pos, CONSOLE_LINE_MAX);
+        console_redraw_line();
         return false;
     }
 
@@ -163,12 +166,15 @@ bool console_push_char(char c) {
         s_saved_pos = 0;
         return true;  /* Always reprint prompt after Enter */
     } else if (c == '\b' || c == 0x7F) {
-        /* Backspace */
+        /* Backspace: on an empty line the buffer does not change, and the
+         * repaint therefore does not change the screen either. */
         if (s_line_pos > 0) {
             s_line_pos--;
         }
+        console_redraw_line();
     } else if (c == 0x03) {
         /* Ctrl+C - cancel current line */
+        printf("^C\r\n");
         s_line_pos = 0;
         s_saved_pos = 0;
         return true;
@@ -176,29 +182,22 @@ bool console_push_char(char c) {
         /* Ctrl+U - clear line */
         s_line_pos = 0;
         s_saved_pos = 0;
+        console_redraw_line();
     } else if (c >= 0x20 && c <= 0x7E) {
-        /* Printable character */
+        /* Printable character. A character refused because the buffer is
+         * full is not drawn either: the repaint shows the buffer. */
         if (s_line_pos < CONSOLE_LINE_MAX - 1) {
             s_line_buf[s_line_pos++] = c;
         }
+        console_redraw_line();
     }
 
     return false;
 }
 
 bool console_process_char(char c) {
-    /* Echo character (for non-USB usage) */
-    if (c >= 0x20 && c <= 0x7E) {
-        putchar(c);
-    } else if (c == '\r' || c == '\n') {
-        printf("\r\n");
-    } else if (c == '\b' || c == 0x7F) {
-        printf("\b \b");
-    } else if (c == 0x03) {
-        printf("^C\r\n");
-    }
-    fflush(stdout);
-
+    /* No echo here: console_push_char() draws. Retained as the entry point
+     * for the getchar() loop below. */
     return console_push_char(c);
 }
 
