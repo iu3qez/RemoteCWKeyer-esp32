@@ -65,3 +65,8 @@ components/src/config.c
 test_host/build*/
 .claude/settings.local.json
 .claude/worktrees/
+
+# K1EL K8 reference: fetched, never vendored (see tools/k8/README.md)
+morse8.zip
+morse8.asm
+tools/k8/ref/

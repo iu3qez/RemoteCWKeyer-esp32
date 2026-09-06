@@ -20,6 +20,17 @@ void test_iambic_mode_a_squeeze(void);
 void test_iambic_mode_b_squeeze(void);
 void test_iambic_memory(void);
 void test_iambic_squeeze_prolonged(void);
+void test_iambic_k8_tap_between_instants_is_lost(void);
+void test_iambic_k8_tap_spanning_instant_is_seen(void);
+void test_iambic_k8_lit4_memory_gives_N(void);
+void test_iambic_k8_lit4_no_memory_gives_T(void);
+void test_iambic_k8_lit5_release_before_first_sample_gives_E(void);
+void test_iambic_k8_lit5_release_after_first_sample_gives_A(void);
+void test_iambic_k8_lit6_mode_a_squeeze_gives_K(void);
+void test_iambic_k8_lit7_mode_b_squeeze_gives_C(void);
+void test_iambic_k8_first_element_of_squeeze_is_dit(void);
+void test_iambic_k8_tap_between_later_instants_is_lost(void);
+void test_iambic_k8_grid_scales_with_wpm(void);
 
 void test_preset_init(void);
 void test_preset_activate(void);
@@ -273,6 +284,17 @@ int main(void) {
     RUN_TEST(test_iambic_mode_b_squeeze);
     RUN_TEST(test_iambic_memory);
     RUN_TEST(test_iambic_squeeze_prolonged);
+    RUN_TEST(test_iambic_k8_tap_between_instants_is_lost);
+    RUN_TEST(test_iambic_k8_tap_spanning_instant_is_seen);
+    RUN_TEST(test_iambic_k8_lit4_memory_gives_N);
+    RUN_TEST(test_iambic_k8_lit4_no_memory_gives_T);
+    RUN_TEST(test_iambic_k8_lit5_release_before_first_sample_gives_E);
+    RUN_TEST(test_iambic_k8_lit5_release_after_first_sample_gives_A);
+    RUN_TEST(test_iambic_k8_lit6_mode_a_squeeze_gives_K);
+    RUN_TEST(test_iambic_k8_lit7_mode_b_squeeze_gives_C);
+    RUN_TEST(test_iambic_k8_first_element_of_squeeze_is_dit);
+    RUN_TEST(test_iambic_k8_tap_between_later_instants_is_lost);
+    RUN_TEST(test_iambic_k8_grid_scales_with_wpm);
 
     /* Iambic Preset tests */
     printf("\n=== Iambic Preset Tests ===\n");

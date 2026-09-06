@@ -66,6 +66,23 @@ typedef enum {
 typedef enum {
     SQUEEZE_MODE_LATCH_OFF = 0,  /**< Live/immediate - check paddle state continuously */
     SQUEEZE_MODE_LATCH_ON  = 1,  /**< Snapshot/latch - capture at element start */
+    /**
+     * Sampled: read the paddle *level* on a one-unit grid phase-locked to the
+     * element boundary, and at no other instant. This is the K1EL K8 rule.
+     *
+     * A dit element spans 2 units (1u mark + 1u space) and is sampled at 1u and
+     * 2u; a dah element spans 4 units (3u + 1u) and is sampled at 1u, 2u, 3u
+     * and 4u. A press that opens and closes strictly between two instants is
+     * never seen. Level, not edge: what matters is that the contact is closed
+     * *at* instant k*u, not that a transition happened somewhere inside a span.
+     *
+     * Same-type memory is not armed at all during an element (the K8 clears the
+     * latch after the final sample); a held paddle continues through the live
+     * state read at the element boundary instead.
+     *
+     * See issue #32 for the verified reading of the K8 sampling schedule.
+     */
+    SQUEEZE_MODE_SAMPLED   = 2,
 } squeeze_mode_t;
 
 /* ============================================================================
