@@ -83,9 +83,13 @@ void test_iambic_mode_a_squeeze(void) {
     esp_timer_set_time(0);
     stream_sample_t sample = iambic_tick(&s_iambic, 0, gpio);
 
-    /* Should start with DIT (or DAH depending on implementation) */
+    /* A simultaneous squeeze from idle starts with DIT. This is not an
+     * implementation choice: in the K8 it falls out of NSAMPLE evaluating GP0
+     * before GP1, so a sample finding both contacts closed leaves INLAST
+     * reflecting the right contact and CHK_SINGLE falls through to CHK_S1
+     * (morse8.asm:882). See issue #32. */
     TEST_ASSERT_TRUE(s_iambic.key_down);
-    TEST_ASSERT_TRUE(s_iambic.state == IAMBIC_STATE_SEND_DIT || s_iambic.state == IAMBIC_STATE_SEND_DAH);
+    TEST_ASSERT_EQUAL(IAMBIC_STATE_SEND_DIT, s_iambic.state);
 
     /* Release during element - Mode A should stop */
     gpio = gpio_from_paddles(false, false);
