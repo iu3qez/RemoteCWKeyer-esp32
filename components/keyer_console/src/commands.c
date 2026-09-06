@@ -1232,7 +1232,7 @@ static const char USAGE_LOG[] =
     "  log TAG=L           Compact: set tag";
 
 static const char USAGE_STATS[] =
-    "  stats               Overview (uptime, heap, stream)\r\n"
+    "  stats               Overview (uptime, heap, stream, wifi, ssid, ip)\r\n"
     "  stats heap          Heap memory details\r\n"
     "  stats tasks         Task list by core\r\n"
     "  stats stream        Stream buffer status\r\n"
