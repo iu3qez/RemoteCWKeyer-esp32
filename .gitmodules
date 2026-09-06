@@ -1,0 +1,3 @@
+[submodule "components/keyer_iambic"]
+	path = components/keyer_iambic
+	url = https://github.com/iu3qez/Esp32KeyerTest.git

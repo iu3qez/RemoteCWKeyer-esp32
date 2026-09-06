@@ -37,7 +37,6 @@ set(COMPONENT_DIR ${CMAKE_SOURCE_DIR}/../components)
 
 include_directories(
     ${COMPONENT_DIR}/keyer_core/include
-    ${COMPONENT_DIR}/keyer_iambic/include
     ${COMPONENT_DIR}/keyer_audio/include
     ${COMPONENT_DIR}/keyer_logging/include
     ${COMPONENT_DIR}/keyer_console/include
@@ -53,11 +52,6 @@ set(CORE_SOURCES
     ${COMPONENT_DIR}/keyer_core/src/sample.c
     ${COMPONENT_DIR}/keyer_core/src/fault.c
     ${COMPONENT_DIR}/keyer_core/src/consumer.c
-)
-
-set(IAMBIC_SOURCES
-    ${COMPONENT_DIR}/keyer_iambic/src/iambic.c
-    ${COMPONENT_DIR}/keyer_iambic/src/iambic_preset.c
 )
 
 set(AUDIO_SOURCES
@@ -102,8 +96,6 @@ set(CWNET_SOURCES
 set(TEST_SOURCES
     test_main.c
     test_stream.c
-    test_iambic.c
-    test_iambic_preset.c
     test_sidetone.c
     test_fault.c
     test_console_parser.c
@@ -125,7 +117,6 @@ set(TEST_SOURCES
 add_executable(test_runner
     ${TEST_SOURCES}
     ${CORE_SOURCES}
-    ${IAMBIC_SOURCES}
     ${AUDIO_SOURCES}
     ${LOGGING_SOURCES}
     ${CONSOLE_SOURCES}

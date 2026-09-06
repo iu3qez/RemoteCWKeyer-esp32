@@ -579,7 +579,7 @@ RemoteCWKeyerV3/
 ├──  /                 # C implementation (ESP-IDF)
 │   ├── components/
 │   │   ├── keyer_core/      # stream, sample, consumer, fault
-│   │   ├── keyer_iambic/    # Iambic FSM (pure logic)
+│   │   ├── keyer_iambic/    # Iambic FSM (pure logic) — submodule, Esp32KeyerTest
 │   │   ├── keyer_audio/     # Sidetone, buffer, PTT
 │   │   ├── keyer_logging/   # RT-safe logging
 │   │   ├── keyer_console/   # Serial console

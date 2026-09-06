@@ -20,7 +20,31 @@ jobs:
             cflags: "-fsanitize=address,undefined -fno-omit-frame-pointer"
     name: host-tests (${{ matrix.name }})
     steps:
+      # components/keyer_iambic is the private submodule iu3qez/Esp32KeyerTest.
+      # GITHUB_TOKEN cannot read it; a read-only deploy key on that repo can.
+      # .gitmodules keeps the https URL so a local clone works with ordinary
+      # credentials; only this job rewrites it to ssh.
       - uses: actions/checkout@v4
+
+      - name: Fetch the keyer logic submodule
+        env:
+          DEPLOY_KEY: ${{ secrets.ESP32KEYERTEST_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          git config --global url."git@github.com:".insteadOf "https://github.com/"
+          git submodule update --init --recursive
+          git -C components/keyer_iambic log --oneline -1
+
+      # The keyer logic's interface is frozen (STRATEGY.md, track "Keyer"):
+      # the submodule carries a mirror of sample.h for its own host tests,
+      # and this is where a silent divergence would be caught.
+      - name: Frozen interface still identical
+        run: |
+          diff <(tail -n +6 components/keyer_iambic/test_host/interface/sample.h) \
+               components/keyer_core/include/sample.h
 
       - name: Install toolchain
         run: |
@@ -37,6 +61,22 @@ jobs:
 
       - name: Run
         working-directory: test_host
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          ASAN_OPTIONS: detect_leaks=1
+        run: ./build/test_runner
+
+      # The FSM's own suite, at the pinned commit, under this job's flags.
+      - name: Configure (keyer logic)
+        working-directory: components/keyer_iambic/test_host
+        run: cmake -B build -G Ninja -DCMAKE_C_FLAGS="${{ matrix.cflags }}"
+
+      - name: Build (keyer logic)
+        working-directory: components/keyer_iambic/test_host
+        run: cmake --build build
+
+      - name: Run (keyer logic)
+        working-directory: components/keyer_iambic/test_host
         env:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
           ASAN_OPTIONS: detect_leaks=1

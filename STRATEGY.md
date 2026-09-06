@@ -1,6 +1,6 @@
 ---
 name: RemoteCWKeyer-esp32
-last_updated: 2026-09-01
+last_updated: 2026-09-06
 ---
 
 # RemoteCWKeyer-esp32 Strategy
@@ -19,7 +19,9 @@ di test valido e veloce.
 
 Ogni comportamento che conta ha un riferimento reale e viene dimostrato
 contro quello, non reso simile: il protocollo contro client/server DL4YHF
-originali, il timing del keyer contro il firmware K1EL K8 (sorgente PIC ASM).
+originali, il keyer contro il K1EL K8 eseguito: input umano → output K8,
+riproducibile, fino a 40 WPM. Il K8 è riferimento del feeling, non
+dell'implementazione: i limiti di un PIC12 del 1998 non sono i nostri.
 TX e RX crescono insieme perché la catena TX→RX in loop, sullo stesso
 hardware o su due, è il banco di prova: niente è fatto finché non passa lì.
 
@@ -38,8 +40,11 @@ non è dimostrato. Il suo strumento è la console seriale, non la WebUI.
 
 - WireGuard: messa perché "c'è e costa poco", mai testata, in contest serve
   comunque la VPN sul PC. Si abbandona se fa male.
-- Preset diversi dal K8 (Curtis A/B, Winkeyer, Ultimatic): best effort, non
-  testati, non validati, nessun investimento.
+- Preset diversi dal K8 (Curtis A/B, Winkeyer, Ultimatic): la logica resta
+  configurabile per assi e non si lega al K8, ma un valore che nessun
+  riferimento eseguibile prova non si popola. Best effort, nessun investimento.
+- Sopra i 40 WPM il K8 non è più riferimento: le finestre configurabili sono
+  best effort, senza metrica.
 - Niente clone di DL4YHF: compatibile col golden standard, non replica di
   tutto.
 - Niente prodotto lato stazione: il server CWNet esiste solo come capo RX
@@ -60,22 +65,21 @@ Il tracker registra anche ciò che non faremo adesso. Un backlog che contiene
 solo il lavoro autorizzato non è disciplina: è amnesia.
 
 _Resist a change when:_ l'unico argomento è "c'è e costa poco aggiungere",
-o non può essere dimostrata contro il riferimento (client DL4YHF, sorgente
-K8).
+o non può essere dimostrata contro il riferimento (client DL4YHF, K8
+eseguito).
 
 ## Key metrics
 
 - **Conformità CWNet** - il test loop contro client/server ufficiali DL4YHF
   passa o no. Vive in `test_host` più un banco con il client Windows. È
   stata la parte più dolorosa: metrica numero uno.
-- **Aderenza al K8** - decisioni esatte (quale elemento parte, quando arma
-  la memoria, cosa fa lo squeeze), tempo tollerante (scarto in µs entro un
-  tick di campionamento). Tolleranza scritta prima del test, non dopo. Vive
-  in `test_host` contro trace del firmware K8.
-  La tolleranza e la base di confronto sono scritte in
+- **Feeling del K8** - su un corpus di manipolazioni reali fino a 40 WPM,
+  la sequenza di elementi nostra coincide con quella del K8 eseguito, stabile
+  sotto la fase dello stimolo: passa o no. Vive nel repo della logica keyer,
+  come suo gate di CI; qui si legge quale commit pinnato lo ha passato.
+  Il tempo resta tollerante come scritto in
   [docs/k8-timing-tolerance.md](docs/k8-timing-tolerance.md): un tick,
-  1000 µs, solo a velocità allineate al tick e con l'oscillatore emulato
-  riallineato sull'elemento dit.
+  1000 µs, a velocità allineate al tick.
 - **Tetto RT** - worst-case in µs di un giro del loop su Core 0
   (GPIO → iambic → stream → audio); limite 100 µs da ARCHITECTURE.md.
   Gate non ancora dimostrato: oggi non è strumentato.
@@ -85,8 +89,9 @@ K8).
 ### Banco di prova
 
 Il metodo di test veloce che non c'è mai stato: loop contro client/server
-DL4YHF, trace del K8 come oracolo, strumentazione RT, console seriale come
-strumento di lavoro (log, filtri, WiFi, comandi di test, non bloccante).
+DL4YHF, cattura delle leve dalla scatola per il corpus del keyer,
+strumentazione RT, console seriale come strumento di lavoro (log, filtri,
+WiFi, comandi di test, non bloccante).
 
 _Why it serves the approach:_ senza questo "esatto" non è dimostrabile, e
 il progetto si è già arenato due volte per la sua assenza.
@@ -99,13 +104,15 @@ capo RX del loop di test.
 _Why it serves the approach:_ è il protocollo del golden standard; la
 compatibilità è il prodotto.
 
-### Keyer K8
+### Keyer
 
-La FSM iambic rifatta sul sorgente K1EL K8, con il criterio "decisioni
-esatte, tempo tollerante".
+La logica del keyer vive in un repo suo, consumato qui come submodule a
+commit pinnato. Interfaccia (`iambic.h`, `sample.h`) e motore RT sono di
+questo repo e da lì non si toccano; il resto è suo. Qui si fa il bump e si
+fornisce la cattura delle leve.
 
-_Why it serves the approach:_ un riferimento esatto e testabile al posto di
-N preset approssimati e non verificabili.
+_Why it serves the approach:_ il feeling del K8 si dimostra con uno
+strumento suo, senza fermare CWNet e senza che CWNet lo fermi.
 
 ### Postazione senza attrito
 

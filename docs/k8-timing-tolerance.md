@@ -5,7 +5,8 @@ is what it is. `STRATEGY.md` requires this to be written before the test rather
 than after, so that a passing result cannot be a tolerance fitted to the outcome.
 
 Companion to issue #32. The measurements behind every figure here are in that
-issue's comment thread; the recipe for reproducing them is `tools/k8/README.md`.
+issue's comment thread; the recipe for reproducing them is `components/keyer_iambic/tools/k8/README.md`
+(the keyer logic and its oracle live in the Esp32KeyerTest submodule).
 
 ---
 
@@ -22,7 +23,8 @@ The split is not negotiable and comes from `STRATEGY.md`:
 - the sampling grid: level at instant `k·u`, and at no other instant
 
 A single wrong element is not a small error. It is a different character. These
-are pinned by the `test_iambic_k8_*` group in `test_host/test_iambic.c`, as
+are pinned by the `test_iambic_k8_*` group in
+`components/keyer_iambic/test_host/test_iambic.c`, as
 pass/fail with no numeric slack.
 
 **Tolerant — a number.** How long each element lasts.
