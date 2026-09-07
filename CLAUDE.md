@@ -87,7 +87,7 @@ From [STRATEGY.md](STRATEGY.md): behaviour that matters is proven against a real
 
 - No open `blocking` issue covers this work. See **A Blocking Issue Blocks** under Critical Constraints.
 - Host tests green in both CI variants. Never skip, disable or quarantine a failing test to get there.
-- A change touching CWNet (`keyer_cwnet/`) ships with a host test that pins the behaviour against the reference (DL4YHF client/server traces). The iambic FSM is the `Esp32KeyerTest` submodule: its behaviour is proven there, against the executed K8, under its own STRATEGY.md; here a change is a **pin bump**, and it ships with that repo's suite green at the new commit and `test_host/interface/sample.h` still identical to `keyer_core/include/sample.h` (CI checks both).
+- A change touching CWNet (`keyer_cwnet/`) ships with a host test that pins the behaviour against the reference (DL4YHF client/server traces). The iambic FSM is the `Esp32KeyerTest` submodule: its behaviour is proven there, against the executed K8, under its own STRATEGY.md; here a change is a **pin bump**, and it ships with that repo's suite green at the new commit and the submodule's `test_host/interface/sample.h`, past its five-line banner, still identical to `keyer_core/include/sample.h` (CI checks both).
 - Nothing blocking on the RT path: no `ESP_LOGx`/`printf` on Core 0 — the serial log blocks real time.
 
 A pull request answers these with evidence, not checkmarks, in the shape of [.github/pull_request_template.md](.github/pull_request_template.md): test counts, the test function that pins the reference, the issue condition it makes true and where. A line that cannot be filled honestly is a PR that is not done.

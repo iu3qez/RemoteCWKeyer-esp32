@@ -75,6 +75,40 @@ static void feed_connect_echo(void) {
     cwnet_client_on_data(&client, ref_connect_echo, sizeof(ref_connect_echo));
 }
 
+/* Everything the client sends, in order: mock_send keeps only the last frame. */
+static uint8_t mock_tx_all[512];
+static size_t mock_tx_all_len;
+
+static int mock_send_accumulate(const uint8_t *data, size_t len, void *user_data) {
+    (void)user_data;
+    if (mock_tx_all_len + len > sizeof(mock_tx_all)) {
+        return -1;
+    }
+    memcpy(mock_tx_all + mock_tx_all_len, data, len);
+    mock_tx_all_len += len;
+    return (int)len;
+}
+
+/* A client at READY with TRANSMIT granted, capturing every byte it sends
+ * from here on (the CONNECT it sent is dropped). */
+static void ready_client_accumulating(void) {
+    cwnet_client_config_t config = {
+        .server_host = "test.server.com",
+        .server_port = 7373,
+        .username = "TEST",
+        .send_cb = mock_send_accumulate,
+        .get_time_ms_cb = mock_get_time_ms,
+        .user_data = NULL
+    };
+
+    test_setup();
+    mock_tx_all_len = 0;
+    cwnet_client_init(&client, &config);
+    cwnet_client_on_connected(&client);
+    feed_connect_echo();
+    mock_tx_all_len = 0;
+}
+
 /*===========================================================================*/
 /* Initialization Tests                                                      */
 /*===========================================================================*/
@@ -301,7 +335,7 @@ void test_client_refuses_to_key_without_transmit_permission(void) {
     TEST_ASSERT_EQUAL(CWNET_STATE_READY, cwnet_client_get_state(&client));
 
     TEST_ASSERT_EQUAL(CWNET_CLIENT_ERR_NOT_PERMITTED,
-                      cwnet_client_send_key_event(&client, true));
+                      cwnet_client_send_key_event(&client, true, 1000));
 }
 
 /*===========================================================================*/
@@ -427,57 +461,194 @@ void test_client_updates_latency_on_ping_response2(void) {
 /* CW Event Tests                                                            */
 /*===========================================================================*/
 
-void test_client_sends_key_down_event(void) {
-    cwnet_client_config_t config = {
-        .server_host = "test.server.com",
-        .server_port = 7373,
-        .username = "TEST",
-        .send_cb = mock_send,
-        .get_time_ms_cb = mock_get_time_ms,
-        .user_data = NULL
-    };
+/*
+ * Keying goes out as MORSE 0x10: one byte per transition, bit 7 the new key
+ * state, bits 6..0 the 7-bit wait since the previous transition. Reference:
+ * DL4YHF CwStreamEnc.c and KeyerThread.c (sw_MorseTxFifo); the synthetic
+ * expectations below were produced by tools/cwnet/keyer_sim.c, which runs
+ * that algorithm on the reference's own encoder.
+ */
 
-    cwnet_client_init(&client, &config);
-    cwnet_client_on_connected(&client);
+void test_client_tx_first_transition_of_an_over_waits_zero(void) {
+    ready_client_accumulating();
 
-    feed_connect_echo();
-    mock_tx_len = 0;
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true, 5000));
 
-    /* Send key down event */
-    mock_time_ms = 2000;
-    cwnet_client_err_t err = cwnet_client_send_key_event(&client, true);
-    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, err);
-    TEST_ASSERT_GREATER_THAN(0, mock_tx_len);
-
-    /* Verify it's a CW_DOWN command with timestamp */
-    /* CMD_CW_DOWN = 0x15 with category 1: (1 << 6) | 0x15 = 0x55 */
-    TEST_ASSERT_EQUAL(0x55, mock_tx_buffer[0]);
+    /* 0x50 = short block | MORSE; one byte: key down, wait 0 */
+    static const uint8_t expected[] = {0x50, 0x01, 0x80};
+    TEST_ASSERT_EQUAL(sizeof(expected), mock_tx_all_len);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, mock_tx_all, sizeof(expected));
 }
 
-void test_client_sends_key_up_event(void) {
-    cwnet_client_config_t config = {
-        .server_host = "test.server.com",
-        .server_port = 7373,
-        .username = "TEST",
-        .send_cb = mock_send,
-        .get_time_ms_cb = mock_get_time_ms,
-        .user_data = NULL
+void test_client_tx_wait_is_measured_from_previous_transition(void) {
+    ready_client_accumulating();
+
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true, 5000));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 5048));
+
+    /* 48 ms is in the 4 ms range: 0x20 + (48 - 32) / 4 = 0x24, key up */
+    static const uint8_t expected[] = {0x50, 0x01, 0x80, 0x50, 0x01, 0x24};
+    TEST_ASSERT_EQUAL(sizeof(expected), mock_tx_all_len);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, mock_tx_all, sizeof(expected));
+}
+
+/*
+ * Client-to-server bytes 238..278 of session 12 of the 2026-09-05 capture of
+ * the official DL4YHF client: its first over, the letter A at 25 WPM (dot
+ * 48 ms) and then silence. Five MORSE frames, with the two rigctld set_ptt
+ * frames the reference interleaves around an over (PTT is #13; we do not
+ * send it, so the comparison is on the MORSE frames alone).
+ */
+static const uint8_t ref_first_over[] = {
+    0x50, 0x01, 0x80,                                     /* key down, wait 0      */
+    0x46, 0x0B, 0x73, 0x65, 0x74, 0x5F, 0x70, 0x74, 0x74,
+    0x20, 0x31, 0x0A, 0x00,                               /* RIGCTLD "set_ptt 1"   */
+    0x50, 0x01, 0x24,                                     /* key up   after  48 ms */
+    0x50, 0x01, 0xA4,                                     /* key down after  48 ms */
+    0x50, 0x01, 0x3C,                                     /* key up   after 144 ms */
+    0x46, 0x0B, 0x73, 0x65, 0x74, 0x5F, 0x70, 0x74, 0x74,
+    0x20, 0x30, 0x0A, 0x00,                               /* RIGCTLD "set_ptt 0"   */
+    0x50, 0x01, 0x60,                                     /* end of over, 669 ms   */
+};
+
+void test_client_tx_first_over_matches_reference_capture(void) {
+    ready_client_accumulating();
+
+    /* The edges the reference client saw, reconstructed from its own bytes */
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  1000));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 1048));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  1096));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 1240));
+    /* 14 dot-times = 672 ms: not at exactly 672, sent at the first poll past it */
+    TEST_ASSERT_FALSE(cwnet_client_poll(&client, 1240 + 672, 48));
+    TEST_ASSERT_TRUE(cwnet_client_poll(&client, 1240 + 673, 48));
+
+    /* Expected: the raw bytes of every MORSE frame in the capture, in order */
+    uint8_t expected[sizeof(ref_first_over)];
+    size_t expected_len = 0;
+    cwnet_frame_parser_t parser;
+    cwnet_frame_parser_init(&parser);
+    size_t off = 0;
+    while (off < sizeof(ref_first_over)) {
+        cwnet_parse_result_t r = cwnet_frame_parse(&parser, ref_first_over + off,
+                                                   sizeof(ref_first_over) - off);
+        TEST_ASSERT_EQUAL(CWNET_PARSE_OK, r.status);
+        if (r.command == CWNET_CMD_MORSE) {
+            memcpy(expected + expected_len, ref_first_over + off, r.bytes_consumed);
+            expected_len += r.bytes_consumed;
+        }
+        off += r.bytes_consumed;
+    }
+    TEST_ASSERT_EQUAL(15, expected_len);  /* five frames of three bytes */
+
+    TEST_ASSERT_EQUAL(expected_len, mock_tx_all_len);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, mock_tx_all, expected_len);
+}
+
+void test_client_tx_advances_by_encoded_not_measured_ms(void) {
+    ready_client_accumulating();
+
+    /* 33 ms edges: 33 encodes as 32 (0x20). The reference advances its
+     * stopwatch by the encoded 32, so the next interval measures 34, then
+     * 35, then 36, which finally encodes as 0x21. Advancing by the measured
+     * 33 would send 0x20 forever and let the receiver drift 1 ms per edge. */
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  0));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 33));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  66));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 99));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  132));
+
+    static const uint8_t expected[] = {
+        0x50, 0x01, 0x80,
+        0x50, 0x01, 0x20,
+        0x50, 0x01, 0xA0,
+        0x50, 0x01, 0x20,
+        0x50, 0x01, 0xA1,
     };
+    TEST_ASSERT_EQUAL(sizeof(expected), mock_tx_all_len);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, mock_tx_all, sizeof(expected));
+}
 
-    cwnet_client_init(&client, &config);
-    cwnet_client_on_connected(&client);
+void test_client_tx_splits_wait_above_1165_ms(void) {
+    ready_client_accumulating();
 
-    feed_connect_echo();
-    mock_tx_len = 0;
+    /* A 2000 ms gap inside an over (below the end-of-over threshold at slow
+     * speed): 1165 ms as 0x7F, then 835 ms as 0x6A, both key down, in one
+     * frame. The stopwatch advances by 1165 + 829 = 1994, so the next
+     * interval measures 30 + 6 = 36 ms. */
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  0));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 20));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  2020));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 2050));
 
-    /* Send key up event */
-    mock_time_ms = 2100;
-    cwnet_client_err_t err = cwnet_client_send_key_event(&client, false);
-    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, err);
-    TEST_ASSERT_GREATER_THAN(0, mock_tx_len);
+    static const uint8_t expected[] = {
+        0x50, 0x01, 0x80,
+        0x50, 0x01, 0x14,
+        0x50, 0x02, 0xFF, 0xEA,
+        0x50, 0x01, 0x21,
+    };
+    TEST_ASSERT_EQUAL(sizeof(expected), mock_tx_all_len);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, mock_tx_all, sizeof(expected));
+}
 
-    /* CMD_CW_UP = 0x14 with category 1: (1 << 6) | 0x14 = 0x54 */
-    TEST_ASSERT_EQUAL(0x54, mock_tx_buffer[0]);
+void test_client_tx_end_of_over_after_14_dot_times(void) {
+    ready_client_accumulating();
+
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  0));
+    /* Key still down: nothing to close, whatever the elapsed time */
+    TEST_ASSERT_FALSE(cwnet_client_poll(&client, 5000, 48));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 48));
+
+    /* Strictly more than 14 dot-times */
+    TEST_ASSERT_FALSE(cwnet_client_poll(&client, 48 + 672, 48));
+    TEST_ASSERT_TRUE(cwnet_client_poll(&client, 48 + 673, 48));
+    /* Once: the over is closed until the next transition */
+    TEST_ASSERT_FALSE(cwnet_client_poll(&client, 48 + 2000, 48));
+    /* The next transition opens a new over with wait 0 */
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true, 5000));
+
+    static const uint8_t expected[] = {
+        0x50, 0x01, 0x80,
+        0x50, 0x01, 0x24,
+        0x50, 0x01, 0x60,   /* 673 ms in the 16 ms range: 0x40 + (673 - 157) / 16 */
+        0x50, 0x01, 0x80,
+    };
+    TEST_ASSERT_EQUAL(sizeof(expected), mock_tx_all_len);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, mock_tx_all, sizeof(expected));
+}
+
+void test_client_tx_end_of_over_splits_at_slow_speed(void) {
+    ready_client_accumulating();
+
+    /* At 12 WPM (dot 100 ms) 14 dot-times are 1400 ms, more than one byte
+     * can carry: the end of the over is 1165 + 236 ms, two key-up bytes in
+     * one frame, three consecutive key-ups in the stream. */
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  0));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 100));
+    TEST_ASSERT_FALSE(cwnet_client_poll(&client, 100 + 1400, 100));
+    TEST_ASSERT_TRUE(cwnet_client_poll(&client, 100 + 1401, 100));
+
+    static const uint8_t expected[] = {
+        0x50, 0x01, 0x80,
+        0x50, 0x01, 0x31,
+        0x50, 0x02, 0x7F, 0x44,
+    };
+    TEST_ASSERT_EQUAL(sizeof(expected), mock_tx_all_len);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, mock_tx_all, sizeof(expected));
+}
+
+void test_client_tx_ignores_repeated_key_state(void) {
+    ready_client_accumulating();
+
+    /* The reference encodes only on a change of its keying output */
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  0));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  10));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 48));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 60));
+
+    static const uint8_t expected[] = {0x50, 0x01, 0x80, 0x50, 0x01, 0x24};
+    TEST_ASSERT_EQUAL(sizeof(expected), mock_tx_all_len);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, mock_tx_all, sizeof(expected));
 }
 
 void test_client_rejects_events_when_not_ready(void) {
@@ -493,7 +664,7 @@ void test_client_rejects_events_when_not_ready(void) {
     cwnet_client_init(&client, &config);
     /* Don't connect - stay in DISCONNECTED state */
 
-    cwnet_client_err_t err = cwnet_client_send_key_event(&client, true);
+    cwnet_client_err_t err = cwnet_client_send_key_event(&client, true, 1000);
     TEST_ASSERT_EQUAL(CWNET_CLIENT_ERR_NOT_READY, err);
 }
 
@@ -544,7 +715,7 @@ void test_client_handles_disconnect_during_operation(void) {
     TEST_ASSERT_EQUAL(CWNET_STATE_DISCONNECTED, cwnet_client_get_state(&client));
 
     /* Verify can't send events after disconnect */
-    cwnet_client_err_t err = cwnet_client_send_key_event(&client, true);
+    cwnet_client_err_t err = cwnet_client_send_key_event(&client, true, 1000);
     TEST_ASSERT_EQUAL(CWNET_CLIENT_ERR_NOT_READY, err);
 }
 
@@ -638,8 +809,14 @@ void run_cwnet_client_tests(void) {
     RUN_TEST(test_client_updates_latency_on_ping_response2);
 
     /* CW Events */
-    RUN_TEST(test_client_sends_key_down_event);
-    RUN_TEST(test_client_sends_key_up_event);
+    RUN_TEST(test_client_tx_first_transition_of_an_over_waits_zero);
+    RUN_TEST(test_client_tx_wait_is_measured_from_previous_transition);
+    RUN_TEST(test_client_tx_first_over_matches_reference_capture);
+    RUN_TEST(test_client_tx_advances_by_encoded_not_measured_ms);
+    RUN_TEST(test_client_tx_splits_wait_above_1165_ms);
+    RUN_TEST(test_client_tx_end_of_over_after_14_dot_times);
+    RUN_TEST(test_client_tx_end_of_over_splits_at_slow_speed);
+    RUN_TEST(test_client_tx_ignores_repeated_key_state);
     RUN_TEST(test_client_rejects_events_when_not_ready);
 
     /* Error Handling */

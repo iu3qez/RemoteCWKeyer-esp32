@@ -274,7 +274,6 @@ void cwnet_socket_init(void) {
         .send_cb = socket_send_cb,
         .get_time_ms_cb = get_time_ms_cb,
         .state_change_cb = state_change_cb,
-        .cw_event_cb = NULL,  /* TODO: handle received CW events */
         .user_data = NULL
     };
 
@@ -328,6 +327,18 @@ void cwnet_socket_process(void) {
             if (cwnet_client_get_state(&s_ctx.client) == CWNET_STATE_READY) {
                 s_ctx.state = CWNET_SOCK_READY;
             }
+
+            /* Close a quiet over: the reference sends a second key-up after
+             * 14 dot-times of silence, and that is how the server learns the
+             * over ended. Same clock as the key events below. */
+            {
+                uint32_t wpm = (uint32_t)CONFIG_GET_WPM();
+                int32_t dot_ms = wpm > 0 ? (int32_t)(1200u / wpm) : 0;
+                if (dot_ms > 0 &&
+                    cwnet_client_poll(&s_ctx.client, get_time_ms_cb(NULL), dot_ms)) {
+                    RT_DEBUG(&g_bg_log_stream, now_us, "CWNet TX: end of over");
+                }
+            }
             break;
 
         case CWNET_SOCK_ERROR:
@@ -345,7 +356,11 @@ bool cwnet_socket_send_key_event(bool key_down) {
         return false;
     }
 
-    cwnet_client_err_t err = cwnet_client_send_key_event(&s_ctx.client, key_down);
+    /* Stamped when the caller got to the event, not when the edge happened
+     * on Core 0: the 7-bit wait inherits the bg loop's jitter. Feeding the
+     * client from a stream consumer with stream time is separate work. */
+    cwnet_client_err_t err = cwnet_client_send_key_event(&s_ctx.client, key_down,
+                                                         get_time_ms_cb(NULL));
     if (err == CWNET_CLIENT_OK) {
         int64_t now_us = esp_timer_get_time();
         RT_DEBUG(&g_bg_log_stream, now_us, "CWNet TX: %s", key_down ? "DOWN" : "UP");

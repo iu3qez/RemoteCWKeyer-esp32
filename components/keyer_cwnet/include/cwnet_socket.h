@@ -47,7 +47,10 @@ void cwnet_socket_init(void);
 void cwnet_socket_process(void);
 
 /**
- * @brief Send CW key event
+ * @brief Send a key transition as a MORSE frame
+ *
+ * Stamps the transition with the current time; the end of a quiet over is
+ * sent by cwnet_socket_process().
  *
  * @param key_down true for key down, false for key up
  * @return true if sent successfully
