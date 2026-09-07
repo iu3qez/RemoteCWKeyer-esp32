@@ -20,8 +20,21 @@
  *   CONNECTING -> recv CONNECT echo -> READY
  *   READY -> recv PING_REQUEST -> send RESPONSE_1, sync timer
  *   READY -> recv PING_RESPONSE_2 -> update latency
- *   READY -> send_key_event() -> send CW_DOWN/CW_UP
+ *   READY -> send_key_event() -> send MORSE (7-bit keying stream)
+ *   READY -> poll() after 14 dot-times of key-up -> send the end of the over
  *   any state -> on_disconnected() -> DISCONNECTED
+ *
+ * Keying on the wire (reference: DL4YHF Remote CW Keyer, CwStreamEnc.c and
+ * KeyerThread.c, sw_MorseTxFifo):
+ *   Each key transition becomes one byte in a MORSE 0x10 frame: bit 7 is the
+ *   new key state, bits 6..0 the 7-bit encoded time to wait before applying
+ *   it, measured from the previous transition. The first transition of an
+ *   over waits 0. After each byte the sender's reference instant advances by
+ *   the *encoded* milliseconds, not the measured ones, so quantisation error
+ *   does not accumulate. A wait above CWSTREAM_MAX_WAIT_MS is split over
+ *   several bytes with the same key state. Once the key has been up for more
+ *   than 14 dot-times the sender emits a second key-up: that is how the
+ *   receiver learns the over has ended.
  */
 
 #pragma once
@@ -59,9 +72,13 @@ typedef enum {
     CWNET_CMD_CONNECT = 0x01,   /**< Client -> Server request; echoed back by the server to confirm */
     CWNET_CMD_DISCONNECT = 0x02,/**< Bidirectional: disconnect */
     CWNET_CMD_PING = 0x03,      /**< Bidirectional: time sync */
-    CWNET_CMD_CW_UP = 0x14,     /**< Key up event */
-    CWNET_CMD_CW_DOWN = 0x15,   /**< Key down event */
+    CWNET_CMD_MORSE = 0x10,     /**< Keying: 7-bit stream, bit 7 = key state, bits 6..0 = wait */
+    CWNET_CMD_CI_V = 0x14,      /**< A single CI-V packet (Icom rig control). Not keying. */
+    CWNET_CMD_SPECTRUM = 0x15,  /**< Spectrum data for the waterfall display. Not keying. */
 } cwnet_cmd_t;
+
+/** Longest MORSE payload this client sends in one frame (bytes = events) */
+#define CWNET_MORSE_MAX_EVENTS 8
 
 /** CONNECT payload field sizes */
 #define CWNET_CONNECT_USERNAME_LEN  44
@@ -139,19 +156,6 @@ typedef void (*cwnet_state_change_cb_t)(cwnet_client_state_t old_state,
                                          cwnet_client_state_t new_state,
                                          void *user_data);
 
-/**
- * @brief CW event received callback (optional)
- *
- * Called when a CW event is received from the server (another operator).
- *
- * @param key_down true if key down, false if key up
- * @param timestamp_ms Event timestamp (server time)
- * @param user_data User context pointer
- */
-typedef void (*cwnet_cw_event_cb_t)(bool key_down,
-                                     int32_t timestamp_ms,
-                                     void *user_data);
-
 /*===========================================================================*/
 /* Configuration                                                             */
 /*===========================================================================*/
@@ -170,7 +174,6 @@ typedef struct {
 
     /* Optional callbacks */
     cwnet_state_change_cb_t state_change_cb;  /**< State change notification */
-    cwnet_cw_event_cb_t cw_event_cb;          /**< Received CW event */
 
     void *user_data;                    /**< User context for callbacks */
 } cwnet_client_config_t;
@@ -194,7 +197,6 @@ typedef struct {
     cwnet_send_cb_t send_cb;
     cwnet_get_time_ms_cb_t get_time_ms_cb;
     cwnet_state_change_cb_t state_change_cb;
-    cwnet_cw_event_cb_t cw_event_cb;
     void *user_data;
 
     /* State */
@@ -208,6 +210,12 @@ typedef struct {
 
     /* Permissions granted by the server in its CONNECT echo */
     uint32_t permissions;
+
+    /* MORSE TX stopwatch: the reference's sw_MorseTxFifo, fFillingTxFifo and
+     * fMorseOutput_sent (KeyerThread.c). */
+    int32_t tx_ref_ms;   /**< Instant the next wait is measured from; advances by the encoded ms */
+    bool tx_filling;     /**< Inside an over: waits are measured, not forced to 0 */
+    bool tx_key_down;    /**< Last key state put on the wire */
 
     /* Frame parser for incoming data */
     cwnet_frame_parser_t parser;
@@ -308,15 +316,43 @@ void cwnet_client_on_data(cwnet_client_t *client,
 /*===========================================================================*/
 
 /**
- * @brief Send CW key event
+ * @brief Send a key transition as a MORSE frame
  *
- * Sends a key down or key up event to the server.
- * Only valid in READY state.
+ * Emits one MORSE 0x10 frame carrying the new key state and the 7-bit wait
+ * since the previous transition, as the reference client does (see the file
+ * header). A call that repeats the current key state sends nothing: the
+ * reference encodes only on a change of its keying output.
+ *
+ * Only valid in READY state, and only once the server granted TRANSMIT.
  *
  * @param client Client context
  * @param key_down true for key down, false for key up
- * @return CWNET_CLIENT_OK on success,
- *         CWNET_CLIENT_ERR_NOT_READY if not in READY state
+ * @param at_ms Instant of the transition, in milliseconds on a clock the
+ *              caller keeps monotonic across calls (only differences are
+ *              used; the first transition of an over is sent with wait 0).
+ *              Round to the millisecond, do not truncate: the reference
+ *              rounds its microsecond stopwatch.
+ * @return CWNET_CLIENT_OK on success (also when nothing had to be sent),
+ *         CWNET_CLIENT_ERR_NOT_READY if not in READY state,
+ *         CWNET_CLIENT_ERR_NOT_PERMITTED if the server did not grant TRANSMIT,
+ *         CWNET_CLIENT_ERR_SEND_FAILED if the send callback failed
  */
 cwnet_client_err_t cwnet_client_send_key_event(cwnet_client_t *client,
-                                                bool key_down);
+                                                bool key_down,
+                                                int32_t at_ms);
+
+/**
+ * @brief Close an over that has gone quiet
+ *
+ * Call periodically. When the key has been up for more than 14 dot-times
+ * since the last transition, sends the second key-up the reference uses to
+ * mark the end of an over, and stops measuring: the next transition starts
+ * a new over with wait 0.
+ *
+ * @param client Client context
+ * @param now_ms Current instant on the same clock as send_key_event()'s at_ms
+ * @param dot_ms Local dot time in milliseconds (1200 / WPM); the threshold
+ *               is 14 * dot_ms, as the reference's KeyerThread.c
+ * @return true if the end-of-over byte was sent by this call
+ */
+bool cwnet_client_poll(cwnet_client_t *client, int32_t now_ms, int32_t dot_ms);

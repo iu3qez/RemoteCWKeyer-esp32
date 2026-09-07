@@ -4,6 +4,7 @@
  */
 
 #include "cwnet_client.h"
+#include "cwnet_timestamp.h"
 #include <string.h>
 #include <stdio.h>
 #include <inttypes.h>
@@ -146,36 +147,53 @@ static cwnet_client_err_t send_ping_response(cwnet_client_t *client,
 }
 
 /**
- * @brief Build and send CW event frame
+ * @brief Build and send one MORSE frame for a key transition
  *
- * CW event frame format (short payload with timestamp):
- *   - cmd byte: (CW_DOWN/CW_UP << 2) | CAT_SHORT
- *   - length: 4 (32-bit timestamp)
- *   - payload: 4-byte little-endian synced timestamp
+ * MORSE frame format (short payload):
+ *   - cmd byte: 0x50 = (CAT_SHORT << 6) | MORSE
+ *   - length: number of keying bytes
+ *   - payload: keying bytes, bit 7 = key state, bits 6..0 = 7-bit wait
+ *
+ * A wait above CWSTREAM_MAX_WAIT_MS becomes several bytes with the same key
+ * state, exactly as CwStream_EncodeKeyUpDownEvent() splits it: full bytes of
+ * 1165 ms, then the remainder. The reference queues them in its FIFO and the
+ * network poll drains the whole FIFO into one frame, so they travel together.
+ *
+ * @param encoded_ms Out: sum of the decoded waits actually put on the wire.
+ *                   This is what the sender's stopwatch advances by.
  */
-static cwnet_client_err_t send_cw_event(cwnet_client_t *client, bool key_down) {
-    /* Get synced timestamp */
-    int32_t local_time = get_local_time(client);
-    int32_t timestamp = cwnet_timer_read_synced_ms(&client->timer, local_time);
+static cwnet_client_err_t send_morse(cwnet_client_t *client,
+                                     bool key_down,
+                                     int32_t wait_ms,
+                                     int32_t *encoded_ms) {
+    uint8_t frame[2 + CWNET_MORSE_MAX_EVENTS];
+    size_t n = 0;
+    int32_t remaining = wait_ms > 0 ? wait_ms : 0;
+    int32_t total = 0;
 
-    /* Frame: cmd(1) + len(1) + timestamp(4) */
-    uint8_t frame[6];
-    cwnet_cmd_t cmd = key_down ? CWNET_CMD_CW_DOWN : CWNET_CMD_CW_UP;
-    frame[0] = make_cmd_byte(CWNET_FRAME_CAT_SHORT_PAYLOAD, cmd);
-    frame[1] = 4;  /* 4-byte timestamp */
+    /* The reference's do-while: always at least one byte, even for wait 0 */
+    do {
+        int32_t chunk = remaining > CWSTREAM_MAX_WAIT_MS ? CWSTREAM_MAX_WAIT_MS : remaining;
+        uint8_t b = cwstream_encode_timestamp((int)chunk);
+        if (key_down) {
+            b |= 0x80u;
+        }
+        frame[2 + n] = b;
+        n++;
+        total += cwstream_decode_timestamp(b);
+        remaining -= chunk;
+    } while (remaining > 0 && n < CWNET_MORSE_MAX_EVENTS);
 
-    /* Little-endian timestamp */
-    uint32_t ts = (uint32_t)timestamp;
-    frame[2] = (uint8_t)(ts & 0xFF);
-    frame[3] = (uint8_t)((ts >> 8) & 0xFF);
-    frame[4] = (uint8_t)((ts >> 16) & 0xFF);
-    frame[5] = (uint8_t)((ts >> 24) & 0xFF);
+    frame[0] = make_cmd_byte(CWNET_FRAME_CAT_SHORT_PAYLOAD, CWNET_CMD_MORSE);
+    frame[1] = (uint8_t)n;
 
-    int sent = send_frame(client, frame, sizeof(frame));
-    if (sent < 0 || (size_t)sent != sizeof(frame)) {
+    size_t frame_len = 2 + n;
+    int sent = send_frame(client, frame, frame_len);
+    if (sent < 0 || (size_t)sent != frame_len) {
         return CWNET_CLIENT_ERR_SEND_FAILED;
     }
 
+    *encoded_ms = total;
     return CWNET_CLIENT_OK;
 }
 
@@ -256,30 +274,10 @@ static void handle_ping(cwnet_client_t *client,
 }
 
 /**
- * @brief Handle CW event frame (received from server/other operators)
- */
-static void handle_cw_event(cwnet_client_t *client,
-                            bool key_down,
-                            const uint8_t *payload,
-                            size_t len) {
-    if (client->cw_event_cb == NULL) {
-        return;  /* No callback registered */
-    }
-
-    /* Decode little-endian 32-bit timestamp */
-    int32_t timestamp = 0;
-    if (len >= 4) {
-        timestamp = (int32_t)((uint32_t)payload[0] |
-                              ((uint32_t)payload[1] << 8) |
-                              ((uint32_t)payload[2] << 16) |
-                              ((uint32_t)payload[3] << 24));
-    }
-
-    client->cw_event_cb(key_down, timestamp, client->user_data);
-}
-
-/**
  * @brief Process a complete frame from parse result
+ *
+ * Keying from other operators arrives as MORSE 0x10 and is not decoded yet.
+ * CI_V 0x14 and SPECTRUM 0x15 are rig control and display data, never keying.
  */
 static void process_frame(cwnet_client_t *client, const cwnet_parse_result_t *result) {
     uint8_t cmd = result->command;
@@ -295,16 +293,8 @@ static void process_frame(cwnet_client_t *client, const cwnet_parse_result_t *re
             handle_ping(client, payload, payload_len);
             break;
 
-        case CWNET_CMD_CW_DOWN:
-            handle_cw_event(client, true, payload, payload_len);
-            break;
-
-        case CWNET_CMD_CW_UP:
-            handle_cw_event(client, false, payload, payload_len);
-            break;
-
         default:
-            /* Unknown command, ignore */
+            /* Not handled, ignore */
             break;
     }
 }
@@ -353,7 +343,6 @@ cwnet_client_err_t cwnet_client_init(cwnet_client_t *client,
     client->send_cb = config->send_cb;
     client->get_time_ms_cb = config->get_time_ms_cb;
     client->state_change_cb = config->state_change_cb;
-    client->cw_event_cb = config->cw_event_cb;
     client->user_data = config->user_data;
 
     /* Initialize state */
@@ -409,6 +398,11 @@ void cwnet_client_on_connected(cwnet_client_t *client) {
 
     /* Reset parser for new connection */
     cwnet_frame_parser_reset(&client->parser);
+
+    /* A new session starts a new over: first transition waits 0 */
+    client->tx_ref_ms = 0;
+    client->tx_filling = false;
+    client->tx_key_down = false;
 
     /* Transition to CONNECTING */
     set_state(client, CWNET_STATE_CONNECTING);
@@ -471,7 +465,8 @@ void cwnet_client_on_data(cwnet_client_t *client,
 }
 
 cwnet_client_err_t cwnet_client_send_key_event(cwnet_client_t *client,
-                                                bool key_down) {
+                                                bool key_down,
+                                                int32_t at_ms) {
     if (client == NULL) {
         return CWNET_CLIENT_ERR_INVALID_ARG;
     }
@@ -487,5 +482,57 @@ cwnet_client_err_t cwnet_client_send_key_event(cwnet_client_t *client,
         return CWNET_CLIENT_ERR_NOT_PERMITTED;
     }
 
-    return send_cw_event(client, key_down);
+    /* KeyerThread.c encodes only when fMorseOutput differs from what was sent */
+    if (key_down == client->tx_key_down) {
+        return CWNET_CLIENT_OK;
+    }
+
+    /* Wait since the previous transition. At the start of an over there is
+     * no previous transition: the wait is 0 and the stopwatch starts here. */
+    bool opening = !client->tx_filling;
+    int32_t wait_ms = opening ? 0 : at_ms - client->tx_ref_ms;
+
+    int32_t encoded_ms = 0;
+    cwnet_client_err_t err = send_morse(client, key_down, wait_ms, &encoded_ms);
+    if (err != CWNET_CLIENT_OK) {
+        return err;
+    }
+
+    /* Advance by what the receiver will actually wait, not by what we
+     * measured: the quantisation residual carries into the next interval
+     * (TIM_AdjustStopwatch_ms in KeyerThread.c). The reference never resets
+     * this state on reconnect; we do, in on_connected(), so a session cannot
+     * open with a stale wait. */
+    if (opening) {
+        client->tx_ref_ms = at_ms;
+        client->tx_filling = true;
+    }
+    client->tx_ref_ms += encoded_ms;
+    client->tx_key_down = key_down;
+    return CWNET_CLIENT_OK;
+}
+
+bool cwnet_client_poll(cwnet_client_t *client, int32_t now_ms, int32_t dot_ms) {
+    if (client == NULL || client->state != CWNET_STATE_READY) {
+        return false;
+    }
+    if (!client->tx_filling || client->tx_key_down) {
+        return false;
+    }
+
+    /* KeyerThread.c: t_us > 14000 * iDotTime_ms. Which 16 ms bucket the
+     * elapsed time falls in depends on the poll instant there too. */
+    int32_t elapsed_ms = now_ms - client->tx_ref_ms;
+    if (elapsed_ms <= 14 * dot_ms) {
+        return false;
+    }
+
+    int32_t encoded_ms = 0;
+    if (send_morse(client, false, elapsed_ms, &encoded_ms) != CWNET_CLIENT_OK) {
+        return false;
+    }
+
+    client->tx_ref_ms += encoded_ms;
+    client->tx_filling = false;  /* the next transition opens a new over with wait 0 */
+    return true;
 }

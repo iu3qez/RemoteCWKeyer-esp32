@@ -222,8 +222,14 @@ void test_client_refuses_to_key_without_transmit_permission(void);
 void test_client_responds_to_ping_request(void);
 void test_client_syncs_timer_on_ping_request(void);
 void test_client_updates_latency_on_ping_response2(void);
-void test_client_sends_key_down_event(void);
-void test_client_sends_key_up_event(void);
+void test_client_tx_first_transition_of_an_over_waits_zero(void);
+void test_client_tx_wait_is_measured_from_previous_transition(void);
+void test_client_tx_first_over_matches_reference_capture(void);
+void test_client_tx_advances_by_encoded_not_measured_ms(void);
+void test_client_tx_splits_wait_above_1165_ms(void);
+void test_client_tx_end_of_over_after_14_dot_times(void);
+void test_client_tx_end_of_over_splits_at_slow_speed(void);
+void test_client_tx_ignores_repeated_key_state(void);
 void test_client_rejects_events_when_not_ready(void);
 void test_client_handles_invalid_frame(void);
 void test_client_handles_disconnect_during_operation(void);
@@ -501,9 +507,15 @@ int main(void) {
     RUN_TEST(test_client_responds_to_ping_request);
     RUN_TEST(test_client_syncs_timer_on_ping_request);
     RUN_TEST(test_client_updates_latency_on_ping_response2);
-    /* CW Events */
-    RUN_TEST(test_client_sends_key_down_event);
-    RUN_TEST(test_client_sends_key_up_event);
+    /* Keying TX: MORSE 0x10 against the DL4YHF reference */
+    RUN_TEST(test_client_tx_first_transition_of_an_over_waits_zero);
+    RUN_TEST(test_client_tx_wait_is_measured_from_previous_transition);
+    RUN_TEST(test_client_tx_first_over_matches_reference_capture);
+    RUN_TEST(test_client_tx_advances_by_encoded_not_measured_ms);
+    RUN_TEST(test_client_tx_splits_wait_above_1165_ms);
+    RUN_TEST(test_client_tx_end_of_over_after_14_dot_times);
+    RUN_TEST(test_client_tx_end_of_over_splits_at_slow_speed);
+    RUN_TEST(test_client_tx_ignores_repeated_key_state);
     RUN_TEST(test_client_rejects_events_when_not_ready);
     /* Error Handling */
     RUN_TEST(test_client_handles_invalid_frame);

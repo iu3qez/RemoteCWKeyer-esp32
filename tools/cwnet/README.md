@@ -16,6 +16,7 @@ compilano con clang/gcc. In particolare `pcap_to_stream.py` sostituisce
 | `cwnet_dump.c` | Decodifica un flusso grezzo: parser di frame **nostro** + codec del keying **di DL4YHF**. Diagnostico, non asserisce. |
 | `diff_main.c` | Confronto esaustivo del nostro `cwnet_timestamp.c` contro `CwStreamEnc.c` di DL4YHF, tutto il dominio di ingresso. |
 | `gen_synth.c` | Genera uno stream MORSE sintetico con l'encoder DL4YHF, per collaudare il decodificatore. |
+| `keyer_sim.c` | Simula il `KeyerThread` di DL4YHF (transizioni, cronometro aggiustato dei ms codificati, fine over a 14 dot-time) sull'encoder DL4YHF. Provenienza degli attesi sintetici di `test_cwnet_client.c`; il caso A riproduce i byte del primo over della sessione 12. |
 | `shim/yhf_type.h` | I quattro typedef (`BYTE`/`WORD`/`DWORD`/`BOOL`) che l'archivio pubblicato di DL4YHF non include. Scritto da noi. |
 | `shim/Elbug.h` | Stub: `CwStreamEnc.c` include `Elbug.h` ma non usa alcun simbolo di Elbug, solo i typedef. Lo stub evita di dover scaricare `Elbug.{c,h}`. Scritto da noi. |
 
@@ -50,6 +51,9 @@ clang -O1 -fsanitize=undefined -I shim -I "$REF" -I "$OUR/include" \
 # decodifica di una cattura
 clang -O1 -Wall -Wextra -fsanitize=address,undefined -I shim -I "$REF" -I "$OUR/include" \
       cwnet_dump.c "$REF/CwStreamEnc.c" "$OUR/src/cwnet_frame.c" -o cwnet_dump
+
+# byte attesi dal KeyerThread di riferimento per una lista di edge
+clang -O1 -Wall -fsanitize=undefined -I shim -I "$REF" keyer_sim.c "$REF/CwStreamEnc.c" -o keyer_sim && ./keyer_sim
 
 # tap dal vivo: client -> tap -> server, un file per direzione
 python3 cwnet_tap.py --listen 0.0.0.0:7355 --server <ip-server>:7355 --out sess

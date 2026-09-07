@@ -15,6 +15,15 @@
 #include <stdint.h>
 
 /**
+ * @brief Longest wait one 7-bit timestamp can carry, in milliseconds
+ *
+ * A longer wait is sent as several consecutive bytes with the same key
+ * state (CwStreamEnc.c, "pulses or gaps longer than 1165 milliseconds
+ * may be sent as subsequent bytes").
+ */
+#define CWSTREAM_MAX_WAIT_MS 1165
+
+/**
  * @brief Encode milliseconds to 7-bit CW timestamp
  *
  * @param ms Duration in milliseconds (negative clamps to 0, >1165 clamps to max)
