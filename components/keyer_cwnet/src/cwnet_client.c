@@ -490,7 +490,7 @@ cwnet_client_err_t cwnet_client_send_key_event(cwnet_client_t *client,
     /* Wait since the previous transition. At the start of an over there is
      * no previous transition: the wait is 0 and the stopwatch starts here. */
     bool opening = !client->tx_filling;
-    int32_t wait_ms = opening ? 0 : at_ms - client->tx_ref_ms;
+    int32_t wait_ms = opening ? 0 : (int32_t)((uint32_t)at_ms - client->tx_ref_ms);
 
     int32_t encoded_ms = 0;
     cwnet_client_err_t err = send_morse(client, key_down, wait_ms, &encoded_ms);
@@ -504,12 +504,58 @@ cwnet_client_err_t cwnet_client_send_key_event(cwnet_client_t *client,
      * this state on reconnect; we do, in on_connected(), so a session cannot
      * open with a stale wait. */
     if (opening) {
-        client->tx_ref_ms = at_ms;
+        client->tx_ref_ms = (uint32_t)at_ms;
         client->tx_filling = true;
     }
-    client->tx_ref_ms += encoded_ms;
+    if (wait_ms > CWNET_MORSE_MAX_EVENTS * CWSTREAM_MAX_WAIT_MS) {
+        /* One frame could not carry the whole wait: that wait is short on
+         * the wire. Re-base on this edge so the next one is not late by
+         * the part that was lost. */
+        client->tx_ref_ms = (uint32_t)at_ms;
+    } else {
+        client->tx_ref_ms += (uint32_t)encoded_ms;
+    }
     client->tx_key_down = key_down;
     return CWNET_CLIENT_OK;
+}
+
+bool cwnet_client_abort_over(cwnet_client_t *client) {
+    if (client == NULL) {
+        return false;
+    }
+
+    if (client->state == CWNET_STATE_READY) {
+        int32_t encoded_ms = 0;
+        if (client->tx_key_down) {
+            /* Key up, now. If it does not go out the key is still down on
+             * the wire: say so, the caller comes back. */
+            if (send_morse(client, false, 0, &encoded_ms) != CWNET_CLIENT_OK) {
+                return false;
+            }
+            client->tx_key_down = false;
+        }
+        if (client->tx_filling) {
+            /* Second key-up: the end of the over */
+            if (send_morse(client, false, 0, &encoded_ms) != CWNET_CLIENT_OK) {
+                return false;
+            }
+            client->tx_filling = false;
+        }
+    }
+    /* Not READY: there is no session, so nothing is on the wire */
+
+    client->tx_ref_ms = 0;
+    client->tx_filling = false;
+    client->tx_key_down = false;
+    return true;
+}
+
+bool cwnet_client_key_on_wire(const cwnet_client_t *client) {
+    return client != NULL && client->tx_key_down;
+}
+
+bool cwnet_client_over_open(const cwnet_client_t *client) {
+    return client != NULL && client->tx_filling;
 }
 
 bool cwnet_client_poll(cwnet_client_t *client, int32_t now_ms, int32_t dot_ms) {
@@ -522,7 +568,7 @@ bool cwnet_client_poll(cwnet_client_t *client, int32_t now_ms, int32_t dot_ms) {
 
     /* KeyerThread.c: t_us > 14000 * iDotTime_ms. Which 16 ms bucket the
      * elapsed time falls in depends on the poll instant there too. */
-    int32_t elapsed_ms = now_ms - client->tx_ref_ms;
+    int32_t elapsed_ms = (int32_t)((uint32_t)now_ms - client->tx_ref_ms);
     if (elapsed_ms <= 14 * dot_ms) {
         return false;
     }
@@ -532,7 +578,7 @@ bool cwnet_client_poll(cwnet_client_t *client, int32_t now_ms, int32_t dot_ms) {
         return false;
     }
 
-    client->tx_ref_ms += encoded_ms;
+    client->tx_ref_ms += (uint32_t)encoded_ms;
     client->tx_filling = false;  /* the next transition opens a new over with wait 0 */
     return true;
 }

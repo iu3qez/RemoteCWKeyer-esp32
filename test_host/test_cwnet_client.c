@@ -7,6 +7,7 @@
  */
 
 #include "unity.h"
+#include "cwnet_fixtures.h"
 #include "cwnet_client.h"
 #include "cwnet_frame.h"
 #include "cwnet_ping.h"
@@ -48,27 +49,6 @@ static void test_setup(void) {
     mock_connected = false;
     mock_time_ms = 1000;
 }
-
-/*
- * The reference protocol has no WELCOME: 0x00 is CWNET_CMD_NONE, "dummy command
- * to send HTTP instead of our binary protocol" (CwNet.h). A real server confirms
- * a connection by echoing the 92-byte CONNECT record back with the permissions
- * field filled in, then sending a PRINT with the greeting.
- *
- * These are the first 94 bytes of the server-to-client direction of session 10
- * of the 2026-09-05 capture of the official DL4YHF client and server: the
- * CONNECT echo, user "Moritz", permissions 0x07 where the client had sent 0.
- */
-static const uint8_t ref_connect_echo[] = {
-    0x41, 0x5C, 0x4D, 0x6F, 0x72, 0x69, 0x74, 0x7A, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4D, 0x6F,
-    0x72, 0x69, 0x74, 0x7A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00,
-};
 
 /* Drive the client to READY the way a real server does. */
 static void feed_connect_echo(void) {
@@ -492,25 +472,6 @@ void test_client_tx_wait_is_measured_from_previous_transition(void) {
     TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, mock_tx_all, sizeof(expected));
 }
 
-/*
- * Client-to-server bytes 238..278 of session 12 of the 2026-09-05 capture of
- * the official DL4YHF client: its first over, the letter A at 25 WPM (dot
- * 48 ms) and then silence. Five MORSE frames, with the two rigctld set_ptt
- * frames the reference interleaves around an over (PTT is #13; we do not
- * send it, so the comparison is on the MORSE frames alone).
- */
-static const uint8_t ref_first_over[] = {
-    0x50, 0x01, 0x80,                                     /* key down, wait 0      */
-    0x46, 0x0B, 0x73, 0x65, 0x74, 0x5F, 0x70, 0x74, 0x74,
-    0x20, 0x31, 0x0A, 0x00,                               /* RIGCTLD "set_ptt 1"   */
-    0x50, 0x01, 0x24,                                     /* key up   after  48 ms */
-    0x50, 0x01, 0xA4,                                     /* key down after  48 ms */
-    0x50, 0x01, 0x3C,                                     /* key up   after 144 ms */
-    0x46, 0x0B, 0x73, 0x65, 0x74, 0x5F, 0x70, 0x74, 0x74,
-    0x20, 0x30, 0x0A, 0x00,                               /* RIGCTLD "set_ptt 0"   */
-    0x50, 0x01, 0x60,                                     /* end of over, 669 ms   */
-};
-
 void test_client_tx_first_over_matches_reference_capture(void) {
     ready_client_accumulating();
 
@@ -526,19 +487,8 @@ void test_client_tx_first_over_matches_reference_capture(void) {
     /* Expected: the raw bytes of every MORSE frame in the capture, in order */
     uint8_t expected[sizeof(ref_first_over)];
     size_t expected_len = 0;
-    cwnet_frame_parser_t parser;
-    cwnet_frame_parser_init(&parser);
-    size_t off = 0;
-    while (off < sizeof(ref_first_over)) {
-        cwnet_parse_result_t r = cwnet_frame_parse(&parser, ref_first_over + off,
-                                                   sizeof(ref_first_over) - off);
-        TEST_ASSERT_EQUAL(CWNET_PARSE_OK, r.status);
-        if (r.command == CWNET_CMD_MORSE) {
-            memcpy(expected + expected_len, ref_first_over + off, r.bytes_consumed);
-            expected_len += r.bytes_consumed;
-        }
-        off += r.bytes_consumed;
-    }
+    TEST_ASSERT_TRUE(ref_morse_frames(ref_first_over, sizeof(ref_first_over),
+                                      expected, &expected_len));
     TEST_ASSERT_EQUAL(15, expected_len);  /* five frames of three bytes */
 
     TEST_ASSERT_EQUAL(expected_len, mock_tx_all_len);
@@ -635,6 +585,28 @@ void test_client_tx_end_of_over_splits_at_slow_speed(void) {
     };
     TEST_ASSERT_EQUAL(sizeof(expected), mock_tx_all_len);
     TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, mock_tx_all, sizeof(expected));
+}
+
+void test_client_tx_wait_beyond_one_frame_rebases_on_the_edge(void) {
+    ready_client_accumulating();
+
+    /* 200 s of key-down: more than 128 bytes of 1165 ms can carry. The wire
+     * gets the 128, and the next wait is measured from this edge, so the
+     * element that follows is not late by the 50 s that were lost. */
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  0));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 200000));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  200100));
+
+    uint8_t expected[3 + 2 + 128 + 3];
+    size_t n = 0;
+    expected[n++] = 0x50; expected[n++] = 0x01; expected[n++] = 0x80;
+    expected[n++] = 0x50; expected[n++] = 128;
+    for (int i = 0; i < 128; i++) {
+        expected[n++] = 0x7F;
+    }
+    expected[n++] = 0x50; expected[n++] = 0x01; expected[n++] = 0xB1;  /* 100 ms */
+    TEST_ASSERT_EQUAL(n, mock_tx_all_len);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, mock_tx_all, n);
 }
 
 void test_client_tx_ignores_repeated_key_state(void) {
@@ -817,6 +789,7 @@ void run_cwnet_client_tests(void) {
     RUN_TEST(test_client_tx_end_of_over_after_14_dot_times);
     RUN_TEST(test_client_tx_end_of_over_splits_at_slow_speed);
     RUN_TEST(test_client_tx_ignores_repeated_key_state);
+    RUN_TEST(test_client_tx_wait_beyond_one_frame_rebases_on_the_edge);
     RUN_TEST(test_client_rejects_events_when_not_ready);
 
     /* Error Handling */
