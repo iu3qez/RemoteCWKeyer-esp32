@@ -69,6 +69,13 @@ bool cwnet_socket_is_ready(void);
 int32_t cwnet_socket_get_latency_ms(void);
 
 /**
+ * @brief Get the latency filtered the reference's way (peak-hold, "pk")
+ *
+ * @return ms, or -1 until the first measurement
+ */
+int32_t cwnet_socket_get_latency_peak_ms(void);
+
+/**
  * @brief Get state as string (for logging)
  */
 const char *cwnet_socket_state_str(cwnet_socket_state_t state);

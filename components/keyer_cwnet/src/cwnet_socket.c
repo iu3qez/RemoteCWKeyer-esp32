@@ -399,6 +399,10 @@ int32_t cwnet_socket_get_latency_ms(void) {
     return cwnet_client_get_latency_ms(&s_ctx.client);
 }
 
+int32_t cwnet_socket_get_latency_peak_ms(void) {
+    return cwnet_client_get_latency_peak_ms(&s_ctx.client);
+}
+
 const char *cwnet_socket_state_str(cwnet_socket_state_t state) {
     switch (state) {
         case CWNET_SOCK_DISABLED:     return "DISABLED";

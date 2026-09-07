@@ -261,7 +261,17 @@ static void handle_ping(cwnet_client_t *client,
                 int32_t latency = cwnet_ping_calc_latency(&ping);
                 if (latency >= 0) {
                     client->latency_ms = latency;
-                    RT_DEBUG(&g_bg_log_stream, now_us, "RTT=%" PRId32 "ms", latency);
+                    /* CwNet.c:1442-1447: jump to a new peak, otherwise drop
+                     * by a tenth of the gap. Integer division: a gap under
+                     * 10 ms no longer descends, and that is what the
+                     * reference shows. */
+                    if (client->latency_peak_ms < 0 || latency >= client->latency_peak_ms) {
+                        client->latency_peak_ms = latency;
+                    } else {
+                        client->latency_peak_ms -= (client->latency_peak_ms - latency) / 10;
+                    }
+                    RT_DEBUG(&g_bg_log_stream, now_us, "RTT=%" PRId32 "ms pk=%" PRId32 "ms",
+                             latency, client->latency_peak_ms);
                 }
             }
             break;
@@ -274,9 +284,30 @@ static void handle_ping(cwnet_client_t *client,
 }
 
 /**
+ * @brief Queue every byte of a MORSE frame as a received keying event
+ *
+ * The reference does this per byte as it parses (CwNet.c:2875-2902,
+ * MorseRxFifo), stamping each with its time of reception for the latency
+ * control that plays it back. A full FIFO drops the byte and counts it;
+ * the reference overwrites silently.
+ */
+static void handle_morse(cwnet_client_t *client, const uint8_t *payload, size_t len) {
+    int32_t now_ms = get_local_time(client);
+    for (size_t i = 0; i < len; i++) {
+        if (client->rx.count >= CWNET_RX_FIFO_SIZE) {
+            client->rx_dropped++;
+            continue;
+        }
+        uint16_t head = (uint16_t)((client->rx.tail + client->rx.count) % CWNET_RX_FIFO_SIZE);
+        client->rx.cmd[head] = payload[i];
+        client->rx.received_at_ms[head] = now_ms;
+        client->rx.count++;
+    }
+}
+
+/**
  * @brief Process a complete frame from parse result
  *
- * Keying from other operators arrives as MORSE 0x10 and is not decoded yet.
  * CI_V 0x14 and SPECTRUM 0x15 are rig control and display data, never keying.
  */
 static void process_frame(cwnet_client_t *client, const cwnet_parse_result_t *result) {
@@ -291,6 +322,10 @@ static void process_frame(cwnet_client_t *client, const cwnet_parse_result_t *re
 
         case CWNET_CMD_PING:
             handle_ping(client, payload, payload_len);
+            break;
+
+        case CWNET_CMD_MORSE:
+            handle_morse(client, payload, payload_len);
             break;
 
         default:
@@ -348,6 +383,7 @@ cwnet_client_err_t cwnet_client_init(cwnet_client_t *client,
     /* Initialize state */
     client->state = CWNET_STATE_DISCONNECTED;
     client->latency_ms = -1;
+    client->latency_peak_ms = -1;
 
     /* Initialize timer */
     cwnet_timer_init(&client->timer);
@@ -403,6 +439,13 @@ void cwnet_client_on_connected(cwnet_client_t *client) {
     client->tx_ref_ms = 0;
     client->tx_filling = false;
     client->tx_key_down = false;
+
+    /* Nothing received yet, and no latency known: the reference keeps both
+     * across a reconnect, which is stale data with a fresh server. */
+    memset(&client->rx, 0, sizeof(client->rx));
+    client->rx_dropped = 0;
+    client->latency_ms = -1;
+    client->latency_peak_ms = -1;
 
     /* Transition to CONNECTING */
     set_state(client, CWNET_STATE_CONNECTING);
@@ -552,6 +595,66 @@ bool cwnet_client_abort_over(cwnet_client_t *client) {
 
 bool cwnet_client_key_on_wire(const cwnet_client_t *client) {
     return client != NULL && client->tx_key_down;
+}
+
+int32_t cwnet_client_get_latency_peak_ms(const cwnet_client_t *client) {
+    if (client == NULL) {
+        return -1;
+    }
+    return client->latency_peak_ms;
+}
+
+/*===========================================================================*/
+/* Received keying                                                           */
+/*===========================================================================*/
+
+bool cwnet_client_rx_pop(cwnet_client_t *client, cwnet_rx_event_t *out) {
+    if (client == NULL || out == NULL || client->rx.count == 0) {
+        return false;
+    }
+    uint8_t b = client->rx.cmd[client->rx.tail];
+    out->key_down = (b & 0x80u) != 0;
+    out->wait_ms = cwstream_decode_timestamp(b);
+    out->received_at_ms = client->rx.received_at_ms[client->rx.tail];
+    client->rx.tail = (uint16_t)((client->rx.tail + 1) % CWNET_RX_FIFO_SIZE);
+    client->rx.count--;
+    return true;
+}
+
+size_t cwnet_client_rx_count(const cwnet_client_t *client) {
+    return client == NULL ? 0 : client->rx.count;
+}
+
+int32_t cwnet_client_rx_buffered_ms(const cwnet_client_t *client) {
+    if (client == NULL) {
+        return 0;
+    }
+    int32_t total = 0;
+    for (uint16_t i = 0; i < client->rx.count; i++) {
+        uint16_t idx = (uint16_t)((client->rx.tail + i) % CWNET_RX_FIFO_SIZE);
+        total += cwstream_decode_timestamp(client->rx.cmd[idx]);
+    }
+    return total;
+}
+
+bool cwnet_client_rx_has_end_of_over(const cwnet_client_t *client) {
+    if (client == NULL) {
+        return false;
+    }
+    /* CwStreamEnc.c: two consecutive key-up commands, regardless of the
+     * seven-bit time, indicate END-OF-TRANSMISSION */
+    for (uint16_t i = 1; i < client->rx.count; i++) {
+        uint16_t prev = (uint16_t)((client->rx.tail + i - 1) % CWNET_RX_FIFO_SIZE);
+        uint16_t cur = (uint16_t)((client->rx.tail + i) % CWNET_RX_FIFO_SIZE);
+        if ((client->rx.cmd[prev] & 0x80u) == 0 && (client->rx.cmd[cur] & 0x80u) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+uint32_t cwnet_client_rx_dropped(const cwnet_client_t *client) {
+    return client == NULL ? 0 : client->rx_dropped;
 }
 
 bool cwnet_client_over_open(const cwnet_client_t *client) {
