@@ -4,6 +4,7 @@
  */
 
 #include "cwnet_socket.h"
+#include "cwnet_feed.h"
 #include "config.h"
 #include "rt_log.h"
 
@@ -38,6 +39,7 @@ extern keyer_config_t g_config;
 static struct {
     cwnet_socket_state_t state;
     cwnet_client_t client;
+    cwnet_feed_t feed;
     int sock;
     int64_t last_attempt_us;
     int64_t connect_start_us;
@@ -45,6 +47,7 @@ static struct {
     uint16_t port;
     char username[CWNET_MAX_USERNAME_LEN];
     bool enabled;
+    bool send_failed;   /**< A send() in this pass did not go out whole */
 } s_ctx;
 
 /*===========================================================================*/
@@ -57,6 +60,13 @@ static int socket_send_cb(const uint8_t *data, size_t len, void *user_data) {
         return -1;
     }
     ssize_t sent = send(s_ctx.sock, data, len, 0);
+    if (sent != (ssize_t)len) {
+        /* Non-blocking socket, buffer full or worse. A frame that did not go
+         * out whole leaves the server a truncated frame or a key state we
+         * will never correct: the session is over. Handled after the pass,
+         * not here, so the client is not re-entered from its own send. */
+        s_ctx.send_failed = true;
+    }
     return (int)sent;
 }
 
@@ -240,7 +250,7 @@ static void process_recv(void) {
 /* Public API                                                                */
 /*===========================================================================*/
 
-void cwnet_socket_init(void) {
+void cwnet_socket_init(const keying_stream_t *keying_stream) {
     memset(&s_ctx, 0, sizeof(s_ctx));
     s_ctx.sock = -1;
     s_ctx.state = CWNET_SOCK_DISABLED;
@@ -286,6 +296,8 @@ void cwnet_socket_init(void) {
     }
 
     int64_t now_us = esp_timer_get_time();
+    cwnet_feed_init(&s_ctx.feed, keying_stream, now_us);
+
     RT_INFO(&g_bg_log_stream, now_us, "CWNet: initialized, server=%s:%u user=%s",
             s_ctx.host, s_ctx.port, s_ctx.username);
 
@@ -327,18 +339,6 @@ void cwnet_socket_process(void) {
             if (cwnet_client_get_state(&s_ctx.client) == CWNET_STATE_READY) {
                 s_ctx.state = CWNET_SOCK_READY;
             }
-
-            /* Close a quiet over: the reference sends a second key-up after
-             * 14 dot-times of silence, and that is how the server learns the
-             * over ended. Same clock as the key events below. */
-            {
-                uint32_t wpm = (uint32_t)CONFIG_GET_WPM();
-                int32_t dot_ms = wpm > 0 ? (int32_t)(1200u / wpm) : 0;
-                if (dot_ms > 0 &&
-                    cwnet_client_poll(&s_ctx.client, get_time_ms_cb(NULL), dot_ms)) {
-                    RT_DEBUG(&g_bg_log_stream, now_us, "CWNet TX: end of over");
-                }
-            }
             break;
 
         case CWNET_SOCK_ERROR:
@@ -349,24 +349,42 @@ void cwnet_socket_process(void) {
             }
             break;
     }
-}
 
-bool cwnet_socket_send_key_event(bool key_down) {
-    if (s_ctx.state != CWNET_SOCK_READY) {
-        return false;
+    /* Keying: drained from the stream in every state, sent when READY, with
+     * the end of a quiet over after 14 dot-times (the reference's rule).
+     * The clock is sampled here, not at the top of the pass: the feed ages
+     * stream time by it, and a stale value would run ahead of the stream. */
+    {
+        uint32_t wpm = (uint32_t)CONFIG_GET_WPM();
+        int32_t dot_ms = wpm > 0 ? (int32_t)(1200u / wpm) : 0;
+        int64_t feed_now_us = esp_timer_get_time();
+        cwnet_feed_result_t r = cwnet_feed_process(&s_ctx.feed, &s_ctx.client, feed_now_us, dot_ms);
+        if (r.aborted) {
+            RT_WARN(&g_bg_log_stream, feed_now_us, "CWNet TX: over closed by force");
+        }
+        if (r.stuck) {
+            RT_ERROR(&g_bg_log_stream, feed_now_us, "CWNet TX: could not close the over on the wire");
+        }
+        if (r.edges > 0) {
+            RT_DEBUG(&g_bg_log_stream, feed_now_us, "CWNet TX: %u edge(s)", (unsigned)r.edges);
+        }
+        if (r.end_of_over) {
+            RT_DEBUG(&g_bg_log_stream, feed_now_us, "CWNet TX: end of over");
+        }
     }
 
-    /* Stamped when the caller got to the event, not when the edge happened
-     * on Core 0: the 7-bit wait inherits the bg loop's jitter. Feeding the
-     * client from a stream consumer with stream time is separate work. */
-    cwnet_client_err_t err = cwnet_client_send_key_event(&s_ctx.client, key_down,
-                                                         get_time_ms_cb(NULL));
-    if (err == CWNET_CLIENT_OK) {
-        int64_t now_us = esp_timer_get_time();
-        RT_DEBUG(&g_bg_log_stream, now_us, "CWNet TX: %s", key_down ? "DOWN" : "UP");
-        return true;
+    /* A send that did not go out whole: the session is over, silence beats
+     * a wire the server and we read differently. Reconnect after the delay. */
+    if (s_ctx.send_failed) {
+        s_ctx.send_failed = false;
+        if (s_ctx.sock >= 0) {
+            int64_t fail_us = esp_timer_get_time();
+            RT_ERROR(&g_bg_log_stream, fail_us, "CWNet: send failed, dropping the session");
+            close_socket();
+            s_ctx.state = CWNET_SOCK_ERROR;
+            s_ctx.last_attempt_us = fail_us;
+        }
     }
-    return false;
 }
 
 cwnet_socket_state_t cwnet_socket_get_state(void) {

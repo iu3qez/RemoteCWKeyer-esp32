@@ -79,7 +79,7 @@ void bg_task(void *arg) {
     s_timeline_initialized = true;
 
     /* Initialize CWNet client (reads config, connects if enabled) */
-    cwnet_socket_init();
+    cwnet_socket_init(&g_keying_stream);
 
     /* Log startup */
     int64_t now_us = esp_timer_get_time();
@@ -217,9 +217,6 @@ void bg_task(void *arg) {
                         (long long)(now_us / 1000),
                         sample.local_key ? 1 : 0);
                     webui_timeline_push("keying", json);
-
-                    /* Forward key event to CWNet */
-                    cwnet_socket_send_key_event(sample.local_key != 0);
                 }
 
                 /* Update previous state */

@@ -8,13 +8,16 @@
  * Usage:
  *   1. cwnet_socket_init() - once at startup
  *   2. cwnet_socket_process() - call periodically from bg_task (100Hz)
- *   3. cwnet_socket_send_key_event() - send CW events
+ *
+ * Keying is not pushed in: this layer consumes the keying stream itself
+ * (cwnet_feed) and stamps each edge with the tick it happened on.
  */
 
 #pragma once
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "stream.h"
 #include "cwnet_client.h"
 
 /**
@@ -35,8 +38,10 @@ typedef enum {
  *
  * Reads configuration from NVS (remote family).
  * Does nothing if remote.enabled is false.
+ *
+ * @param keying_stream The stream this layer keys from (rt_task's output)
  */
-void cwnet_socket_init(void);
+void cwnet_socket_init(const keying_stream_t *keying_stream);
 
 /**
  * @brief Process CWNet socket
@@ -45,17 +50,6 @@ void cwnet_socket_init(void);
  * Handles connection, reconnection, sending/receiving.
  */
 void cwnet_socket_process(void);
-
-/**
- * @brief Send a key transition as a MORSE frame
- *
- * Stamps the transition with the current time; the end of a quiet over is
- * sent by cwnet_socket_process().
- *
- * @param key_down true for key down, false for key up
- * @return true if sent successfully
- */
-bool cwnet_socket_send_key_event(bool key_down);
 
 /**
  * @brief Get current socket state
