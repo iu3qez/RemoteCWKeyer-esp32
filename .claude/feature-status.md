@@ -30,7 +30,7 @@
 |---------|-------------|
 | Keyer page (testo, memory M1-M8) | Completa end-to-end (8 API, NVS, UI) |
 | WiFi status API | Implementata (stato, IP, CWNet latency) |
-| CWNet TX (locale→remoto) | Funzionante via `cwnet_socket_send_key_event()` |
+| CWNet TX (locale→remoto) | MORSE 0x10 dal keying stream via `cwnet_feed` (#10, #55); non provato su hardware |
 | wireguard-vpn | Mergiato su main (commit `2678037`) — componente, console, WebUI, config |
 | ESP-IDF v6 migration | Completata — cJSON via component manager, esp_wireguard vendorato in `components/`, deps strict-check, GPIO iomux rename |
 
