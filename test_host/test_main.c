@@ -231,6 +231,13 @@ void test_client_tx_end_of_over_after_14_dot_times(void);
 void test_client_tx_end_of_over_splits_at_slow_speed(void);
 void test_client_tx_ignores_repeated_key_state(void);
 void test_client_tx_wait_beyond_one_frame_rebases_on_the_edge(void);
+void test_client_rx_decodes_every_event_of_a_morse_frame(void);
+void test_client_rx_synthetic_frame_from_reference_encoder(void);
+void test_client_rx_frame_in_fragments(void);
+void test_client_rx_event_carries_reception_time(void);
+void test_client_rx_fifo_full_drops_and_counts(void);
+void test_client_rx_ignores_ci_v_and_spectrum(void);
+void test_client_latency_peak_holds_and_decays_like_the_reference(void);
 void test_client_rejects_events_when_not_ready(void);
 void test_client_handles_invalid_frame(void);
 void test_client_handles_disconnect_during_operation(void);
@@ -530,6 +537,14 @@ int main(void) {
     RUN_TEST(test_client_tx_end_of_over_splits_at_slow_speed);
     RUN_TEST(test_client_tx_ignores_repeated_key_state);
     RUN_TEST(test_client_tx_wait_beyond_one_frame_rebases_on_the_edge);
+    /* Received keying and latency */
+    RUN_TEST(test_client_rx_decodes_every_event_of_a_morse_frame);
+    RUN_TEST(test_client_rx_synthetic_frame_from_reference_encoder);
+    RUN_TEST(test_client_rx_frame_in_fragments);
+    RUN_TEST(test_client_rx_event_carries_reception_time);
+    RUN_TEST(test_client_rx_fifo_full_drops_and_counts);
+    RUN_TEST(test_client_rx_ignores_ci_v_and_spectrum);
+    RUN_TEST(test_client_latency_peak_holds_and_decays_like_the_reference);
     RUN_TEST(test_client_rejects_events_when_not_ready);
     /* Error Handling */
     RUN_TEST(test_client_handles_invalid_frame);

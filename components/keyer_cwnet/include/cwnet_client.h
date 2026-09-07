@@ -22,6 +22,7 @@
  *   READY -> recv PING_RESPONSE_2 -> update latency
  *   READY -> send_key_event() -> send MORSE (7-bit keying stream)
  *   READY -> poll() after 14 dot-times of key-up -> send the end of the over
+ *   any state -> recv MORSE -> keying events queued for rx_pop()
  *   any state -> on_disconnected() -> DISCONNECTED
  *
  * Keying on the wire (reference: DL4YHF Remote CW Keyer, CwStreamEnc.c and
@@ -96,6 +97,37 @@ typedef enum {
 #define CWNET_PERMISSION_TRANSMIT  0x02u  /**< May transmit (CW) */
 #define CWNET_PERMISSION_CTRL_RIG  0x04u  /**< May control the remote rig */
 #define CWNET_PERMISSION_ADMIN     0x08u  /**< Is the server administrator */
+
+/*===========================================================================*/
+/* Received keying                                                           */
+/*===========================================================================*/
+
+/** The reference's CW_KEYING_FIFO_SIZE */
+#define CWNET_RX_FIFO_SIZE 128
+
+/**
+ * @brief One received keying event, decoded from a MORSE byte
+ */
+typedef struct {
+    bool key_down;            /**< New key state (bit 7 of the byte) */
+    int32_t wait_ms;          /**< Decoded 7-bit wait before applying it */
+    int32_t received_at_ms;   /**< Local clock (get_time_ms_cb) when the byte arrived */
+} cwnet_rx_event_t;
+
+/**
+ * @brief FIFO of received keying bytes, decoded on the way out
+ *
+ * Kept as raw bytes like the reference's MorseRxFifo, so the buffered time
+ * and the end-of-over check are computed on the bytes exactly as
+ * CwStream_GetNumMillisecondsBufferedInFifo() and
+ * CwStream_CheckForAnyEndOfTransmissionInFifo() do.
+ */
+typedef struct {
+    uint8_t cmd[CWNET_RX_FIFO_SIZE];
+    int32_t received_at_ms[CWNET_RX_FIFO_SIZE];
+    uint16_t tail;            /**< Oldest entry */
+    uint16_t count;           /**< Entries held */
+} cwnet_rx_fifo_t;
 
 /*===========================================================================*/
 /* Client State                                                              */
@@ -211,10 +243,15 @@ typedef struct {
     cwnet_timer_t timer;
 
     /* Latency measurement */
-    int32_t latency_ms;  /**< Last measured RTT, -1 if unknown */
+    int32_t latency_ms;       /**< Last measured RTT, -1 if unknown */
+    int32_t latency_peak_ms;  /**< The reference's peak-hold of it, -1 if unknown */
 
     /* Permissions granted by the server in its CONNECT echo */
     uint32_t permissions;
+
+    /* Keying received in MORSE frames, oldest first */
+    cwnet_rx_fifo_t rx;
+    uint32_t rx_dropped;      /**< Bytes that found the FIFO full */
 
     /* MORSE TX stopwatch: the reference's sw_MorseTxFifo, fFillingTxFifo and
      * fMorseOutput_sent (KeyerThread.c). */
@@ -266,6 +303,60 @@ int32_t cwnet_client_get_synced_time(const cwnet_client_t *client);
  * @return RTT in ms, or -1 if unknown/not measured
  */
 int32_t cwnet_client_get_latency_ms(const cwnet_client_t *client);
+
+/**
+ * @brief Get the latency as the reference filters it
+ *
+ * Asymmetric peak-hold, exactly as CwNet.c does on every PING RESPONSE_2:
+ * a measurement at or above the held value replaces it; a lower one lets
+ * it drop by one tenth of the gap, in integer arithmetic, so once the gap
+ * is below 10 ms it stops descending. This is the number the reference
+ * displays as "pk" and sizes its keying buffer with.
+ *
+ * @param client Client context
+ * @return Filtered RTT in ms, or -1 until the first measurement
+ */
+int32_t cwnet_client_get_latency_peak_ms(const cwnet_client_t *client);
+
+/*===========================================================================*/
+/* Received keying                                                           */
+/*===========================================================================*/
+
+/**
+ * @brief Take the oldest received keying event
+ *
+ * Every byte of every MORSE frame lands in the FIFO in order, with the
+ * local time it arrived; a frame carries as many events as the sender had
+ * queued. A byte that finds the FIFO full is dropped and counted.
+ *
+ * @param client Client context
+ * @param out Event, written when true is returned
+ * @return true if an event was taken, false if the FIFO is empty
+ */
+bool cwnet_client_rx_pop(cwnet_client_t *client, cwnet_rx_event_t *out);
+
+/** @return Events waiting in the FIFO */
+size_t cwnet_client_rx_count(const cwnet_client_t *client);
+
+/**
+ * @brief Milliseconds of keying waiting in the FIFO
+ *
+ * The sum of the decoded waits of every byte held, as the reference's
+ * CwStream_GetNumMillisecondsBufferedInFifo(): what its latency control
+ * compares with the measured latency before it starts playing.
+ */
+int32_t cwnet_client_rx_buffered_ms(const cwnet_client_t *client);
+
+/**
+ * @brief Whether the FIFO holds the end of an over
+ *
+ * Two consecutive key-up bytes, whatever their waits, as the reference's
+ * CwStream_CheckForAnyEndOfTransmissionInFifo().
+ */
+bool cwnet_client_rx_has_end_of_over(const cwnet_client_t *client);
+
+/** @return Received keying bytes dropped because the FIFO was full */
+uint32_t cwnet_client_rx_dropped(const cwnet_client_t *client);
 
 /*===========================================================================*/
 /* Connection Events (called by socket layer)                                */

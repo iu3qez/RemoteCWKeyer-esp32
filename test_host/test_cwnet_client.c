@@ -640,6 +640,166 @@ void test_client_rejects_events_when_not_ready(void) {
     TEST_ASSERT_EQUAL(CWNET_CLIENT_ERR_NOT_READY, err);
 }
 
+
+/*===========================================================================*/
+/* Received keying: MORSE frames into events                                */
+/*===========================================================================*/
+
+void test_client_rx_decodes_every_event_of_a_morse_frame(void) {
+    ready_client_accumulating();
+
+    cwnet_client_on_data(&client, ref_two_event_frames, sizeof(ref_two_event_frames));
+
+    TEST_ASSERT_EQUAL(4, cwnet_client_rx_count(&client));
+    TEST_ASSERT_EQUAL(22 + 18 + 22 + 18, cwnet_client_rx_buffered_ms(&client));
+    TEST_ASSERT_FALSE(cwnet_client_rx_has_end_of_over(&client));
+
+    static const bool keys[] = {true, false, true, false};
+    static const int32_t waits[] = {22, 18, 22, 18};
+    for (size_t i = 0; i < 4; i++) {
+        cwnet_rx_event_t ev;
+        TEST_ASSERT_TRUE(cwnet_client_rx_pop(&client, &ev));
+        TEST_ASSERT_EQUAL(keys[i], ev.key_down);
+        TEST_ASSERT_EQUAL(waits[i], ev.wait_ms);
+    }
+    cwnet_rx_event_t none;
+    TEST_ASSERT_FALSE(cwnet_client_rx_pop(&client, &none));
+    TEST_ASSERT_EQUAL(0, cwnet_client_rx_buffered_ms(&client));
+}
+
+void test_client_rx_synthetic_frame_from_reference_encoder(void) {
+    ready_client_accumulating();
+
+    cwnet_client_on_data(&client, synth_morse_frame, sizeof(synth_morse_frame));
+    TEST_ASSERT_EQUAL(17, cwnet_client_rx_count(&client));
+
+    /* 180 ms inputs come back as 173 (16 ms steps), 500 as 493 */
+    static const bool keys[17] = {
+        true, false, true, false, true, false, true, false,
+        true, false, true, false, true, false, true, false, false,
+    };
+    static const int32_t waits[17] = {
+        0, 173, 60, 60, 173, 60, 60, 173,
+        173, 60, 173, 60, 60, 60, 173, 493, 0,
+    };
+    TEST_ASSERT_EQUAL(2011, cwnet_client_rx_buffered_ms(&client));
+    /* Two consecutive key-ups at the end: the over is complete */
+    TEST_ASSERT_TRUE(cwnet_client_rx_has_end_of_over(&client));
+
+    for (size_t i = 0; i < 17; i++) {
+        /* The end-of-over is in the FIFO while both key-ups are */
+        TEST_ASSERT_EQUAL(i <= 15, cwnet_client_rx_has_end_of_over(&client));
+        cwnet_rx_event_t ev;
+        TEST_ASSERT_TRUE(cwnet_client_rx_pop(&client, &ev));
+        TEST_ASSERT_EQUAL(keys[i], ev.key_down);
+        TEST_ASSERT_EQUAL(waits[i], ev.wait_ms);
+    }
+    TEST_ASSERT_EQUAL(0, cwnet_client_rx_count(&client));
+}
+
+void test_client_rx_frame_in_fragments(void) {
+    ready_client_accumulating();
+
+    for (size_t i = 0; i < sizeof(ref_two_event_frames); i++) {
+        cwnet_client_on_data(&client, ref_two_event_frames + i, 1);
+    }
+    TEST_ASSERT_EQUAL(4, cwnet_client_rx_count(&client));
+}
+
+void test_client_rx_event_carries_reception_time(void) {
+    ready_client_accumulating();
+
+    mock_time_ms = 7000;
+    static const uint8_t frame[] = {0x50, 0x01, 0x80};
+    cwnet_client_on_data(&client, frame, sizeof(frame));
+
+    cwnet_rx_event_t ev;
+    TEST_ASSERT_TRUE(cwnet_client_rx_pop(&client, &ev));
+    TEST_ASSERT_EQUAL(7000, ev.received_at_ms);
+}
+
+void test_client_rx_fifo_full_drops_and_counts(void) {
+    ready_client_accumulating();
+
+    static const uint8_t frame[] = {0x50, 0x01, 0x80};
+    for (int i = 0; i < CWNET_RX_FIFO_SIZE + 2; i++) {
+        cwnet_client_on_data(&client, frame, sizeof(frame));
+    }
+    TEST_ASSERT_EQUAL(CWNET_RX_FIFO_SIZE, cwnet_client_rx_count(&client));
+    TEST_ASSERT_EQUAL(2, cwnet_client_rx_dropped(&client));
+
+    /* A new session starts empty */
+    cwnet_client_on_connected(&client);
+    TEST_ASSERT_EQUAL(0, cwnet_client_rx_count(&client));
+    TEST_ASSERT_EQUAL(0, cwnet_client_rx_dropped(&client));
+}
+
+void test_client_rx_ignores_ci_v_and_spectrum(void) {
+    ready_client_accumulating();
+
+    /* 0x14 and 0x15 with a key-down-looking payload: rig data, not keying */
+    static const uint8_t civ[] = {0x54, 0x01, 0x80};
+    static const uint8_t spectrum[] = {0x55, 0x01, 0x80};
+    cwnet_client_on_data(&client, civ, sizeof(civ));
+    cwnet_client_on_data(&client, spectrum, sizeof(spectrum));
+    TEST_ASSERT_EQUAL(0, cwnet_client_rx_count(&client));
+}
+
+/*===========================================================================*/
+/* Latency peak-hold                                                         */
+/*===========================================================================*/
+
+/* A PING RESPONSE_2 whose t2 - t0 is the given round trip */
+static void feed_rtt(int32_t rtt_ms) {
+    uint8_t frame[2 + CWNET_PING_PAYLOAD_SIZE] = {
+        0x43, 0x10,
+        0x02, 0x01, 0x00, 0x00,   /* RESPONSE_2, id 1 */
+        0xE8, 0x03, 0x00, 0x00,   /* t0 = 1000 */
+        0xE8, 0x03, 0x00, 0x00,   /* t1 = 1000 */
+        0x00, 0x00, 0x00, 0x00,   /* t2, filled below */
+    };
+    uint32_t t2 = 1000u + (uint32_t)rtt_ms;
+    frame[14] = (uint8_t)(t2 & 0xFFu);
+    frame[15] = (uint8_t)((t2 >> 8) & 0xFFu);
+    frame[16] = (uint8_t)((t2 >> 16) & 0xFFu);
+    frame[17] = (uint8_t)((t2 >> 24) & 0xFFu);
+    cwnet_client_on_data(&client, frame, sizeof(frame));
+}
+
+void test_client_latency_peak_holds_and_decays_like_the_reference(void) {
+    ready_client_accumulating();
+    TEST_ASSERT_EQUAL(-1, cwnet_client_get_latency_peak_ms(&client));
+
+    /* CwNet.c:1442-1447 walked sample by sample: one spike, then a steady
+     * 30 ms. The held value drops by a tenth of the gap, in integers, and
+     * stops at 39: a gap under 10 ms decays by 0. */
+    static const int32_t rtt[] = {50, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30};
+    static const int32_t pk[]  = {50, 48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 39, 39};
+    for (size_t i = 0; i < sizeof(rtt) / sizeof(rtt[0]); i++) {
+        feed_rtt(rtt[i]);
+        TEST_ASSERT_EQUAL(rtt[i], cwnet_client_get_latency_ms(&client));
+        TEST_ASSERT_EQUAL(pk[i], cwnet_client_get_latency_peak_ms(&client));
+    }
+
+    /* A new peak is taken at once, the old one forgotten */
+    feed_rtt(100);
+    TEST_ASSERT_EQUAL(100, cwnet_client_get_latency_peak_ms(&client));
+    feed_rtt(90);
+    TEST_ASSERT_EQUAL(99, cwnet_client_get_latency_peak_ms(&client));
+    feed_rtt(90);
+    TEST_ASSERT_EQUAL(99, cwnet_client_get_latency_peak_ms(&client));
+
+    /* The floor the issue observed on loopback: pk 7 while the instant
+     * value sits at 1-5, for as long as you like */
+    cwnet_client_on_connected(&client);
+    feed_connect_echo();
+    static const int32_t loopback[] = {7, 3, 1, 5, 2, 4, 1};
+    for (size_t i = 0; i < sizeof(loopback) / sizeof(loopback[0]); i++) {
+        feed_rtt(loopback[i]);
+        TEST_ASSERT_EQUAL(7, cwnet_client_get_latency_peak_ms(&client));
+    }
+}
+
 /*===========================================================================*/
 /* Error Handling Tests                                                      */
 /*===========================================================================*/
@@ -790,6 +950,13 @@ void run_cwnet_client_tests(void) {
     RUN_TEST(test_client_tx_end_of_over_splits_at_slow_speed);
     RUN_TEST(test_client_tx_ignores_repeated_key_state);
     RUN_TEST(test_client_tx_wait_beyond_one_frame_rebases_on_the_edge);
+    RUN_TEST(test_client_rx_decodes_every_event_of_a_morse_frame);
+    RUN_TEST(test_client_rx_synthetic_frame_from_reference_encoder);
+    RUN_TEST(test_client_rx_frame_in_fragments);
+    RUN_TEST(test_client_rx_event_carries_reception_time);
+    RUN_TEST(test_client_rx_fifo_full_drops_and_counts);
+    RUN_TEST(test_client_rx_ignores_ci_v_and_spectrum);
+    RUN_TEST(test_client_latency_peak_holds_and_decays_like_the_reference);
     RUN_TEST(test_client_rejects_events_when_not_ready);
 
     /* Error Handling */

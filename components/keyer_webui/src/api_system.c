@@ -46,6 +46,7 @@ esp_err_t api_status_handler(httpd_req_t *req) {
     cwnet_socket_state_t cwnet_state = cwnet_socket_get_state();
     cJSON_AddStringToObject(cwnet, "state", cwnet_socket_state_str(cwnet_state));
     cJSON_AddNumberToObject(cwnet, "latency_ms", cwnet_socket_get_latency_ms());
+    cJSON_AddNumberToObject(cwnet, "latency_peak_ms", cwnet_socket_get_latency_peak_ms());
     cJSON_AddItemToObject(root, "cwnet", cwnet);
 
     char *json_str = cJSON_PrintUnformatted(root);

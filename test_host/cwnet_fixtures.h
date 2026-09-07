@@ -79,3 +79,24 @@ static inline bool ref_morse_frames(const uint8_t *in, size_t in_len,
     *out_len = n;
     return true;
 }
+
+/*
+ * Client-to-server bytes 6982..6989 of session 12 of the 2026-09-05 capture:
+ * frames 524 and 525, from the fast part of the session (dot about 20 ms),
+ * two keying events each, the shape a server receives at speed.
+ */
+static const uint8_t ref_two_event_frames[] = {
+    0x50, 0x02, 0x96, 0x12,   /* down after 22 ms, up after 18 ms */
+    0x50, 0x02, 0x96, 0x12,
+};
+
+/*
+ * One MORSE frame of 17 events written by tools/cwnet/gen_synth.c with the
+ * DL4YHF encoder (synth_morse.bin): 'S' 'O' 'S' at inputs of 60 and 180 ms,
+ * a 500 ms gap, then the end-of-over key-up.
+ */
+static const uint8_t synth_morse_frame[] = {
+    0x50, 0x11,
+    0x80, 0x41, 0xA7, 0x27, 0xC1, 0x27, 0xA7, 0x41, 0xC1, 0x27, 0xC1, 0x27,
+    0xA7, 0x27, 0xC1, 0x55, 0x00,
+};
