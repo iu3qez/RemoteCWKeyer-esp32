@@ -9,9 +9,11 @@ idf_component_register(
         "src/cwnet_frame.c"
         "src/cwnet_ping.c"
         "src/cwnet_client.c"
+        "src/cwnet_feed.c"
         "src/cwnet_socket.c"
     INCLUDE_DIRS "include"
     REQUIRES
+        keyer_core
         keyer_config
         keyer_logging
         esp_timer

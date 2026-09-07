@@ -90,6 +90,7 @@ set(CWNET_SOURCES
     ${COMPONENT_DIR}/keyer_cwnet/src/cwnet_frame.c
     ${COMPONENT_DIR}/keyer_cwnet/src/cwnet_ping.c
     ${COMPONENT_DIR}/keyer_cwnet/src/cwnet_client.c
+    ${COMPONENT_DIR}/keyer_cwnet/src/cwnet_feed.c
 )
 
 # Test sources
@@ -110,6 +111,7 @@ set(TEST_SOURCES
     test_cwnet_frame_parser.c
     test_cwnet_ping.c
     test_cwnet_client.c
+    test_cwnet_feed.c
     stubs/esp_stubs.c
 )
 

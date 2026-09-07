@@ -77,8 +77,13 @@ typedef enum {
     CWNET_CMD_SPECTRUM = 0x15,  /**< Spectrum data for the waterfall display. Not keying. */
 } cwnet_cmd_t;
 
-/** Longest MORSE payload this client sends in one frame (bytes = events) */
-#define CWNET_MORSE_MAX_EVENTS 8
+/**
+ * Longest MORSE payload this client sends in one frame (bytes = events).
+ * The reference's keying FIFO holds 128 (CW_KEYING_FIFO_SIZE): 149 s of wait.
+ * A longer wait is truncated on the wire and the stopwatch re-based on the
+ * edge, so only that one wait is short.
+ */
+#define CWNET_MORSE_MAX_EVENTS 128
 
 /** CONNECT payload field sizes */
 #define CWNET_CONNECT_USERNAME_LEN  44
@@ -213,7 +218,7 @@ typedef struct {
 
     /* MORSE TX stopwatch: the reference's sw_MorseTxFifo, fFillingTxFifo and
      * fMorseOutput_sent (KeyerThread.c). */
-    int32_t tx_ref_ms;   /**< Instant the next wait is measured from; advances by the encoded ms */
+    uint32_t tx_ref_ms;  /**< Instant the next wait is measured from; advances by the encoded ms (wraps) */
     bool tx_filling;     /**< Inside an over: waits are measured, not forced to 0 */
     bool tx_key_down;    /**< Last key state put on the wire */
 
@@ -356,3 +361,35 @@ cwnet_client_err_t cwnet_client_send_key_event(cwnet_client_t *client,
  * @return true if the end-of-over byte was sent by this call
  */
 bool cwnet_client_poll(cwnet_client_t *client, int32_t now_ms, int32_t dot_ms);
+
+/**
+ * @brief Close the over on the wire now, timing unknown
+ *
+ * For when the caller has lost track of time (a stream overrun) or of the
+ * wire (a send failed): sends a key-up with wait 0 if the key is down on the
+ * wire, then the second key-up that marks the end of the over, and forgets
+ * the stopwatch. The next transition opens a new over with wait 0. Silence
+ * beats corrupted timing.
+ *
+ * @param client Client context
+ * @return true if the wire is clean now (or there was no session to clean);
+ *         false if a send failed and the key is still down or the over still
+ *         open on the wire: call again
+ */
+bool cwnet_client_abort_over(cwnet_client_t *client);
+
+/**
+ * @brief Key state last put on the wire
+ *
+ * @param client Client context
+ * @return true if the server has been told the key is down
+ */
+bool cwnet_client_key_on_wire(const cwnet_client_t *client);
+
+/**
+ * @brief Whether an over is open on the wire
+ *
+ * @param client Client context
+ * @return true between the first transition of an over and its end
+ */
+bool cwnet_client_over_open(const cwnet_client_t *client);

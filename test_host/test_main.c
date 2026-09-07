@@ -230,11 +230,24 @@ void test_client_tx_splits_wait_above_1165_ms(void);
 void test_client_tx_end_of_over_after_14_dot_times(void);
 void test_client_tx_end_of_over_splits_at_slow_speed(void);
 void test_client_tx_ignores_repeated_key_state(void);
+void test_client_tx_wait_beyond_one_frame_rebases_on_the_edge(void);
 void test_client_rejects_events_when_not_ready(void);
 void test_client_handles_invalid_frame(void);
 void test_client_handles_disconnect_during_operation(void);
 void test_client_handles_fragmented_frame(void);
 void test_client_handles_ping_in_fragments(void);
+
+/* CWNet feed (stream -> client) */
+void test_feed_waits_are_tick_distances_whatever_the_drain(void);
+void test_feed_first_over_from_stream_matches_reference_capture(void);
+void test_feed_idle_stream_ages_on_the_caller_clock(void);
+void test_feed_drains_while_client_not_ready_and_does_not_replay(void);
+void test_feed_overrun_closes_the_over_on_the_wire(void);
+void test_feed_no_dot_time_no_end_of_over(void);
+void test_feed_drain_granularity_does_not_change_the_bytes(void);
+void test_feed_send_failure_closes_the_over_and_retries(void);
+void test_feed_disconnect_mid_over_then_reconnect(void);
+void test_feed_long_key_down_is_sent_in_full(void);
 
 void setUp(void) {
     /* Called before each test */
@@ -516,6 +529,7 @@ int main(void) {
     RUN_TEST(test_client_tx_end_of_over_after_14_dot_times);
     RUN_TEST(test_client_tx_end_of_over_splits_at_slow_speed);
     RUN_TEST(test_client_tx_ignores_repeated_key_state);
+    RUN_TEST(test_client_tx_wait_beyond_one_frame_rebases_on_the_edge);
     RUN_TEST(test_client_rejects_events_when_not_ready);
     /* Error Handling */
     RUN_TEST(test_client_handles_invalid_frame);
@@ -523,6 +537,19 @@ int main(void) {
     /* Fragmentation */
     RUN_TEST(test_client_handles_fragmented_frame);
     RUN_TEST(test_client_handles_ping_in_fragments);
+
+    /* CWNet feed: from the keying stream to the wire, on stream time */
+    printf("\n=== CWNet Feed Tests ===\n");
+    RUN_TEST(test_feed_waits_are_tick_distances_whatever_the_drain);
+    RUN_TEST(test_feed_first_over_from_stream_matches_reference_capture);
+    RUN_TEST(test_feed_idle_stream_ages_on_the_caller_clock);
+    RUN_TEST(test_feed_drains_while_client_not_ready_and_does_not_replay);
+    RUN_TEST(test_feed_overrun_closes_the_over_on_the_wire);
+    RUN_TEST(test_feed_no_dot_time_no_end_of_over);
+    RUN_TEST(test_feed_drain_granularity_does_not_change_the_bytes);
+    RUN_TEST(test_feed_send_failure_closes_the_over_and_retries);
+    RUN_TEST(test_feed_disconnect_mid_over_then_reconnect);
+    RUN_TEST(test_feed_long_key_down_is_sent_in_full);
 
     return UNITY_END();
 }
