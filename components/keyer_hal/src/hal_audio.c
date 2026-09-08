@@ -301,13 +301,6 @@ size_t hal_audio_write(const int16_t *samples, size_t count) {
         stereo_buf[i * 2 + 1] = samples[i];  /* Right (copy) */
     }
 
-    /* DEBUG: Log first write */
-    static bool first_write = true;
-    if (first_write && to_write > 0) {
-        ESP_LOGI(TAG, "First audio write: count=%zu, sample[0]=%d", to_write, samples[0]);
-        first_write = false;
-    }
-
     /* Write through codec device (not directly to I2S) */
     size_t byte_count = to_write * 2 * sizeof(int16_t);
 
