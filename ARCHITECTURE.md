@@ -116,7 +116,7 @@ Stream ──────▶ Consumer
 
 **RULE 3.1.1**: The only synchronization primitive is atomic operations on stream indices.
 
-**RULE 3.1.2**: The producer stores the sample, then `atomic_store_explicit(&write_idx, idx + 1, memory_order_release)`: the only write synchronization. Publishing before the store hands a consumer a slot not yet written.
+**RULE 3.1.2**: The producer issues `atomic_thread_fence(memory_order_release)`, stores the sample, then `atomic_store_explicit(&write_idx, idx + 1, memory_order_release)`: the only write synchronization. Publishing before the store hands a consumer a slot not yet written; the fence keeps the previous publish, which announces that slot `idx` is being written, ahead of the slot's bytes, which a release store alone does not.
 
 **RULE 3.1.3**: `atomic_load_explicit(&write_idx, memory_order_acquire)` is the read synchronization. After copying a slot the reader re-reads `write_idx` behind an `atomic_thread_fence(memory_order_acquire)` and discards the copy if the producer reached that slot meanwhile: the fence orders the copy before the re-read, which an acquire load alone does not.
 
@@ -127,8 +127,11 @@ Stream ──────▶ Consumer
 ```c
 #include <stdatomic.h>
 
-// Producer: store the sample, then publish with release
+// Producer: fence, store the sample, then publish with release. write_idx == idx
+// already announces that slot idx is being written; the fence keeps that
+// announcement ahead of the slot's bytes.
 size_t idx = atomic_load_explicit(&write_idx, memory_order_relaxed);
+atomic_thread_fence(memory_order_release);
 buffer[idx & mask] = sample;
 atomic_store_explicit(&write_idx, idx + 1, memory_order_release);
 
@@ -559,8 +562,8 @@ In case of conflict, higher-ranked principles take precedence.
 
 **Amendment 003** (2026-09-08):
 - **Section**: 2.1.4, 3.1.2, 3.1.3, 3.2 (Producer rules, atomic operations, memory ordering)
-- **Change**: The stream is declared single-producer. The producer stores the sample, then publishes `write_idx` with a release store; the slot `capacity` behind `write_idx` is the producer's next and is not readable; a reader re-checks `write_idx` behind an acquire fence after copying a slot.
-- **Rationale**: `fetch_add` published the index before the sample was stored, so a consumer on the other core could read a slot not yet written, or half written (#57). Store-then-publish needs one producer to be sound with one counter; the only producer is the RT task, and a second source of keying (#60) enters from that same task. The acquire fence is what orders the copy before the re-read; an acquire load alone does not on a weakly ordered core.
+- **Change**: The stream is declared single-producer. The producer stores the sample, then publishes `write_idx` with a release store; the slot `capacity` behind `write_idx` is the producer's next and is not readable; a reader re-checks `write_idx` behind an acquire fence after copying a slot, and the producer issues a release fence before storing a slot.
+- **Rationale**: `fetch_add` published the index before the sample was stored, so a consumer on the other core could read a slot not yet written, or half written (#57). Store-then-publish needs one producer to be sound with one counter; the only producer is the RT task, and a second source of keying (#60) enters from that same task. The acquire fence is what orders the copy before the re-read, and the release fence what orders the previous publish before the next slot's bytes; an acquire load and a release store alone do neither on a weakly ordered core, which arm64 CI showed.
 - **Impact**: Rule 2.1.4 no longer promises multiple producers. Does not weaken any core principle; strengthens the stream's only interface.
 
 **Amendment 002** (2025-01-19):

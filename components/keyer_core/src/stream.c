@@ -61,11 +61,19 @@ void stream_init(keying_stream_t *stream, stream_sample_t *buffer, size_t capaci
  * release. A consumer that acquires the new index sees the whole sample
  * (RULE 3.1.2). Publishing first, as fetch_add did, let a consumer read
  * the slot before or during the store (#57).
+ *
+ * The release fence before the store is the other half of the seqlock:
+ * write_idx == idx is the announcement that slot idx is being written,
+ * and the store that made it (the previous publish) does not order the
+ * stores after it. On a weakly ordered core the slot's bytes could land
+ * before the announcement, and a reader's re-check would pass on a torn
+ * copy. Seen on arm64 in CI; the fence orders the announcement first.
  */
 static inline bool stream_write_slot(keying_stream_t *stream, stream_sample_t sample) {
     size_t idx = atomic_load_explicit(&stream->write_idx, memory_order_relaxed);
     size_t slot_idx = idx & stream->mask;
 
+    atomic_thread_fence(memory_order_release);
     stream->buffer[slot_idx] = sample;
 
     atomic_store_explicit(&stream->write_idx, idx + 1, memory_order_release);

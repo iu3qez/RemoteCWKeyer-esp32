@@ -41,7 +41,7 @@ extern "C" {
  * All coordination through atomic operations.
  *
  * Memory ordering:
- * - Producer stores the sample, then publishes write_idx with memory_order_release
+ * - Producer: release fence, store the sample, publish write_idx with memory_order_release
  * - Consumer uses memory_order_acquire for write_idx.load()
  *
  * The slot capacity behind write_idx is the producer's next: a reader that
