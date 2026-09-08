@@ -284,6 +284,52 @@ static void handle_ping(cwnet_client_t *client,
 }
 
 /**
+ * @brief Send a rig-control string in a 0x06 frame, trailing NUL included
+ *
+ * CwNet.c:1000-1007: the payload is the C string with its terminator.
+ */
+static cwnet_client_err_t send_rig_string(cwnet_client_t *client, const char *text) {
+    size_t len = strlen(text) + 1;
+    uint8_t frame[2 + 32];
+    if (len > sizeof(frame) - 2) {
+        return CWNET_CLIENT_ERR_INVALID_ARG;
+    }
+    frame[0] = make_cmd_byte(CWNET_FRAME_CAT_SHORT_PAYLOAD, CWNET_CMD_RIG_STRING);
+    frame[1] = (uint8_t)len;
+    memcpy(&frame[2], text, len);
+    int sent = send_frame(client, frame, 2 + len);
+    if (sent < 0 || (size_t)sent != 2 + len) {
+        return CWNET_CLIENT_ERR_SEND_FAILED;
+    }
+    return CWNET_CLIENT_OK;
+}
+
+/**
+ * @brief The server's "RPRT n" answer to a rig-control string
+ */
+static void handle_rig_string(cwnet_client_t *client, const uint8_t *payload, size_t len) {
+    /* "RPRT " then a signed decimal, then "\n\0" */
+    if (len < 6 || memcmp(payload, "RPRT ", 5) != 0) {
+        return;
+    }
+    size_t i = 5;
+    bool negative = false;
+    if (i < len && payload[i] == '-') {
+        negative = true;
+        i++;
+    }
+    if (i >= len || payload[i] < '0' || payload[i] > '9') {
+        return;
+    }
+    int32_t value = 0;
+    while (i < len && payload[i] >= '0' && payload[i] <= '9') {
+        value = value * 10 + (payload[i] - '0');
+        i++;
+    }
+    client->rig_result = negative ? -value : value;
+}
+
+/**
  * @brief Queue every byte of a MORSE frame as a received keying event
  *
  * The reference does this per byte as it parses (CwNet.c:2875-2902,
@@ -326,6 +372,10 @@ static void process_frame(cwnet_client_t *client, const cwnet_parse_result_t *re
 
         case CWNET_CMD_MORSE:
             handle_morse(client, payload, payload_len);
+            break;
+
+        case CWNET_CMD_RIG_STRING:
+            handle_rig_string(client, payload, payload_len);
             break;
 
         default:
@@ -384,6 +434,7 @@ cwnet_client_err_t cwnet_client_init(cwnet_client_t *client,
     client->state = CWNET_STATE_DISCONNECTED;
     client->latency_ms = -1;
     client->latency_peak_ms = -1;
+    client->rig_result = CWNET_RIG_RESULT_NONE;
 
     /* Initialize timer */
     cwnet_timer_init(&client->timer);
@@ -435,10 +486,12 @@ void cwnet_client_on_connected(cwnet_client_t *client) {
     /* Reset parser for new connection */
     cwnet_frame_parser_reset(&client->parser);
 
-    /* A new session starts a new over: first transition waits 0 */
+    /* A new session starts a new over: first transition waits 0, PTT off */
     client->tx_ref_ms = 0;
     client->tx_filling = false;
     client->tx_key_down = false;
+    client->tx_last_edge_ms = 0;
+    client->ptt_on = false;
 
     /* Nothing received yet, and no latency known: the reference keeps both
      * across a reconnect, which is stale data with a fresh server. */
@@ -446,6 +499,7 @@ void cwnet_client_on_connected(cwnet_client_t *client) {
     client->rx_dropped = 0;
     client->latency_ms = -1;
     client->latency_peak_ms = -1;
+    client->rig_result = CWNET_RIG_RESULT_NONE;
 
     /* Transition to CONNECTING */
     set_state(client, CWNET_STATE_CONNECTING);
@@ -559,6 +613,14 @@ cwnet_client_err_t cwnet_client_send_key_event(cwnet_client_t *client,
         client->tx_ref_ms += (uint32_t)encoded_ms;
     }
     client->tx_key_down = key_down;
+    client->tx_last_edge_ms = (uint32_t)at_ms;
+
+    /* PTT rises with a key-down, right after its MORSE byte, as the
+     * reference's network poll orders them (CwNet.c:2616 then :2648). */
+    if (key_down && client->ptt_tail_ms > 0 && !client->ptt_on) {
+        client->ptt_on = true;
+        return send_rig_string(client, "set_ptt 1\n");
+    }
     return CWNET_CLIENT_OK;
 }
 
@@ -584,13 +646,34 @@ bool cwnet_client_abort_over(cwnet_client_t *client) {
             }
             client->tx_filling = false;
         }
+        if (client->ptt_on) {
+            if (send_rig_string(client, "set_ptt 0\n") != CWNET_CLIENT_OK) {
+                return false;
+            }
+            client->ptt_on = false;
+        }
     }
     /* Not READY: there is no session, so nothing is on the wire */
 
     client->tx_ref_ms = 0;
     client->tx_filling = false;
     client->tx_key_down = false;
+    client->ptt_on = false;
     return true;
+}
+
+void cwnet_client_set_ptt_tail_ms(cwnet_client_t *client, int32_t tail_ms) {
+    if (client != NULL) {
+        client->ptt_tail_ms = tail_ms > 0 ? tail_ms : 0;
+    }
+}
+
+bool cwnet_client_ptt_on_wire(const cwnet_client_t *client) {
+    return client != NULL && client->ptt_on;
+}
+
+int32_t cwnet_client_get_rig_result(const cwnet_client_t *client) {
+    return client == NULL ? CWNET_RIG_RESULT_NONE : client->rig_result;
 }
 
 bool cwnet_client_key_on_wire(const cwnet_client_t *client) {
@@ -665,7 +748,22 @@ bool cwnet_client_poll(cwnet_client_t *client, int32_t now_ms, int32_t dot_ms) {
     if (client == NULL || client->state != CWNET_STATE_READY) {
         return false;
     }
-    if (!client->tx_filling || client->tx_key_down) {
+    if (client->tx_key_down) {
+        return false;
+    }
+
+    /* PTT drops once the key has been up for the box's tail, whether or
+     * not the over is still open: below about 33 WPM it comes before the
+     * end of the over, above it after, as in the reference. */
+    if (client->ptt_on &&
+        (int32_t)((uint32_t)now_ms - client->tx_last_edge_ms) >= client->ptt_tail_ms) {
+        if (send_rig_string(client, "set_ptt 0\n") != CWNET_CLIENT_OK) {
+            return false;
+        }
+        client->ptt_on = false;
+    }
+
+    if (!client->tx_filling) {
         return false;
     }
 

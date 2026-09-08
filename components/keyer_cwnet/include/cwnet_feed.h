@@ -49,6 +49,8 @@ typedef struct {
     bool end_of_over;       /**< The quiet-over second key-up was sent */
     bool aborted;           /**< The over on the wire was closed by force */
     bool stuck;             /**< It had to be and could not: retried next pass */
+    bool ptt_on;            /**< "set_ptt 1" went out this pass */
+    bool ptt_off;           /**< "set_ptt 0" went out this pass */
 } cwnet_feed_result_t;
 
 /**

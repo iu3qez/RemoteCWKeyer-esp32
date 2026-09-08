@@ -122,24 +122,25 @@ void test_feed_waits_are_tick_distances_whatever_the_drain(void) {
 void test_feed_first_over_from_stream_matches_reference_capture(void) {
     setup_stream();
     setup_client(true);
+    cwnet_client_set_ptt_tail_ms(&s_client, 100);   /* the box's timing.ptt_tail_ms default */
     cwnet_feed_init(&s_feed, &s_stream, 0);
 
     key_for_ticks(0, 100);
     key_letter_a();
     cwnet_feed_result_t r = cwnet_feed_process(&s_feed, &s_client, 1000000, 48);
     TEST_ASSERT_EQUAL(4, r.edges);
+    TEST_ASSERT_TRUE(r.ptt_on);
 
     /* Nothing else happens on the key: 673 ms later on the caller's clock
-     * the over is closed, on stream time aged by that clock. */
+     * PTT has been up past its tail and the over is closed, on stream time
+     * aged by that clock, in that order. */
     r = cwnet_feed_process(&s_feed, &s_client, 1000000 + 673000, 48);
+    TEST_ASSERT_TRUE(r.ptt_off);
     TEST_ASSERT_TRUE(r.end_of_over);
 
-    uint8_t expected[sizeof(ref_first_over)];
-    size_t expected_len = 0;
-    TEST_ASSERT_TRUE(ref_morse_frames(ref_first_over, sizeof(ref_first_over),
-                                      expected, &expected_len));
-    TEST_ASSERT_EQUAL(expected_len, s_tx_len);
-    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, s_tx, expected_len);
+    /* The whole slice of the capture, PTT strings included */
+    TEST_ASSERT_EQUAL(sizeof(ref_first_over), s_tx_len);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(ref_first_over, s_tx, sizeof(ref_first_over));
 }
 
 void test_feed_idle_stream_ages_on_the_caller_clock(void) {

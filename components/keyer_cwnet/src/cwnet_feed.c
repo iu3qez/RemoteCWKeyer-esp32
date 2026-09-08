@@ -26,7 +26,8 @@ void cwnet_feed_init(cwnet_feed_t *feed, const keying_stream_t *stream, int64_t 
  * later pass retries before anything else goes out.
  */
 static void close_wire(cwnet_feed_t *feed, cwnet_client_t *client, cwnet_feed_result_t *result) {
-    bool open = cwnet_client_key_on_wire(client) || cwnet_client_over_open(client);
+    bool open = cwnet_client_key_on_wire(client) || cwnet_client_over_open(client) ||
+                cwnet_client_ptt_on_wire(client);
     if (cwnet_client_abort_over(client)) {
         feed->wire_stuck = false;
         if (open) {
@@ -83,6 +84,7 @@ cwnet_feed_result_t cwnet_feed_process(cwnet_feed_t *feed,
     if (feed == NULL || client == NULL || feed->consumer.stream == NULL) {
         return result;
     }
+    bool ptt_before = cwnet_client_ptt_on_wire(client);
 
     /* A previous pass could not close the over on the wire: nothing else
      * goes out before it is closed. */
@@ -132,5 +134,8 @@ cwnet_feed_result_t cwnet_feed_process(cwnet_feed_t *feed,
         }
     }
 
+    bool ptt_after = cwnet_client_ptt_on_wire(client);
+    result.ptt_on = ptt_after && !ptt_before;
+    result.ptt_off = !ptt_after && ptt_before;
     return result;
 }
