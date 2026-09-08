@@ -115,8 +115,10 @@ il progetto si è già arenato due volte per la sua assenza.
 
 Client sulla scatola: TX, poi RX, contro il server DL4YHF. Server nostro
 come daemon su PC di stazione, Linux o Mac, contro il client DL4YHF, con le
-policy di stazione decise da noi. L'echo server del banco resta il capo RX
-del loop di test ed è il seme del daemon.
+policy di stazione decise da noi. Il daemon è in C, in questo repo, sullo
+stesso codec di `keyer_cwnet` compilato per host: un solo filo, un solo
+test. L'echo server del banco resta il capo RX del loop di test ed è il
+seme del daemon.
 
 _Why it serves the approach:_ il filo è del golden standard, le policy di
 stazione sono nostre: possedere i due capi è il modo di deciderle una volta
