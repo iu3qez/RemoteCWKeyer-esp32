@@ -11,6 +11,7 @@ compilano con clang/gcc. In particolare `pcap_to_stream.py` sostituisce
 
 | File | Cosa fa |
 |---|---|
+| `cwnet_echo.py` | Server CWNet minimo per il loop di determinismo (R7, #14): eco del CONNECT con i permessi, PING come richiedente ogni 2 s, `RPRT 0` alle stringhe 0x06, `TX_INFO` con la chiave presa al primo byte MORSE e rilasciata dopo 1 s, ed eco byte per byte di ogni frame MORSE al mittente. Il server DL4YHF non rimanda mai MORSE (H6). Registra i due versi come il tap. |
 | `cwnet_tap.py` | Relay TCP trasparente: il client CWNet punta al tap, il tap inoltra al server e registra i due versi come byte grezzi. Cattura il loopback quando Wireshark/Npcap non lo intercetta. |
 | `pcap_to_stream.py` | Estrae i flussi TCP da un pcap/pcapng e li scrive come byte grezzi, una direzione per file (solo stdlib, gestisce Ethernet/loopback/SLL/raw). |
 | `cwnet_dump.c` | Decodifica un flusso grezzo: parser di frame **nostro** + codec del keying **di DL4YHF**. Diagnostico, non asserisce. |
@@ -54,6 +55,10 @@ clang -O1 -Wall -Wextra -fsanitize=address,undefined -I shim -I "$REF" -I "$OUR/
 
 # byte attesi dal KeyerThread di riferimento per una lista di edge
 clang -O1 -Wall -fsanitize=undefined -I shim -I "$REF" keyer_sim.c "$REF/CwStreamEnc.c" -o keyer_sim && ./keyer_sim
+
+# loop di determinismo: la scatola punta all'echo server, che le rimanda il suo keying
+python3 cwnet_echo.py --listen 0.0.0.0:7355 --permissions 7 --verbose --record echo
+./cwnet_dump echo_1_client_to_server.bin; ./cwnet_dump echo_1_server_to_client.bin   # stessi frame MORSE nei due versi
 
 # tap dal vivo: client -> tap -> server, un file per direzione
 python3 cwnet_tap.py --listen 0.0.0.0:7355 --server <ip-server>:7355 --out sess

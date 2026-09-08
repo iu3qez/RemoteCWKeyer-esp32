@@ -746,6 +746,35 @@ void test_client_rx_ignores_ci_v_and_spectrum(void) {
 }
 
 /*===========================================================================*/
+/* Determinism: what we send comes back as what we sent                     */
+/*===========================================================================*/
+
+void test_client_round_trip_returns_the_edges_sent(void) {
+    ready_client_accumulating();
+
+    /* The letter A at 25 WPM and the end of the over, as the feed sends it */
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  1000));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 1048));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  1096));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 1240));
+    TEST_ASSERT_TRUE(cwnet_client_poll(&client, 1240 + 673, 48));
+
+    /* An echo server sends the frames straight back (tools/cwnet/cwnet_echo.py) */
+    cwnet_client_on_data(&client, mock_tx_all, mock_tx_all_len);
+
+    static const bool keys[] = {true, false, true, false, false};
+    static const int32_t waits[] = {0, 48, 48, 144, 669};
+    TEST_ASSERT_EQUAL(5, cwnet_client_rx_count(&client));
+    TEST_ASSERT_TRUE(cwnet_client_rx_has_end_of_over(&client));
+    for (size_t i = 0; i < 5; i++) {
+        cwnet_rx_event_t ev;
+        TEST_ASSERT_TRUE(cwnet_client_rx_pop(&client, &ev));
+        TEST_ASSERT_EQUAL(keys[i], ev.key_down);
+        TEST_ASSERT_EQUAL(waits[i], ev.wait_ms);
+    }
+}
+
+/*===========================================================================*/
 /* Latency peak-hold                                                         */
 /*===========================================================================*/
 
@@ -957,6 +986,7 @@ void run_cwnet_client_tests(void) {
     RUN_TEST(test_client_rx_fifo_full_drops_and_counts);
     RUN_TEST(test_client_rx_ignores_ci_v_and_spectrum);
     RUN_TEST(test_client_latency_peak_holds_and_decays_like_the_reference);
+    RUN_TEST(test_client_round_trip_returns_the_edges_sent);
     RUN_TEST(test_client_rejects_events_when_not_ready);
 
     /* Error Handling */

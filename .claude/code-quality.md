@@ -16,6 +16,10 @@
 - Ramo remoto `k8-differential-bench` (`fae2f57`), senza PR: lo scheletro del banco è migrato in Esp32KeyerTest, `FINDINGS.md` (numeri superati) vive solo lì. Da cancellare quando nessuno lo cita più.
 
 
+## Contesto: PING CWNet, cosa c'e' nei tre timestamp
+
+Il client DL4YHF risponde alla REQUEST copiando i tre timestamp del suo array (`CwNet.c:1478`): slot 0 = `t0` del server, slot 1 = il suo orologio locale grezzo (`:1403`), slot 2 = il `t2` del giro precedente, mai azzerato. Il nostro mette nello slot 1 l'ora sincronizzata e 0 nello slot 2. Il server copia lo slot 1 nella RESPONSE_2 e sovrascrive lo slot 2; nessuno legge lo slot 1 dall'altra parte. Byte diversi, nessun effetto. Osservato costruendo `cwnet_echo.py` (#14).
+
 ## Cleanup Items
 
 ### Vendored esp_wireguard — GCC 15 / ESP-IDF v6 patches
