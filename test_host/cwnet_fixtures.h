@@ -54,6 +54,24 @@ static const uint8_t ref_first_over[] = {
     0x50, 0x01, 0x60,                                     /* end of over, 669 ms   */
 };
 
+/*
+ * The server's announcements of who has the key, CWNET_CMD_TX_INFO 0x05:
+ * one signed index byte, then the holder's callsign with its NUL. The three
+ * payloads the 2026-09-05 capture carries, bytes verbatim.
+ *   Session 12, server-to-client 169..184: nobody has the key (index -1).
+ *   Session 12, server-to-client 465..474: remote client 1, "Moritz".
+ *   Session 10, server-to-client 239..251: the server's own operator, index 0.
+ */
+static const uint8_t ref_tx_info_nobody[] = {
+    0x45, 0x0E, 0xFF, '-', '-', ' ', 'n', 'o', 'b', 'o', 'd', 'y', ' ', '-', '-', 0x00,
+};
+static const uint8_t ref_tx_info_moritz[] = {
+    0x45, 0x08, 0x01, 'M', 'o', 'r', 'i', 't', 'z', 0x00,
+};
+static const uint8_t ref_tx_info_sysop[] = {
+    0x45, 0x0B, 0x00, 'T', 'h', 'e', ' ', 'S', 'y', 's', 'o', 'p', 0x00,
+};
+
 /**
  * @brief Copy the raw bytes of every MORSE frame of a capture slice, in order
  *

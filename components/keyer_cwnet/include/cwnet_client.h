@@ -44,6 +44,15 @@
  * and plays the keying after its latency buffer, so the "1" leads the first
  * element by that buffer; its own hang time decides when the radio's PTT
  * drops, not our "0". The server answers "RPRT 0", or a negative code.
+ *
+ * Who has the key (reference: CwNet.c, iTransmittingClient): the server
+ * plays the keying of one client at a time and drops every other client's
+ * MORSE bytes without a word. Nothing is sent to claim the key: the first
+ * MORSE byte to arrive while nobody holds it takes it, a 1 s stopwatch on
+ * the server hands it back to nobody, and every change is announced to all
+ * clients in a TX_INFO 0x05 frame. The client keeps the last announcement
+ * and says whether the key is free, ours or somebody else's; it keys
+ * regardless (#25), and the box signals the state.
  */
 
 #pragma once
@@ -81,6 +90,7 @@ typedef enum {
     CWNET_CMD_CONNECT = 0x01,   /**< Client -> Server request; echoed back by the server to confirm */
     CWNET_CMD_DISCONNECT = 0x02,/**< Bidirectional: disconnect */
     CWNET_CMD_PING = 0x03,      /**< Bidirectional: time sync */
+    CWNET_CMD_TX_INFO = 0x05,   /**< Server -> all clients: who has the key; index byte + callsign with NUL */
     CWNET_CMD_RIG_STRING = 0x06,/**< ASCII rig-control string with a trailing NUL: "set_ptt 0|1\n" from us, "RPRT n\n" back */
     CWNET_CMD_MORSE = 0x10,     /**< Keying: 7-bit stream, bit 7 = key state, bits 6..0 = wait */
     CWNET_CMD_CI_V = 0x14,      /**< A single CI-V packet (Icom rig control). Not keying. */
@@ -109,6 +119,31 @@ typedef enum {
 #define CWNET_PERMISSION_TRANSMIT  0x02u  /**< May transmit (CW) */
 #define CWNET_PERMISSION_CTRL_RIG  0x04u  /**< May control the remote rig */
 #define CWNET_PERMISSION_ADMIN     0x08u  /**< Is the server administrator */
+
+/*===========================================================================*/
+/* Who has the key                                                           */
+/*===========================================================================*/
+
+/** Longest TX_INFO payload the reference accepts (CwNet.c, case CWNET_CMD_TX_INFO): 2..80 bytes */
+#define CWNET_TX_INFO_MAX_LEN 80
+
+/** The announced name, NUL included: the payload minus its index byte fits */
+#define CWNET_KEY_HOLDER_NAME_LEN CWNET_TX_INFO_MAX_LEN
+
+/**
+ * @brief Who holds the server's single key, from its last TX_INFO
+ *
+ * The index byte is the server's client index: negative for nobody, 0 for
+ * the server's own operator (CWNET_LOCAL_CLIENT_INDEX), 1 and up for remote
+ * clients. The name is the holder's callsign as it sent it in CONNECT, so
+ * "mine" is a remote index and a callsign equal to the one we sent.
+ */
+typedef enum {
+    CWNET_KEY_HOLDER_UNKNOWN = 0,  /**< No announcement yet in this session */
+    CWNET_KEY_HOLDER_FREE,         /**< "-- nobody --": the next MORSE byte takes it */
+    CWNET_KEY_HOLDER_MINE,         /**< We hold it: our keying is played */
+    CWNET_KEY_HOLDER_OTHER,        /**< The sysop or another client: our keying is dropped */
+} cwnet_key_holder_t;
 
 /*===========================================================================*/
 /* Received keying                                                           */
@@ -216,6 +251,7 @@ typedef struct {
     const char *server_host;            /**< Server hostname/IP (required) */
     uint16_t server_port;               /**< Server port (required) */
     const char *username;               /**< Username for logging (case sensitive) */
+    const char *callsign;               /**< Callsign for the CONNECT record; NULL or empty = the username */
 
     /* Required callbacks */
     cwnet_send_cb_t send_cb;            /**< Send data callback (required) */
@@ -241,6 +277,7 @@ typedef struct {
     char server_host[CWNET_MAX_HOST_LEN];
     uint16_t server_port;
     char username[CWNET_MAX_USERNAME_LEN];
+    char callsign[CWNET_MAX_USERNAME_LEN]; /**< What we put in the CONNECT callsign field */
 
     /* Callbacks */
     cwnet_send_cb_t send_cb;
@@ -260,6 +297,12 @@ typedef struct {
 
     /* Permissions granted by the server in its CONNECT echo */
     uint32_t permissions;
+
+    /* Who has the key, from the server's last TX_INFO */
+    cwnet_key_holder_t key_holder;
+    int8_t key_holder_index;     /**< The announced index; -1 until one arrives */
+    char key_holder_name[CWNET_KEY_HOLDER_NAME_LEN]; /**< The announced callsign, "" until one arrives */
+    uint32_t key_announcements;  /**< TX_INFO frames taken this session */
 
     /* Keying received in MORSE frames, oldest first */
     cwnet_rx_fifo_t rx;
@@ -420,6 +463,35 @@ void cwnet_client_on_disconnected(cwnet_client_t *client);
  * @return uint32_t Granted permission bitmask, 0 if client is NULL
  */
 uint32_t cwnet_client_get_permissions(const cwnet_client_t *client);
+
+/**
+ * @brief Who holds the key, from the server's last TX_INFO
+ *
+ * Reported as announced, with no timer of ours: during an over the
+ * reference alternates between us and nobody every second, and both mean
+ * our next byte is played. OTHER is the state to signal.
+ *
+ * @param client Client context
+ * @return The holder, UNKNOWN if client is NULL or nothing was announced yet
+ */
+cwnet_key_holder_t cwnet_client_get_key_holder(const cwnet_client_t *client);
+
+/**
+ * @brief The name the server announced with the key
+ *
+ * The holder's callsign, or "-- nobody --", or "The Sysop": the text the
+ * reference client shows as "On the key now".
+ *
+ * @param client Client context
+ * @return NUL-terminated, "" until the first announcement or if client is NULL
+ */
+const char *cwnet_client_get_key_holder_name(const cwnet_client_t *client);
+
+/** @return TX_INFO frames taken this session, 0 if client is NULL */
+uint32_t cwnet_client_get_key_announcements(const cwnet_client_t *client);
+
+/** @return "unknown", "free", "mine" or "other" */
+const char *cwnet_client_key_holder_str(cwnet_key_holder_t holder);
 
 void cwnet_client_on_data(cwnet_client_t *client,
                            const uint8_t *data,

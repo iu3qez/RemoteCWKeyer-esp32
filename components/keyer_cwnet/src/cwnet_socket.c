@@ -46,6 +46,7 @@ static struct {
     char host[CWNET_MAX_HOST_LEN];
     uint16_t port;
     char username[CWNET_MAX_USERNAME_LEN];
+    char callsign[CWNET_MAX_USERNAME_LEN];
     bool enabled;
     bool send_failed;   /**< A send() in this pass did not go out whole */
 } s_ctx;
@@ -267,6 +268,9 @@ void cwnet_socket_init(const keying_stream_t *keying_stream) {
     strncpy(s_ctx.host, g_config.remote.server_host, sizeof(s_ctx.host) - 1);
     s_ctx.port = g_config.remote.server_port;
     strncpy(s_ctx.username, g_config.remote.username, sizeof(s_ctx.username) - 1);
+    /* The server announces the key holder by callsign, and strips TRANSMIT
+     * from a client that sent none: the client falls back to the username. */
+    strncpy(s_ctx.callsign, g_config.system.callsign, sizeof(s_ctx.callsign) - 1);
 
     /* Validate */
     if (s_ctx.host[0] == '\0') {
@@ -281,6 +285,7 @@ void cwnet_socket_init(const keying_stream_t *keying_stream) {
         .server_host = s_ctx.host,
         .server_port = s_ctx.port,
         .username = s_ctx.username,
+        .callsign = s_ctx.callsign,
         .send_cb = socket_send_cb,
         .get_time_ms_cb = get_time_ms_cb,
         .state_change_cb = state_change_cb,
@@ -406,6 +411,14 @@ int32_t cwnet_socket_get_latency_ms(void) {
 
 int32_t cwnet_socket_get_latency_peak_ms(void) {
     return cwnet_client_get_latency_peak_ms(&s_ctx.client);
+}
+
+cwnet_key_holder_t cwnet_socket_get_key_holder(void) {
+    return cwnet_client_get_key_holder(&s_ctx.client);
+}
+
+const char *cwnet_socket_get_key_holder_name(void) {
+    return cwnet_client_get_key_holder_name(&s_ctx.client);
 }
 
 const char *cwnet_socket_state_str(cwnet_socket_state_t state) {
