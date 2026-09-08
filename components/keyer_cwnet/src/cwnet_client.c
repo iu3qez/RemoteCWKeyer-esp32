@@ -90,8 +90,11 @@ static cwnet_client_err_t send_connect(cwnet_client_t *client) {
     size_t username_len = strlen(client->username);
     memcpy(&frame[2], client->username, username_len);
 
-    /* Callsign field (44 bytes) - use same as username for now */
-    memcpy(&frame[2 + CWNET_CONNECT_USERNAME_LEN], client->username, username_len);
+    /* Callsign field (44 bytes). The server keeps it as the name it announces
+     * with the key (CwNet.c:1295) and strips TRANSMIT if it is empty. */
+    _Static_assert(sizeof(((cwnet_client_t *)0)->callsign) <= CWNET_CONNECT_CALLSIGN_LEN,
+                   "callsign buffer must fit in connect frame field");
+    memcpy(&frame[2 + CWNET_CONNECT_USERNAME_LEN], client->callsign, strlen(client->callsign));
 
     /* Permissions field (4 bytes) - leave as zero */
 
@@ -330,6 +333,52 @@ static void handle_rig_string(cwnet_client_t *client, const uint8_t *payload, si
 }
 
 /**
+ * @brief Forget who had the key: a new session announces it afresh
+ */
+static void forget_key_holder(cwnet_client_t *client) {
+    client->key_holder = CWNET_KEY_HOLDER_UNKNOWN;
+    client->key_holder_name[0] = '\0';
+    client->key_announcements = 0;
+}
+
+/**
+ * @brief Take the server's announcement of who has the key
+ *
+ * CwNet.c, case CWNET_CMD_TX_INFO: a payload of 2..80 bytes, the index as
+ * a signed char, then the callsign, copied up to 80 bytes. The reference
+ * client only displays it; we derive free / mine / other from it.
+ */
+static void handle_tx_info(cwnet_client_t *client, const uint8_t *payload, size_t len) {
+    if (len < 2 || len > CWNET_TX_INFO_MAX_LEN) {
+        return;
+    }
+    int8_t index = (int8_t)payload[0];
+    size_t n = 0;
+    while (n < len - 1 && n < CWNET_KEY_HOLDER_NAME_LEN - 1 && payload[1 + n] != '\0') {
+        client->key_holder_name[n] = (char)payload[1 + n];
+        n++;
+    }
+    client->key_holder_name[n] = '\0';
+
+    cwnet_key_holder_t was = client->key_holder;
+    if (index < 0) {
+        client->key_holder = CWNET_KEY_HOLDER_FREE;
+    } else if (index >= 1 && strcmp(client->key_holder_name, client->callsign) == 0) {
+        client->key_holder = CWNET_KEY_HOLDER_MINE;
+    } else {
+        client->key_holder = CWNET_KEY_HOLDER_OTHER;
+    }
+    client->key_announcements++;
+
+    /* The mine/free alternation is the server's timer at work, once a
+     * second during an over: noise at INFO. Somebody else taking or leaving
+     * the key is what the operator must know. */
+    bool other_changed = (was == CWNET_KEY_HOLDER_OTHER) != (client->key_holder == CWNET_KEY_HOLDER_OTHER);
+    RT_LOG(&g_bg_log_stream, other_changed ? LOG_LEVEL_INFO : LOG_LEVEL_DEBUG, esp_timer_get_time(),
+           "CWNet key: %s (%s)", cwnet_client_key_holder_str(client->key_holder), client->key_holder_name);
+}
+
+/**
  * @brief Queue every byte of a MORSE frame as a received keying event
  *
  * The reference does this per byte as it parses (CwNet.c:2875-2902,
@@ -378,6 +427,10 @@ static void process_frame(cwnet_client_t *client, const cwnet_parse_result_t *re
             handle_rig_string(client, payload, payload_len);
             break;
 
+        case CWNET_CMD_TX_INFO:
+            handle_tx_info(client, payload, payload_len);
+            break;
+
         default:
             /* Not handled, ignore */
             break;
@@ -387,6 +440,18 @@ static void process_frame(cwnet_client_t *client, const cwnet_parse_result_t *re
 /*===========================================================================*/
 /* Public API                                                                */
 /*===========================================================================*/
+
+/**
+ * @brief Copy a C string into a fixed buffer, truncated to fit, always terminated
+ */
+static void copy_string(char *dst, size_t dst_size, const char *src) {
+    size_t len = strlen(src);
+    if (len >= dst_size) {
+        len = dst_size - 1;
+    }
+    memcpy(dst, src, len);
+    dst[len] = '\0';
+}
 
 cwnet_client_err_t cwnet_client_init(cwnet_client_t *client,
                                       const cwnet_client_config_t *config) {
@@ -406,23 +471,16 @@ cwnet_client_err_t cwnet_client_init(cwnet_client_t *client,
     memset(client, 0, sizeof(*client));
 
     /* Copy configuration */
-    size_t host_len = strlen(config->server_host);
-    if (host_len >= CWNET_MAX_HOST_LEN) {
-        host_len = CWNET_MAX_HOST_LEN - 1;
-    }
-    memcpy(client->server_host, config->server_host, host_len);
-    client->server_host[host_len] = '\0';
-
+    copy_string(client->server_host, sizeof(client->server_host), config->server_host);
     client->server_port = config->server_port;
-
     if (config->username != NULL) {
-        size_t user_len = strlen(config->username);
-        if (user_len >= CWNET_MAX_USERNAME_LEN) {
-            user_len = CWNET_MAX_USERNAME_LEN - 1;
-        }
-        memcpy(client->username, config->username, user_len);
-        client->username[user_len] = '\0';
+        copy_string(client->username, sizeof(client->username), config->username);
     }
+
+    /* The callsign the server will announce us by; the username when none */
+    const char *callsign = (config->callsign != NULL && config->callsign[0] != '\0')
+                           ? config->callsign : client->username;
+    copy_string(client->callsign, sizeof(client->callsign), callsign);
 
     /* Set callbacks */
     client->send_cb = config->send_cb;
@@ -435,6 +493,7 @@ cwnet_client_err_t cwnet_client_init(cwnet_client_t *client,
     client->latency_ms = -1;
     client->latency_peak_ms = -1;
     client->rig_result = CWNET_RIG_RESULT_NONE;
+    forget_key_holder(client);
 
     /* Initialize timer */
     cwnet_timer_init(&client->timer);
@@ -450,6 +509,37 @@ uint32_t cwnet_client_get_permissions(const cwnet_client_t *client) {
         return 0;
     }
     return client->permissions;
+}
+
+cwnet_key_holder_t cwnet_client_get_key_holder(const cwnet_client_t *client) {
+    if (client == NULL) {
+        return CWNET_KEY_HOLDER_UNKNOWN;
+    }
+    return client->key_holder;
+}
+
+const char *cwnet_client_get_key_holder_name(const cwnet_client_t *client) {
+    if (client == NULL) {
+        return "";
+    }
+    return client->key_holder_name;
+}
+
+uint32_t cwnet_client_get_key_announcements(const cwnet_client_t *client) {
+    if (client == NULL) {
+        return 0;
+    }
+    return client->key_announcements;
+}
+
+const char *cwnet_client_key_holder_str(cwnet_key_holder_t holder) {
+    switch (holder) {
+        case CWNET_KEY_HOLDER_FREE:  return "free";
+        case CWNET_KEY_HOLDER_MINE:  return "mine";
+        case CWNET_KEY_HOLDER_OTHER: return "other";
+        case CWNET_KEY_HOLDER_UNKNOWN:
+        default:                     return "unknown";
+    }
 }
 
 cwnet_client_state_t cwnet_client_get_state(const cwnet_client_t *client) {
@@ -500,6 +590,7 @@ void cwnet_client_on_connected(cwnet_client_t *client) {
     client->latency_ms = -1;
     client->latency_peak_ms = -1;
     client->rig_result = CWNET_RIG_RESULT_NONE;
+    forget_key_holder(client);
 
     /* Transition to CONNECTING */
     set_state(client, CWNET_STATE_CONNECTING);
@@ -515,6 +606,9 @@ void cwnet_client_on_disconnected(cwnet_client_t *client) {
 
     /* Reset parser */
     cwnet_frame_parser_reset(&client->parser);
+
+    /* No link, no key: the next session's server announces it afresh */
+    forget_key_holder(client);
 
     /* Transition to DISCONNECTED */
     set_state(client, CWNET_STATE_DISCONNECTED);

@@ -244,6 +244,16 @@ void test_client_tx_ptt_holds_across_gaps_shorter_than_the_tail(void);
 void test_client_abort_over_drops_ptt_too(void);
 void test_client_rx_keeps_the_rig_result(void);
 void test_client_rejects_events_when_not_ready(void);
+void test_client_key_holder_unknown_until_announced(void);
+void test_client_key_holder_reads_the_three_captured_announcements(void);
+void test_client_key_holder_another_client_is_other(void);
+void test_client_key_holder_alternates_as_the_reference_announces(void);
+void test_client_key_holder_frame_in_fragments(void);
+void test_client_key_holder_ignores_malformed_tx_info(void);
+void test_client_key_holder_forgotten_across_a_reconnect(void);
+void test_client_callsign_goes_on_the_wire_and_decides_mine(void);
+void test_client_callsign_falls_back_to_the_username(void);
+void test_client_key_holder_index_zero_is_never_mine(void);
 void test_client_handles_invalid_frame(void);
 void test_client_handles_disconnect_during_operation(void);
 void test_client_handles_fragmented_frame(void);
@@ -556,6 +566,17 @@ int main(void) {
     RUN_TEST(test_client_abort_over_drops_ptt_too);
     RUN_TEST(test_client_rx_keeps_the_rig_result);
     RUN_TEST(test_client_rejects_events_when_not_ready);
+    /* Who has the key: TX_INFO 0x05 against the 2026-09-05 capture */
+    RUN_TEST(test_client_key_holder_unknown_until_announced);
+    RUN_TEST(test_client_key_holder_reads_the_three_captured_announcements);
+    RUN_TEST(test_client_key_holder_another_client_is_other);
+    RUN_TEST(test_client_key_holder_alternates_as_the_reference_announces);
+    RUN_TEST(test_client_key_holder_frame_in_fragments);
+    RUN_TEST(test_client_key_holder_ignores_malformed_tx_info);
+    RUN_TEST(test_client_key_holder_forgotten_across_a_reconnect);
+    RUN_TEST(test_client_callsign_goes_on_the_wire_and_decides_mine);
+    RUN_TEST(test_client_callsign_falls_back_to_the_username);
+    RUN_TEST(test_client_key_holder_index_zero_is_never_mine);
     /* Error Handling */
     RUN_TEST(test_client_handles_invalid_frame);
     RUN_TEST(test_client_handles_disconnect_during_operation);

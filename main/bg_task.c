@@ -253,8 +253,10 @@ void bg_task(void *arg) {
             if (cwnet_state != CWNET_SOCK_DISABLED) {
                 int32_t latency = cwnet_socket_get_latency_ms();
                 if (latency >= 0) {
-                    RT_INFO(&g_bg_log_stream, now_us, "CWNet: %s, latency=%"PRId32"ms",
-                            cwnet_socket_state_str(cwnet_state), latency);
+                    RT_INFO(&g_bg_log_stream, now_us, "CWNet: %s, latency=%"PRId32"ms, key %s (%s)",
+                            cwnet_socket_state_str(cwnet_state), latency,
+                            cwnet_client_key_holder_str(cwnet_socket_get_key_holder()),
+                            cwnet_socket_get_key_holder_name());
                 } else {
                     RT_INFO(&g_bg_log_stream, now_us, "CWNet: %s",
                             cwnet_socket_state_str(cwnet_state));

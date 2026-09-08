@@ -76,6 +76,17 @@ int32_t cwnet_socket_get_latency_ms(void);
 int32_t cwnet_socket_get_latency_peak_ms(void);
 
 /**
+ * @brief Who has the server's key, from its last TX_INFO
+ *
+ * OTHER means the server is dropping our keying (#25); the box keys anyway
+ * and signals it. UNKNOWN when disabled, not connected, or not announced yet.
+ */
+cwnet_key_holder_t cwnet_socket_get_key_holder(void);
+
+/** @return The announced name ("-- nobody --", a callsign, "The Sysop"), "" if none */
+const char *cwnet_socket_get_key_holder_name(void);
+
+/**
  * @brief Get state as string (for logging)
  */
 const char *cwnet_socket_state_str(cwnet_socket_state_t state);

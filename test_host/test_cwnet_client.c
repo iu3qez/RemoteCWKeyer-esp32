@@ -69,13 +69,13 @@ static int mock_send_accumulate(const uint8_t *data, size_t len, void *user_data
     return (int)len;
 }
 
-/* A client at READY with TRANSMIT granted, capturing every byte it sends
- * from here on (the CONNECT it sent is dropped). */
-static void ready_client_accumulating(void) {
+/* A client at READY with TRANSMIT granted, logged in under the given name,
+ * capturing every byte it sends from here on (the CONNECT it sent is dropped). */
+static void ready_client_named(const char *username) {
     cwnet_client_config_t config = {
         .server_host = "test.server.com",
         .server_port = 7373,
-        .username = "TEST",
+        .username = username,
         .send_cb = mock_send_accumulate,
         .get_time_ms_cb = mock_get_time_ms,
         .user_data = NULL
@@ -87,6 +87,10 @@ static void ready_client_accumulating(void) {
     cwnet_client_on_connected(&client);
     feed_connect_echo();
     mock_tx_all_len = 0;
+}
+
+static void ready_client_accumulating(void) {
+    ready_client_named("TEST");
 }
 
 /*===========================================================================*/
@@ -840,6 +844,199 @@ void test_client_rx_keeps_the_rig_result(void) {
 }
 
 /*===========================================================================*/
+/* Who has the key: the server's TX_INFO announcements                       */
+/*===========================================================================*/
+
+void test_client_key_holder_unknown_until_announced(void) {
+    ready_client_accumulating();
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_UNKNOWN, cwnet_client_get_key_holder(&client));
+    TEST_ASSERT_EQUAL_STRING("", cwnet_client_get_key_holder_name(&client));
+    TEST_ASSERT_EQUAL(0, cwnet_client_get_key_announcements(&client));
+}
+
+void test_client_key_holder_reads_the_three_captured_announcements(void) {
+    /* The capture's client logged in as "Moritz": the name the server
+     * announces is the callsign we sent, and we send the username there. */
+    ready_client_named("Moritz");
+
+    cwnet_client_on_data(&client, ref_tx_info_nobody, sizeof(ref_tx_info_nobody));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_FREE, cwnet_client_get_key_holder(&client));
+    TEST_ASSERT_EQUAL_STRING("-- nobody --", cwnet_client_get_key_holder_name(&client));
+
+    cwnet_client_on_data(&client, ref_tx_info_moritz, sizeof(ref_tx_info_moritz));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_MINE, cwnet_client_get_key_holder(&client));
+    TEST_ASSERT_EQUAL_STRING("Moritz", cwnet_client_get_key_holder_name(&client));
+
+    cwnet_client_on_data(&client, ref_tx_info_sysop, sizeof(ref_tx_info_sysop));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_OTHER, cwnet_client_get_key_holder(&client));
+    TEST_ASSERT_EQUAL_STRING("The Sysop", cwnet_client_get_key_holder_name(&client));
+
+    TEST_ASSERT_EQUAL(3, cwnet_client_get_key_announcements(&client));
+}
+
+void test_client_key_holder_another_client_is_other(void) {
+    ready_client_accumulating();   /* we are "TEST" */
+    cwnet_client_on_data(&client, ref_tx_info_moritz, sizeof(ref_tx_info_moritz));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_OTHER, cwnet_client_get_key_holder(&client));
+    TEST_ASSERT_EQUAL_STRING("Moritz", cwnet_client_get_key_holder_name(&client));
+}
+
+void test_client_key_holder_alternates_as_the_reference_announces(void) {
+    /* Session 12, the first over: the server announces nobody, Moritz,
+     * nobody, Moritz, nobody (offsets 169, 465, 475, 491, 511) because its
+     * release timer runs on while the client keys. We report each one as
+     * announced, as the reference client displays them (Keyer_Main.cpp,
+     * Ed_OnTheKeyNow): no hysteresis of ours. */
+    ready_client_named("Moritz");
+    static const cwnet_key_holder_t expected[] = {
+        CWNET_KEY_HOLDER_FREE, CWNET_KEY_HOLDER_MINE, CWNET_KEY_HOLDER_FREE,
+        CWNET_KEY_HOLDER_MINE, CWNET_KEY_HOLDER_FREE,
+    };
+    for (size_t i = 0; i < 5; i++) {
+        if (expected[i] == CWNET_KEY_HOLDER_FREE) {
+            cwnet_client_on_data(&client, ref_tx_info_nobody, sizeof(ref_tx_info_nobody));
+        } else {
+            cwnet_client_on_data(&client, ref_tx_info_moritz, sizeof(ref_tx_info_moritz));
+        }
+        TEST_ASSERT_EQUAL(expected[i], cwnet_client_get_key_holder(&client));
+    }
+    TEST_ASSERT_EQUAL(5, cwnet_client_get_key_announcements(&client));
+}
+
+void test_client_key_holder_frame_in_fragments(void) {
+    ready_client_named("Moritz");
+    for (size_t i = 0; i < sizeof(ref_tx_info_moritz); i++) {
+        cwnet_client_on_data(&client, &ref_tx_info_moritz[i], 1);
+    }
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_MINE, cwnet_client_get_key_holder(&client));
+    TEST_ASSERT_EQUAL_STRING("Moritz", cwnet_client_get_key_holder_name(&client));
+}
+
+void test_client_key_holder_ignores_malformed_tx_info(void) {
+    ready_client_named("Moritz");
+    cwnet_client_on_data(&client, ref_tx_info_moritz, sizeof(ref_tx_info_moritz));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_MINE, cwnet_client_get_key_holder(&client));
+
+    /* The reference takes a payload of 2..80 bytes (CwNet.c:1555): the index
+     * alone is not an announcement, and neither is an 81-byte one. */
+    static const uint8_t index_only[] = {0x45, 0x01, 0xFF};
+    cwnet_client_on_data(&client, index_only, sizeof(index_only));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_MINE, cwnet_client_get_key_holder(&client));
+
+    uint8_t too_long[2 + 81];
+    too_long[0] = 0x45;
+    too_long[1] = 81;
+    too_long[2] = 0xFF;
+    memset(&too_long[3], 'x', 79);
+    too_long[2 + 80] = 0x00;
+    cwnet_client_on_data(&client, too_long, sizeof(too_long));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_MINE, cwnet_client_get_key_holder(&client));
+    TEST_ASSERT_EQUAL(1, cwnet_client_get_key_announcements(&client));
+
+    /* A name without its NUL is taken as far as it goes, and is not ours */
+    static const uint8_t no_nul[] = {0x45, 0x03, 0x01, 'M', 'o'};
+    cwnet_client_on_data(&client, no_nul, sizeof(no_nul));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_OTHER, cwnet_client_get_key_holder(&client));
+    TEST_ASSERT_EQUAL_STRING("Mo", cwnet_client_get_key_holder_name(&client));
+
+    /* A NUL inside the length bound ends the name there, as the reference's
+     * strncpy does; the bytes after it are not the name */
+    static const uint8_t early_nul[] = {0x45, 0x07, 0x01, 'M', 'o', 0x00, 'r', 'i', 'X'};
+    cwnet_client_on_data(&client, early_nul, sizeof(early_nul));
+    TEST_ASSERT_EQUAL_STRING("Mo", cwnet_client_get_key_holder_name(&client));
+    TEST_ASSERT_EQUAL(3, cwnet_client_get_key_announcements(&client));
+}
+
+void test_client_callsign_goes_on_the_wire_and_decides_mine(void) {
+    /* The box logs in under one name and is known by another: the server
+     * stores the callsign field of CONNECT (CwNet.c:1295) and announces the
+     * key holder by it, so "mine" is decided on the callsign, never on the
+     * login name. */
+    cwnet_client_config_t config = {
+        .server_host = "test.server.com",
+        .server_port = 7373,
+        .username = "op1",
+        .callsign = "IU3QEZ",
+        .send_cb = mock_send_accumulate,
+        .get_time_ms_cb = mock_get_time_ms,
+        .user_data = NULL
+    };
+    test_setup();
+    mock_tx_all_len = 0;
+    cwnet_client_init(&client, &config);
+    cwnet_client_on_connected(&client);
+
+    /* The CONNECT record: username at 2, callsign at 2 + 44, both NUL-padded */
+    TEST_ASSERT_EQUAL(2 + CWNET_CONNECT_PAYLOAD_LEN, mock_tx_all_len);
+    TEST_ASSERT_EQUAL_MEMORY("op1\0", &mock_tx_all[2], 4);
+    TEST_ASSERT_EQUAL_MEMORY("IU3QEZ\0", &mock_tx_all[2 + CWNET_CONNECT_USERNAME_LEN], 7);
+    feed_connect_echo();
+
+    static const uint8_t by_callsign[] = {0x45, 0x08, 0x01, 'I', 'U', '3', 'Q', 'E', 'Z', 0x00};
+    cwnet_client_on_data(&client, by_callsign, sizeof(by_callsign));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_MINE, cwnet_client_get_key_holder(&client));
+
+    static const uint8_t by_username[] = {0x45, 0x05, 0x01, 'o', 'p', '1', 0x00};
+    cwnet_client_on_data(&client, by_username, sizeof(by_username));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_OTHER, cwnet_client_get_key_holder(&client));
+}
+
+void test_client_callsign_falls_back_to_the_username(void) {
+    /* No callsign configured: the username goes in the field, as before,
+     * because a client without a callsign is stripped of TRANSMIT */
+    cwnet_client_config_t config = {
+        .server_host = "test.server.com",
+        .server_port = 7373,
+        .username = "op1",
+        .callsign = "",
+        .send_cb = mock_send_accumulate,
+        .get_time_ms_cb = mock_get_time_ms,
+        .user_data = NULL
+    };
+    test_setup();
+    mock_tx_all_len = 0;
+    cwnet_client_init(&client, &config);
+    cwnet_client_on_connected(&client);
+    TEST_ASSERT_EQUAL_MEMORY("op1\0", &mock_tx_all[2 + CWNET_CONNECT_USERNAME_LEN], 4);
+}
+
+void test_client_key_holder_index_zero_is_never_mine(void) {
+    /* Index 0 is the server's own operator, whatever the name says: a box
+     * that calls itself "The Sysop" does not hold the key when the sysop does */
+    cwnet_client_config_t config = {
+        .server_host = "test.server.com",
+        .server_port = 7373,
+        .username = "The Sysop",
+        .send_cb = mock_send_accumulate,
+        .get_time_ms_cb = mock_get_time_ms,
+        .user_data = NULL
+    };
+    test_setup();
+    mock_tx_all_len = 0;
+    cwnet_client_init(&client, &config);
+    cwnet_client_on_connected(&client);
+    feed_connect_echo();
+    cwnet_client_on_data(&client, ref_tx_info_sysop, sizeof(ref_tx_info_sysop));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_OTHER, cwnet_client_get_key_holder(&client));
+    TEST_ASSERT_EQUAL_STRING("The Sysop", cwnet_client_get_key_holder_name(&client));
+}
+
+void test_client_key_holder_forgotten_across_a_reconnect(void) {
+    ready_client_named("Moritz");
+    cwnet_client_on_data(&client, ref_tx_info_moritz, sizeof(ref_tx_info_moritz));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_MINE, cwnet_client_get_key_holder(&client));
+
+    cwnet_client_on_disconnected(&client);
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_UNKNOWN, cwnet_client_get_key_holder(&client));
+    TEST_ASSERT_EQUAL_STRING("", cwnet_client_get_key_holder_name(&client));
+
+    cwnet_client_on_connected(&client);
+    feed_connect_echo();
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_UNKNOWN, cwnet_client_get_key_holder(&client));
+    TEST_ASSERT_EQUAL(0, cwnet_client_get_key_announcements(&client));
+}
+
+/*===========================================================================*/
 /* Determinism: what we send comes back as what we sent                     */
 /*===========================================================================*/
 
@@ -1035,63 +1232,4 @@ void test_client_handles_ping_in_fragments(void) {
 
     /* Now should have responded */
     TEST_ASSERT_GREATER_THAN(0, mock_tx_len);
-}
-
-/*===========================================================================*/
-/* Test Runner                                                               */
-/*===========================================================================*/
-
-void run_cwnet_client_tests(void) {
-    /* Initialization */
-    RUN_TEST(test_client_init_basic);
-    RUN_TEST(test_client_init_null_client);
-    RUN_TEST(test_client_init_null_config);
-    RUN_TEST(test_client_init_null_callbacks);
-    RUN_TEST(test_client_init_empty_host);
-    RUN_TEST(test_client_init_empty_username);
-
-    /* State Transitions */
-    RUN_TEST(test_client_connect_transitions_to_connecting);
-    RUN_TEST(test_client_disconnect_from_any_state);
-
-    /* Protocol Handshake */
-    RUN_TEST(test_client_sends_ident_on_connect);
-    RUN_TEST(test_client_reaches_ready_on_connect_echo);
-
-    /* PING Handling */
-    RUN_TEST(test_client_responds_to_ping_request);
-    RUN_TEST(test_client_syncs_timer_on_ping_request);
-    RUN_TEST(test_client_updates_latency_on_ping_response2);
-
-    /* CW Events */
-    RUN_TEST(test_client_tx_first_transition_of_an_over_waits_zero);
-    RUN_TEST(test_client_tx_wait_is_measured_from_previous_transition);
-    RUN_TEST(test_client_tx_first_over_matches_reference_capture);
-    RUN_TEST(test_client_tx_advances_by_encoded_not_measured_ms);
-    RUN_TEST(test_client_tx_splits_wait_above_1165_ms);
-    RUN_TEST(test_client_tx_end_of_over_after_14_dot_times);
-    RUN_TEST(test_client_tx_end_of_over_splits_at_slow_speed);
-    RUN_TEST(test_client_tx_ignores_repeated_key_state);
-    RUN_TEST(test_client_tx_wait_beyond_one_frame_rebases_on_the_edge);
-    RUN_TEST(test_client_rx_decodes_every_event_of_a_morse_frame);
-    RUN_TEST(test_client_rx_synthetic_frame_from_reference_encoder);
-    RUN_TEST(test_client_rx_frame_in_fragments);
-    RUN_TEST(test_client_rx_event_carries_reception_time);
-    RUN_TEST(test_client_rx_fifo_full_drops_and_counts);
-    RUN_TEST(test_client_rx_ignores_ci_v_and_spectrum);
-    RUN_TEST(test_client_latency_peak_holds_and_decays_like_the_reference);
-    RUN_TEST(test_client_round_trip_returns_the_edges_sent);
-    RUN_TEST(test_client_tx_first_over_with_ptt_matches_reference_capture_whole);
-    RUN_TEST(test_client_tx_ptt_holds_across_gaps_shorter_than_the_tail);
-    RUN_TEST(test_client_abort_over_drops_ptt_too);
-    RUN_TEST(test_client_rx_keeps_the_rig_result);
-    RUN_TEST(test_client_rejects_events_when_not_ready);
-
-    /* Error Handling */
-    RUN_TEST(test_client_handles_invalid_frame);
-    RUN_TEST(test_client_handles_disconnect_during_operation);
-
-    /* Fragmentation */
-    RUN_TEST(test_client_handles_fragmented_frame);
-    RUN_TEST(test_client_handles_ping_in_fragments);
 }
