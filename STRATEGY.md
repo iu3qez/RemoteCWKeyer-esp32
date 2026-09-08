@@ -1,6 +1,6 @@
 ---
 name: RemoteCWKeyer-esp32
-last_updated: 2026-09-06
+last_updated: 2026-09-08
 ---
 
 # RemoteCWKeyer-esp32 Strategy
@@ -11,17 +11,26 @@ L'operatore vuole manipolare un rig remoto con un paddle vero. Oggi l'unica
 catena che parla CWNet (il protocollo del Remote CW Keyer di DL4YHF) è un PC
 Windows per lato, e chi vuole rifarne un pezzo non ha un riferimento contro
 cui dimostrare che è compatibile: né per il protocollo (sorgente non
-compilabile, nessuna spec), né per il timing del keyer. Il progetto si è
-arenato due volte per lo stesso motivo: non è mai stato impostato un metodo
-di test valido e veloce.
+compilabile, nessuna spec), né per il timing del keyer. Il programma DL4YHF
+ha uno scopo diverso dal nostro e non si può piegare: Borland, Windows only,
+codice della GUI non disponibile, il carrozzone CI-V al seguito, scelte di
+stazione opinabili (PTT tenuto 500 ms). Il progetto si è arenato due volte
+per lo stesso motivo: non è mai stato impostato un metodo di test valido e
+veloce.
 
 ## Positioning
 
 Ogni comportamento che conta ha un riferimento reale e viene dimostrato
-contro quello, non reso simile: il protocollo contro client/server DL4YHF
+contro quello, non reso simile: il filo CWNet contro client e server DL4YHF
 originali, il keyer contro il K1EL K8 eseguito: input umano → output K8,
 riproducibile, fino a 40 WPM. Il K8 è riferimento del feeling, non
 dell'implementazione: i limiti di un PIC12 del 1998 non sono i nostri.
+Il programma DL4YHF è riferimento del protocollo, non del prodotto: il
+prodotto è la coppia scatola + server nostro, e le scelte di stazione (PTT,
+cessione della chiave, buffer di riproduzione) sono nostre, prese una volta
+sola perché possediamo i due capi. CWNet trasporta anche audio, CI-V e
+spettro: noi lo usiamo per la manipolazione e per ciò che le serve; il resto
+della stazione non è impegnato a passare da lì.
 TX e RX crescono insieme perché la catena TX→RX in loop, sullo stesso
 hardware o su due, è il banco di prova: niente è fatto finché non passa lì.
 
@@ -30,8 +39,8 @@ hardware o su due, è il banco di prova: niente è fatto finché non passa lì.
 **Primary:** l'OM del team contest IO4A che partecipa da remoto col suo
 paddle - assume il box per sedersi alla postazione CW del team senza cablare
 una RS-232, senza configurare VPN e redirect audio, senza un PC Windows in
-mezzo. Lato stazione non cambia nulla: Orion MkII + Thetis + server DL4YHF
-sul PC di stazione.
+mezzo. Lato stazione: Orion MkII + Thetis, e il server nostro su un PC Linux
+o Mac al posto del programma DL4YHF.
 
 **Secondary:** lo sviluppatore/tester - l'unico utente finché il riferimento
 non è dimostrato. Il suo strumento è la console seriale, non la WebUI.
@@ -45,10 +54,13 @@ non è dimostrato. Il suo strumento è la console seriale, non la WebUI.
   riferimento eseguibile prova non si popola. Best effort, nessun investimento.
 - Sopra i 40 WPM il K8 non è più riferimento: le finestre configurabili sono
   best effort, senza metrica.
-- Niente clone di DL4YHF: compatibile col golden standard, non replica di
-  tutto.
-- Niente prodotto lato stazione: il server CWNet esiste solo come capo RX
-  del banco di prova.
+- Niente clone di DL4YHF: compatibile sul filo, non replica di tutto.
+- Audio, CI-V e spettro dentro CWNet: nessun impegno. Il server nostro
+  implementa i comandi che la manipolazione richiede; il resto della stazione
+  passa da dove passa oggi.
+- Niente scatola come server: per IO4A il server è un daemon su PC di
+  stazione. Una scatola con doppia personalità client/server è un repurpose
+  utile, anche per i test, ma non ora.
 - Niente OTA ora: aggiornamento via flasher web (repo separato) + USB. Se
   arriva dopo, meglio.
 - WebUI: nessun investimento finché banco di prova, CWNet e K8 non tengono.
@@ -65,14 +77,17 @@ Il tracker registra anche ciò che non faremo adesso. Un backlog che contiene
 solo il lavoro autorizzato non è disciplina: è amnesia.
 
 _Resist a change when:_ l'unico argomento è "c'è e costa poco aggiungere",
-o non può essere dimostrata contro il riferimento (client DL4YHF, K8
-eseguito).
+non può essere dimostrata contro il riferimento (client DL4YHF, K8
+eseguito), o riproduce una scelta di stazione del programma DL4YHF solo
+perché il riferimento la fa.
 
 ## Key metrics
 
 - **Conformità CWNet** - il test loop contro client/server ufficiali DL4YHF
-  passa o no. Vive in `test_host` più un banco con il client Windows. È
-  stata la parte più dolorosa: metrica numero uno.
+  passa o no, in entrambi i ruoli: il client della scatola contro il server
+  DL4YHF, il daemon nostro contro il client DL4YHF. Vive in `test_host` più
+  un banco con il programma Windows. È stata la parte più dolorosa: metrica
+  numero uno.
 - **Feeling del K8** - su un corpus di manipolazioni reali fino a 40 WPM,
   la sequenza di elementi nostra coincide con quella del K8 eseguito, stabile
   sotto la fase dello stimolo: passa o no. Vive nel repo della logica keyer,
@@ -96,13 +111,18 @@ WiFi, comandi di test, non bloccante).
 _Why it serves the approach:_ senza questo "esatto" non è dimostrabile, e
 il progetto si è già arenato due volte per la sua assenza.
 
-### CWNet client
+### CWNet, i due capi
 
-TX, poi RX, contro il server ufficiale. Un server minimo esiste solo come
-capo RX del loop di test.
+Client sulla scatola: TX, poi RX, contro il server DL4YHF. Server nostro
+come daemon su PC di stazione, Linux o Mac, contro il client DL4YHF, con le
+policy di stazione decise da noi. Il daemon è in C, in questo repo, sullo
+stesso codec di `keyer_cwnet` compilato per host: un solo filo, un solo
+test. L'echo server del banco resta il capo RX del loop di test ed è il
+seme del daemon.
 
-_Why it serves the approach:_ è il protocollo del golden standard; la
-compatibilità è il prodotto.
+_Why it serves the approach:_ il filo è del golden standard, le policy di
+stazione sono nostre: possedere i due capi è il modo di deciderle una volta
+sola e di dimostrarle in loop.
 
 ### Keyer
 
