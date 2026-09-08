@@ -85,7 +85,7 @@ void stream_init(keying_stream_t *stream, stream_sample_t *buffer, size_t capaci
 bool stream_push(keying_stream_t *stream, stream_sample_t sample);
 
 /**
- * @brief Push sample unconditionally (no silence compression)
+ * @brief Push sample unconditionally (no silence compression) (producer only, RT thread: the one producer, RULE 2.1.4)
  *
  * Use when every sample must be recorded.
  *
@@ -96,7 +96,7 @@ bool stream_push(keying_stream_t *stream, stream_sample_t sample);
 bool stream_push_raw(keying_stream_t *stream, stream_sample_t sample);
 
 /**
- * @brief Flush accumulated idle ticks as silence marker
+ * @brief Flush accumulated idle ticks as silence marker (producer only, RT thread: the one producer, RULE 2.1.4)
  *
  * Call before shutdown to ensure all state is captured.
  *

@@ -202,11 +202,16 @@ void test_stream_two_threads_never_accept_a_stale_or_torn_sample(void) {
 
     size_t accepted = 0;
     size_t wrong = 0;
+    size_t resyncs = 0;
+    /* A consumer that neither reads nor resyncs is stuck: bound the wait so
+     * a regression fails instead of hanging the runner */
+    size_t idle_turns = 0;
     for (;;) {
         stream_sample_t out;
         size_t idx = consumer.read_idx;
         if (consumer_next(&consumer, &out)) {
             accepted++;
+            idle_turns = 0;
             if (!sample_is_index(&out, idx)) {
                 wrong++;
             }
@@ -214,15 +219,24 @@ void test_stream_two_threads_never_accept_a_stale_or_torn_sample(void) {
         }
         if (consumer_is_overrun(&consumer)) {
             consumer_resync(&consumer);
+            resyncs++;
             continue;
         }
         if (atomic_load_explicit(&s_stress_produced, memory_order_acquire) == STRESS_SAMPLES &&
             consumer.read_idx == stream_write_position(&s_stream)) {
             break;
         }
+        if (++idle_turns > 100000000u) {
+            TEST_FAIL_MESSAGE("consumer made no progress for 100M turns");
+        }
     }
     TEST_ASSERT_EQUAL(0, pthread_join(producer, NULL));
 
-    TEST_ASSERT_GREATER_THAN(0, accepted);
+    /* The regime must be the concurrent one: a producer that finished before
+     * the consumer started leaves exactly one drain of capacity - 1 samples.
+     * Under sanitizers the consumer keeps up with well under 1% of the
+     * samples, so the floor is drains, not a fraction of the run. */
+    TEST_ASSERT_GREATER_THAN_MESSAGE(4 * TEST_BUFFER_SIZE, accepted, "the threads did not run concurrently");
     TEST_ASSERT_EQUAL_MESSAGE(0, wrong, "a consumer accepted a sample that is not the one its index says");
+    (void)resyncs;
 }

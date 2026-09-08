@@ -135,6 +135,7 @@ atomic_store_explicit(&write_idx, idx + 1, memory_order_release);
 // Consumer, at its own read position idx: acquire (sees all writes before
 // this index), copy, then prove the copy was whole before trusting it
 size_t write = atomic_load_explicit(&write_idx, memory_order_acquire);
+if (write == idx) { /* nothing written yet */ }
 if (write - idx >= capacity) { /* overrun: the slot is the producer's next */ }
 sample = buffer[idx & mask];
 atomic_thread_fence(memory_order_acquire);
@@ -555,6 +556,12 @@ In case of conflict, higher-ranked principles take precedence.
   2. 100µs is an **absolute ceiling**, not a performance goal
   3. This strengthens the real-time guarantee without weakening core principles
 - **Impact**: README.md updated for consistency. Does not weaken any core principle; strengthens real-time commitment.
+
+**Amendment 003** (2026-09-08):
+- **Section**: 2.1.4, 3.1.2, 3.1.3, 3.2 (Producer rules, atomic operations, memory ordering)
+- **Change**: The stream is declared single-producer. The producer stores the sample, then publishes `write_idx` with a release store; the slot `capacity` behind `write_idx` is the producer's next and is not readable; a reader re-checks `write_idx` behind an acquire fence after copying a slot.
+- **Rationale**: `fetch_add` published the index before the sample was stored, so a consumer on the other core could read a slot not yet written, or half written (#57). Store-then-publish needs one producer to be sound with one counter; the only producer is the RT task, and a second source of keying (#60) enters from that same task. The acquire fence is what orders the copy before the re-read; an acquire load alone does not on a weakly ordered core.
+- **Impact**: Rule 2.1.4 no longer promises multiple producers. Does not weaken any core principle; strengthens the stream's only interface.
 
 **Amendment 002** (2025-01-19):
 - **Section**: 4.3.6 (Hard Real-Time Consumers)

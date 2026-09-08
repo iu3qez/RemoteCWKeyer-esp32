@@ -37,7 +37,7 @@ static inline bool overrun_at(size_t write, size_t idx, size_t capacity) {
 void stream_init(keying_stream_t *stream, stream_sample_t *buffer, size_t capacity) {
     assert(stream != NULL);
     assert(buffer != NULL);
-    assert(capacity > 0);
+    assert(capacity >= 2 && "one slot is always the producer's next: capacity 1 has none to read");
     assert(is_power_of_2(capacity) && "Buffer size must be power of 2");
 
     stream->buffer = buffer;
@@ -133,8 +133,7 @@ bool stream_read(const keying_stream_t *stream, size_t idx, stream_sample_t *out
         return false;
     }
 
-    size_t slot_idx = idx & stream->mask;
-    *out = stream->buffer[slot_idx];
+    stream_sample_t copy = stream->buffer[idx & stream->mask];
 
     /* The producer may have reached this slot while we copied it. It
      * publishes after the store, so an index that still says the slot is
@@ -148,6 +147,7 @@ bool stream_read(const keying_stream_t *stream, size_t idx, stream_sample_t *out
         return false;
     }
 
+    *out = copy;
     return true;
 }
 
