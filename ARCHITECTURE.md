@@ -132,9 +132,10 @@ size_t idx = atomic_load_explicit(&write_idx, memory_order_relaxed);
 buffer[idx & mask] = sample;
 atomic_store_explicit(&write_idx, idx + 1, memory_order_release);
 
-// Consumer: acquire (sees all writes before this index), copy, then prove
-// the copy was whole before trusting it
-size_t head = atomic_load_explicit(&write_idx, memory_order_acquire);
+// Consumer, at its own read position idx: acquire (sees all writes before
+// this index), copy, then prove the copy was whole before trusting it
+size_t write = atomic_load_explicit(&write_idx, memory_order_acquire);
+if (write - idx >= capacity) { /* overrun: the slot is the producer's next */ }
 sample = buffer[idx & mask];
 atomic_thread_fence(memory_order_acquire);
 if (atomic_load_explicit(&write_idx, memory_order_relaxed) - idx >= capacity) { /* overwritten during the copy */ }

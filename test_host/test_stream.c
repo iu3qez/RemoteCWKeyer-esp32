@@ -202,7 +202,6 @@ void test_stream_two_threads_never_accept_a_stale_or_torn_sample(void) {
 
     size_t accepted = 0;
     size_t wrong = 0;
-    size_t resyncs = 0;
     for (;;) {
         stream_sample_t out;
         size_t idx = consumer.read_idx;
@@ -215,7 +214,6 @@ void test_stream_two_threads_never_accept_a_stale_or_torn_sample(void) {
         }
         if (consumer_is_overrun(&consumer)) {
             consumer_resync(&consumer);
-            resyncs++;
             continue;
         }
         if (atomic_load_explicit(&s_stress_produced, memory_order_acquire) == STRESS_SAMPLES &&
@@ -227,5 +225,4 @@ void test_stream_two_threads_never_accept_a_stale_or_torn_sample(void) {
 
     TEST_ASSERT_GREATER_THAN(0, accepted);
     TEST_ASSERT_EQUAL_MESSAGE(0, wrong, "a consumer accepted a sample that is not the one its index says");
-    (void)resyncs;
 }

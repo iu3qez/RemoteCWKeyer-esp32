@@ -21,6 +21,15 @@ static inline bool is_power_of_2(size_t n) {
     return n > 0 && (n & (n - 1)) == 0;
 }
 
+/**
+ * @brief Whether index idx is overwritten, or being overwritten, at write position write
+ *
+ * The slot capacity behind the write position is the producer's next.
+ */
+static inline bool overrun_at(size_t write, size_t idx, size_t capacity) {
+    return write - idx >= capacity;  /* Wrapping subtraction */
+}
+
 /* ============================================================================
  * KeyingStream Implementation
  * ============================================================================ */
@@ -115,16 +124,12 @@ bool stream_read(const keying_stream_t *stream, size_t idx, stream_sample_t *out
     /* RULE 3.1.3: Acquire for read */
     size_t write = atomic_load_explicit(&stream->write_idx, memory_order_acquire);
 
-    /* Calculate how far behind this index is */
-    size_t behind = write - idx;  /* Wrapping subtraction is OK */
-
-    if (behind == 0) {
+    if (write == idx) {
         /* Not yet written */
         return false;
     }
-    if (behind >= stream->capacity) {
-        /* Overwritten, or being overwritten: at behind == capacity the slot
-         * is the one the producer writes next (consumer too slow) */
+    if (overrun_at(write, idx, stream->capacity)) {
+        /* Consumer too slow */
         return false;
     }
 
@@ -139,7 +144,7 @@ bool stream_read(const keying_stream_t *stream, size_t idx, stream_sample_t *out
      * 3.1.3). */
     atomic_thread_fence(memory_order_acquire);
     write = atomic_load_explicit(&stream->write_idx, memory_order_relaxed);
-    if (write - idx >= stream->capacity) {
+    if (overrun_at(write, idx, stream->capacity)) {
         return false;
     }
 
@@ -159,7 +164,7 @@ size_t stream_lag(const keying_stream_t *stream, size_t read_idx) {
 
 bool stream_is_overrun(const keying_stream_t *stream, size_t read_idx) {
     assert(stream != NULL);
-    return stream_lag(stream, read_idx) >= stream->capacity;
+    return overrun_at(stream_write_position(stream), read_idx, stream->capacity);
 }
 
 /* ============================================================================
