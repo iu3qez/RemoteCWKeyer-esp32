@@ -251,6 +251,9 @@ void test_client_key_holder_alternates_as_the_reference_announces(void);
 void test_client_key_holder_frame_in_fragments(void);
 void test_client_key_holder_ignores_malformed_tx_info(void);
 void test_client_key_holder_forgotten_across_a_reconnect(void);
+void test_client_callsign_goes_on_the_wire_and_decides_mine(void);
+void test_client_callsign_falls_back_to_the_username(void);
+void test_client_key_holder_index_zero_is_never_mine(void);
 void test_client_handles_invalid_frame(void);
 void test_client_handles_disconnect_during_operation(void);
 void test_client_handles_fragmented_frame(void);
@@ -571,6 +574,9 @@ int main(void) {
     RUN_TEST(test_client_key_holder_frame_in_fragments);
     RUN_TEST(test_client_key_holder_ignores_malformed_tx_info);
     RUN_TEST(test_client_key_holder_forgotten_across_a_reconnect);
+    RUN_TEST(test_client_callsign_goes_on_the_wire_and_decides_mine);
+    RUN_TEST(test_client_callsign_falls_back_to_the_username);
+    RUN_TEST(test_client_key_holder_index_zero_is_never_mine);
     /* Error Handling */
     RUN_TEST(test_client_handles_invalid_frame);
     RUN_TEST(test_client_handles_disconnect_during_operation);

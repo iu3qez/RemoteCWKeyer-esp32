@@ -938,6 +938,87 @@ void test_client_key_holder_ignores_malformed_tx_info(void) {
     cwnet_client_on_data(&client, no_nul, sizeof(no_nul));
     TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_OTHER, cwnet_client_get_key_holder(&client));
     TEST_ASSERT_EQUAL_STRING("Mo", cwnet_client_get_key_holder_name(&client));
+
+    /* A NUL inside the length bound ends the name there, as the reference's
+     * strncpy does; the bytes after it are not the name */
+    static const uint8_t early_nul[] = {0x45, 0x07, 0x01, 'M', 'o', 0x00, 'r', 'i', 'X'};
+    cwnet_client_on_data(&client, early_nul, sizeof(early_nul));
+    TEST_ASSERT_EQUAL_STRING("Mo", cwnet_client_get_key_holder_name(&client));
+    TEST_ASSERT_EQUAL(3, cwnet_client_get_key_announcements(&client));
+}
+
+void test_client_callsign_goes_on_the_wire_and_decides_mine(void) {
+    /* The box logs in under one name and is known by another: the server
+     * stores the callsign field of CONNECT (CwNet.c:1295) and announces the
+     * key holder by it, so "mine" is decided on the callsign, never on the
+     * login name. */
+    cwnet_client_config_t config = {
+        .server_host = "test.server.com",
+        .server_port = 7373,
+        .username = "op1",
+        .callsign = "IU3QEZ",
+        .send_cb = mock_send_accumulate,
+        .get_time_ms_cb = mock_get_time_ms,
+        .user_data = NULL
+    };
+    test_setup();
+    mock_tx_all_len = 0;
+    cwnet_client_init(&client, &config);
+    cwnet_client_on_connected(&client);
+
+    /* The CONNECT record: username at 2, callsign at 2 + 44, both NUL-padded */
+    TEST_ASSERT_EQUAL(2 + CWNET_CONNECT_PAYLOAD_LEN, mock_tx_all_len);
+    TEST_ASSERT_EQUAL_MEMORY("op1\0", &mock_tx_all[2], 4);
+    TEST_ASSERT_EQUAL_MEMORY("IU3QEZ\0", &mock_tx_all[2 + CWNET_CONNECT_USERNAME_LEN], 7);
+    feed_connect_echo();
+
+    static const uint8_t by_callsign[] = {0x45, 0x08, 0x01, 'I', 'U', '3', 'Q', 'E', 'Z', 0x00};
+    cwnet_client_on_data(&client, by_callsign, sizeof(by_callsign));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_MINE, cwnet_client_get_key_holder(&client));
+
+    static const uint8_t by_username[] = {0x45, 0x05, 0x01, 'o', 'p', '1', 0x00};
+    cwnet_client_on_data(&client, by_username, sizeof(by_username));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_OTHER, cwnet_client_get_key_holder(&client));
+}
+
+void test_client_callsign_falls_back_to_the_username(void) {
+    /* No callsign configured: the username goes in the field, as before,
+     * because a client without a callsign is stripped of TRANSMIT */
+    cwnet_client_config_t config = {
+        .server_host = "test.server.com",
+        .server_port = 7373,
+        .username = "op1",
+        .callsign = "",
+        .send_cb = mock_send_accumulate,
+        .get_time_ms_cb = mock_get_time_ms,
+        .user_data = NULL
+    };
+    test_setup();
+    mock_tx_all_len = 0;
+    cwnet_client_init(&client, &config);
+    cwnet_client_on_connected(&client);
+    TEST_ASSERT_EQUAL_MEMORY("op1\0", &mock_tx_all[2 + CWNET_CONNECT_USERNAME_LEN], 4);
+}
+
+void test_client_key_holder_index_zero_is_never_mine(void) {
+    /* Index 0 is the server's own operator, whatever the name says: a box
+     * that calls itself "The Sysop" does not hold the key when the sysop does */
+    cwnet_client_config_t config = {
+        .server_host = "test.server.com",
+        .server_port = 7373,
+        .username = "The Sysop",
+        .send_cb = mock_send_accumulate,
+        .get_time_ms_cb = mock_get_time_ms,
+        .user_data = NULL
+    };
+    test_setup();
+    mock_tx_all_len = 0;
+    cwnet_client_init(&client, &config);
+    cwnet_client_on_connected(&client);
+    feed_connect_echo();
+    cwnet_client_on_data(&client, ref_tx_info_sysop, sizeof(ref_tx_info_sysop));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_OTHER, cwnet_client_get_key_holder(&client));
+    TEST_ASSERT_EQUAL_STRING("The Sysop", cwnet_client_get_key_holder_name(&client));
 }
 
 void test_client_key_holder_forgotten_across_a_reconnect(void) {
