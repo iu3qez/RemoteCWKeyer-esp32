@@ -11,7 +11,7 @@
 
 ## Da sistemare
 - `.devcontainer/Dockerfile`: `ARG DOCKER_TAG=v5.5.1` e path `idf5.5_py3.12_env` hardcoded — non aggiornati dopo la migrazione a IDF v6. Da verificare su un'immagine `espressif/idf:v6.x` prima di cambiare.
-- `test_host/CLAUDE.md` e `components/keyer_core/CLAUDE.md` (blocchi `treecode` auto) nominano ancora `keyer_iambic` come dipendenza in-tree: dal 2026-09-06 è il submodule `Esp32KeyerTest`. `components/keyer_cwnet/CLAUDE.md` dice ancora che è `bg_task` a passare gli eventi di keying: dal 2026-09-07 il modulo consuma lo stream da sé (`cwnet_feed`, #55). Si risincronizzano con `map-tree`, non a mano.
+- `test_host/CLAUDE.md` e `components/keyer_core/CLAUDE.md` (blocchi `treecode` auto) nominano ancora `keyer_iambic` come dipendenza in-tree: dal 2026-09-06 è il submodule `Esp32KeyerTest`. `components/keyer_cwnet/CLAUDE.md` dice ancora che è `bg_task` a passare gli eventi di keying: dal 2026-09-07 il modulo consuma lo stream da sé (`cwnet_feed`, #55); e che la config viene solo da `g_config.remote`: dal 2026-09-08 il CONNECT porta `g_config.system.callsign` (#25). Si risincronizzano con `map-tree`, non a mano.
 - `sample_silence()` clampa il marker a `UINT16_MAX`: oltre 65,5 s di stream immutato i tick in eccesso spariscono dal marker e il tempo di stream ricostruito da un consumer (`cwnet_feed`) resta indietro. Innocuo finché il fine over chiude l'over; il rimedio è che `stream_push` scarichi il marker quando `idle_ticks` arriva a `UINT16_MAX` (RT path, un confronto per tick, test host possibile).
 - Ramo remoto `k8-differential-bench` (`fae2f57`), senza PR: lo scheletro del banco è migrato in Esp32KeyerTest, `FINDINGS.md` (numeri superati) vive solo lì. Da cancellare quando nessuno lo cita più.
 
