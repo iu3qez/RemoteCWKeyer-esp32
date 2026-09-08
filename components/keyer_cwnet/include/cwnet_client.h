@@ -36,6 +36,14 @@
  *   several bytes with the same key state. Once the key has been up for more
  *   than 14 dot-times the sender emits a second key-up: that is how the
  *   receiver learns the over has ended.
+ *
+ * PTT on the wire mirrors the box's own PTT, as the reference mirrors its
+ * local PTT flag (CwNet.c, CwNet_OnPoll): "set_ptt 1" in a 0x06 string right
+ * after the MORSE byte of the key-down that raises it, "set_ptt 0" once the
+ * key has been up for the PTT tail. The server applies the string on arrival
+ * and plays the keying after its latency buffer, so the "1" leads the first
+ * element by that buffer; its own hang time decides when the radio's PTT
+ * drops, not our "0". The server answers "RPRT 0", or a negative code.
  */
 
 #pragma once
@@ -73,10 +81,14 @@ typedef enum {
     CWNET_CMD_CONNECT = 0x01,   /**< Client -> Server request; echoed back by the server to confirm */
     CWNET_CMD_DISCONNECT = 0x02,/**< Bidirectional: disconnect */
     CWNET_CMD_PING = 0x03,      /**< Bidirectional: time sync */
+    CWNET_CMD_RIG_STRING = 0x06,/**< ASCII rig-control string with a trailing NUL: "set_ptt 0|1\n" from us, "RPRT n\n" back */
     CWNET_CMD_MORSE = 0x10,     /**< Keying: 7-bit stream, bit 7 = key state, bits 6..0 = wait */
     CWNET_CMD_CI_V = 0x14,      /**< A single CI-V packet (Icom rig control). Not keying. */
     CWNET_CMD_SPECTRUM = 0x15,  /**< Spectrum data for the waterfall display. Not keying. */
 } cwnet_cmd_t;
+
+/** No "RPRT" reply received yet */
+#define CWNET_RIG_RESULT_NONE INT32_MIN
 
 /**
  * Longest MORSE payload this client sends in one frame (bytes = events).
@@ -259,6 +271,12 @@ typedef struct {
     bool tx_filling;     /**< Inside an over: waits are measured, not forced to 0 */
     bool tx_key_down;    /**< Last key state put on the wire */
 
+    /* PTT on the wire: the box's PTT model, mirrored as "set_ptt" strings */
+    uint32_t tx_last_edge_ms; /**< Instant of the last key transition, as given (not quantised) */
+    int32_t ptt_tail_ms;      /**< Key-up time before "set_ptt 0"; 0 = send no PTT strings */
+    bool ptt_on;              /**< "set_ptt 1" is the last PTT string sent */
+    int32_t rig_result;       /**< Last "RPRT n" from the server; CWNET_RIG_RESULT_NONE until one arrives */
+
     /* Frame parser for incoming data */
     cwnet_frame_parser_t parser;
 } cwnet_client_t;
@@ -438,12 +456,13 @@ cwnet_client_err_t cwnet_client_send_key_event(cwnet_client_t *client,
                                                 int32_t at_ms);
 
 /**
- * @brief Close an over that has gone quiet
+ * @brief Drop PTT and close an over that has gone quiet
  *
- * Call periodically. When the key has been up for more than 14 dot-times
- * since the last transition, sends the second key-up the reference uses to
- * mark the end of an over, and stops measuring: the next transition starts
- * a new over with wait 0.
+ * Call periodically. Once the key has been up for the PTT tail, sends
+ * "set_ptt 0". When it has been up for more than 14 dot-times since the last
+ * transition, sends the second key-up the reference uses to mark the end of
+ * an over, and stops measuring: the next transition starts a new over with
+ * wait 0. Below about 33 WPM the tail comes first, as in the reference.
  *
  * @param client Client context
  * @param now_ms Current instant on the same clock as send_key_event()'s at_ms
@@ -484,3 +503,29 @@ bool cwnet_client_key_on_wire(const cwnet_client_t *client);
  * @return true between the first transition of an over and its end
  */
 bool cwnet_client_over_open(const cwnet_client_t *client);
+
+/*===========================================================================*/
+/* PTT on the wire                                                           */
+/*===========================================================================*/
+
+/**
+ * @brief Set the PTT tail the wire mirrors
+ *
+ * The box's timing.ptt_tail_ms: once the key has been up that long,
+ * cwnet_client_poll() sends "set_ptt 0". 0 sends no PTT strings at all.
+ *
+ * @param client Client context
+ * @param tail_ms Tail in milliseconds
+ */
+void cwnet_client_set_ptt_tail_ms(cwnet_client_t *client, int32_t tail_ms);
+
+/** @return true if the last PTT string sent was "set_ptt 1" */
+bool cwnet_client_ptt_on_wire(const cwnet_client_t *client);
+
+/**
+ * @brief The server's last answer to a rig-control string
+ *
+ * @return the n of "RPRT n" (0 = accepted, negative = refused, for instance
+ *         -11 when the user may not transmit), CWNET_RIG_RESULT_NONE if none
+ */
+int32_t cwnet_client_get_rig_result(const cwnet_client_t *client);

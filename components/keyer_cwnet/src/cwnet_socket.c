@@ -357,6 +357,8 @@ void cwnet_socket_process(void) {
     {
         uint32_t wpm = (uint32_t)CONFIG_GET_WPM();
         int32_t dot_ms = wpm > 0 ? (int32_t)(1200u / wpm) : 0;
+        /* The wire mirrors the box's PTT, same tail as the local PTT line */
+        cwnet_client_set_ptt_tail_ms(&s_ctx.client, (int32_t)CONFIG_GET_PTT_TAIL_MS());
         int64_t feed_now_us = esp_timer_get_time();
         cwnet_feed_result_t r = cwnet_feed_process(&s_ctx.feed, &s_ctx.client, feed_now_us, dot_ms);
         if (r.aborted) {
@@ -370,6 +372,9 @@ void cwnet_socket_process(void) {
         }
         if (r.end_of_over) {
             RT_DEBUG(&g_bg_log_stream, feed_now_us, "CWNet TX: end of over");
+        }
+        if (r.ptt_on || r.ptt_off) {
+            RT_DEBUG(&g_bg_log_stream, feed_now_us, "CWNet TX: set_ptt %d", r.ptt_on ? 1 : 0);
         }
     }
 

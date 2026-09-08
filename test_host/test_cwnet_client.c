@@ -746,6 +746,100 @@ void test_client_rx_ignores_ci_v_and_spectrum(void) {
 }
 
 /*===========================================================================*/
+/* PTT on the wire                                                          */
+/*===========================================================================*/
+
+static const uint8_t ptt_on_frame[]  = {0x46, 0x0B, 's', 'e', 't', '_', 'p', 't', 't', ' ', '1', '\n', 0x00};
+static const uint8_t ptt_off_frame[] = {0x46, 0x0B, 's', 'e', 't', '_', 'p', 't', 't', ' ', '0', '\n', 0x00};
+
+void test_client_tx_first_over_with_ptt_matches_reference_capture_whole(void) {
+    ready_client_accumulating();
+    cwnet_client_set_ptt_tail_ms(&client, 100);
+
+    /* The same edges as the filtered test; now the PTT strings come out too
+     * and the whole 41-byte slice of the capture is the expectation, in
+     * order: 0x80, set_ptt 1, 0x24, 0xA4, 0x3C, set_ptt 0, 0x60. The
+     * reference dropped its PTT 500 ms after the last key-up, we after our
+     * 100 ms tail; both before the end of the over at 25 WPM. */
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  1000));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 1048));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  1096));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 1240));
+    TEST_ASSERT_TRUE(cwnet_client_ptt_on_wire(&client));
+    TEST_ASSERT_FALSE(cwnet_client_poll(&client, 1240 + 99, 48));
+    TEST_ASSERT_TRUE(cwnet_client_ptt_on_wire(&client));
+    TEST_ASSERT_FALSE(cwnet_client_poll(&client, 1240 + 100, 48));
+    TEST_ASSERT_FALSE(cwnet_client_ptt_on_wire(&client));
+    TEST_ASSERT_TRUE(cwnet_client_poll(&client, 1240 + 673, 48));
+
+    TEST_ASSERT_EQUAL(sizeof(ref_first_over), mock_tx_all_len);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(ref_first_over, mock_tx_all, sizeof(ref_first_over));
+}
+
+void test_client_tx_ptt_holds_across_gaps_shorter_than_the_tail(void) {
+    ready_client_accumulating();
+    cwnet_client_set_ptt_tail_ms(&client, 100);
+
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  0));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 48));
+    TEST_ASSERT_FALSE(cwnet_client_poll(&client, 90, 48));          /* 42 ms up: PTT stays */
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  96));
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, false, 240));
+    TEST_ASSERT_FALSE(cwnet_client_poll(&client, 339, 48));
+    TEST_ASSERT_FALSE(cwnet_client_poll(&client, 340, 48));         /* tail: set_ptt 0 */
+    /* The over is still open (14 dot-times not reached): the key-down
+     * carries its wait, and PTT rises again right after it */
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true,  400));
+
+    uint8_t expected[128];
+    size_t n = 0;
+    memcpy(expected + n, (uint8_t[]){0x50, 0x01, 0x80}, 3); n += 3;
+    memcpy(expected + n, ptt_on_frame, sizeof(ptt_on_frame)); n += sizeof(ptt_on_frame);
+    memcpy(expected + n, (uint8_t[]){0x50, 0x01, 0x24}, 3); n += 3;
+    memcpy(expected + n, (uint8_t[]){0x50, 0x01, 0xA4}, 3); n += 3;
+    memcpy(expected + n, (uint8_t[]){0x50, 0x01, 0x3C}, 3); n += 3;
+    memcpy(expected + n, ptt_off_frame, sizeof(ptt_off_frame)); n += sizeof(ptt_off_frame);
+    memcpy(expected + n, (uint8_t[]){0x50, 0x01, 0xC0}, 3); n += 3;   /* down after 160 ms */
+    memcpy(expected + n, ptt_on_frame, sizeof(ptt_on_frame)); n += sizeof(ptt_on_frame);
+    TEST_ASSERT_EQUAL(n, mock_tx_all_len);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, mock_tx_all, n);
+}
+
+void test_client_abort_over_drops_ptt_too(void) {
+    ready_client_accumulating();
+    cwnet_client_set_ptt_tail_ms(&client, 100);
+
+    TEST_ASSERT_EQUAL(CWNET_CLIENT_OK, cwnet_client_send_key_event(&client, true, 0));
+    TEST_ASSERT_TRUE(cwnet_client_abort_over(&client));
+    TEST_ASSERT_FALSE(cwnet_client_ptt_on_wire(&client));
+
+    uint8_t expected[64];
+    size_t n = 0;
+    memcpy(expected + n, (uint8_t[]){0x50, 0x01, 0x80}, 3); n += 3;
+    memcpy(expected + n, ptt_on_frame, sizeof(ptt_on_frame)); n += sizeof(ptt_on_frame);
+    memcpy(expected + n, (uint8_t[]){0x50, 0x01, 0x00}, 3); n += 3;   /* key up, now */
+    memcpy(expected + n, (uint8_t[]){0x50, 0x01, 0x00}, 3); n += 3;   /* end of over */
+    memcpy(expected + n, ptt_off_frame, sizeof(ptt_off_frame)); n += sizeof(ptt_off_frame);
+    TEST_ASSERT_EQUAL(n, mock_tx_all_len);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, mock_tx_all, n);
+}
+
+void test_client_rx_keeps_the_rig_result(void) {
+    ready_client_accumulating();
+    TEST_ASSERT_EQUAL(CWNET_RIG_RESULT_NONE, cwnet_client_get_rig_result(&client));
+
+    /* The server's answer in the capture: "RPRT 0\n" with its NUL */
+    static const uint8_t ok[] = {0x46, 0x08, 'R', 'P', 'R', 'T', ' ', '0', '\n', 0x00};
+    cwnet_client_on_data(&client, ok, sizeof(ok));
+    TEST_ASSERT_EQUAL(0, cwnet_client_get_rig_result(&client));
+
+    /* What CwNet_Rigctld_OnSetPTT returns without TRANSMIT: -11 */
+    static const uint8_t refused[] = {0x46, 0x0A, 'R', 'P', 'R', 'T', ' ', '-', '1', '1', '\n', 0x00};
+    cwnet_client_on_data(&client, refused, sizeof(refused));
+    TEST_ASSERT_EQUAL(-11, cwnet_client_get_rig_result(&client));
+}
+
+/*===========================================================================*/
 /* Determinism: what we send comes back as what we sent                     */
 /*===========================================================================*/
 
@@ -987,6 +1081,10 @@ void run_cwnet_client_tests(void) {
     RUN_TEST(test_client_rx_ignores_ci_v_and_spectrum);
     RUN_TEST(test_client_latency_peak_holds_and_decays_like_the_reference);
     RUN_TEST(test_client_round_trip_returns_the_edges_sent);
+    RUN_TEST(test_client_tx_first_over_with_ptt_matches_reference_capture_whole);
+    RUN_TEST(test_client_tx_ptt_holds_across_gaps_shorter_than_the_tail);
+    RUN_TEST(test_client_abort_over_drops_ptt_too);
+    RUN_TEST(test_client_rx_keeps_the_rig_result);
     RUN_TEST(test_client_rejects_events_when_not_ready);
 
     /* Error Handling */
