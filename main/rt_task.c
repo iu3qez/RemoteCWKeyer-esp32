@@ -196,8 +196,19 @@ void rt_task(void *arg) {
             iambic_cfg.mem_window_start_pct = CONFIG_GET_MEM_WINDOW_START_PCT();
             iambic_cfg.mem_window_end_pct = CONFIG_GET_MEM_WINDOW_END_PCT();
 
-            /* Verify generation didn't change mid-read (optimistic read) */
-            uint16_t gen_after = atomic_load_explicit(&g_config.generation, memory_order_acquire);
+            /* Verify generation didn't change mid-read (optimistic read).
+             * The fence orders the field loads above before the re-read; an
+             * acquire load alone does not, so a field load could complete
+             * after the re-read and carry a value whose bump the re-read did
+             * not see (RULE 3.1.3, the same seqlock reader as stream_read();
+             * #69). What the re-read proves is only that no bump became
+             * visible during the copy: each setter bumps after its store, so
+             * a store in flight is invisible here, and each field is its own
+             * atomic, so no value is ever torn. A mixed set can be applied
+             * for one tick; last_config_gen keeps the pre-read value, so the
+             * bump that made it mixed reloads the set on the next idle tick. */
+            atomic_thread_fence(memory_order_acquire);
+            uint16_t gen_after = atomic_load_explicit(&g_config.generation, memory_order_relaxed);
             if (gen_after != current_gen) {
                 continue;  /* Torn read - retry next tick */
             }
