@@ -78,7 +78,7 @@ Producer ──────▶ Stream
 
 **RULE 2.1.3**: A producer does not notify consumers.
 
-**RULE 2.1.4**: Multiple producers coordinate only through `write_idx.fetch_add()`.
+**RULE 2.1.4**: The stream has one producer, the RT task. A second source of keying is pushed by that same task; there is no second producer to coordinate with.
 
 ### 2.2 Consumer Rules
 
@@ -116,9 +116,9 @@ Stream ──────▶ Consumer
 
 **RULE 3.1.1**: The only synchronization primitive is atomic operations on stream indices.
 
-**RULE 3.1.2**: `atomic_fetch_add_explicit(&write_idx, 1, memory_order_acq_rel)` is the only write synchronization.
+**RULE 3.1.2**: The producer stores the sample, then `atomic_store_explicit(&write_idx, idx + 1, memory_order_release)`: the only write synchronization. Publishing before the store hands a consumer a slot not yet written.
 
-**RULE 3.1.3**: `atomic_load_explicit(&write_idx, memory_order_acquire)` is the only read synchronization.
+**RULE 3.1.3**: `atomic_load_explicit(&write_idx, memory_order_acquire)` is the read synchronization. After copying a slot the reader re-reads `write_idx` behind an `atomic_thread_fence(memory_order_acquire)` and discards the copy if the producer reached that slot meanwhile: the fence orders the copy before the re-read, which an acquire load alone does not.
 
 **RULE 3.1.4**: No operation shall block waiting for another operation.
 
@@ -127,14 +127,20 @@ Stream ──────▶ Consumer
 ```c
 #include <stdatomic.h>
 
-// Producer: acq_rel (both acquire and release semantics)
-size_t idx = atomic_fetch_add_explicit(&write_idx, 1, memory_order_acq_rel);
+// Producer: store the sample, then publish with release
+size_t idx = atomic_load_explicit(&write_idx, memory_order_relaxed);
+buffer[idx & mask] = sample;
+atomic_store_explicit(&write_idx, idx + 1, memory_order_release);
 
-// Consumer: acquire (sees all writes before this index)
+// Consumer: acquire (sees all writes before this index), copy, then prove
+// the copy was whole before trusting it
 size_t head = atomic_load_explicit(&write_idx, memory_order_acquire);
+sample = buffer[idx & mask];
+atomic_thread_fence(memory_order_acquire);
+if (atomic_load_explicit(&write_idx, memory_order_relaxed) - idx >= capacity) { /* overwritten during the copy */ }
 ```
 
-**RULE 3.2.1**: Producers use `memory_order_acq_rel` for read-modify-write operations.
+**RULE 3.2.1**: The producer publishes with `memory_order_release`, after the sample is stored.
 
 **RULE 3.2.2**: Consumers use `memory_order_acquire` for read operations.
 

@@ -127,7 +127,8 @@ add_executable(test_runner
     ${CWNET_SOURCES}
 )
 
-target_link_libraries(test_runner PRIVATE unity)
+find_package(Threads REQUIRED)
+target_link_libraries(test_runner PRIVATE unity Threads::Threads)
 
 # Enable testing
 enable_testing()

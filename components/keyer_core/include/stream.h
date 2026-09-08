@@ -41,8 +41,12 @@ extern "C" {
  * All coordination through atomic operations.
  *
  * Memory ordering:
- * - Producer uses memory_order_acq_rel for write_idx.fetch_add()
+ * - Producer stores the sample, then publishes write_idx with memory_order_release
  * - Consumer uses memory_order_acquire for write_idx.load()
+ *
+ * The slot capacity behind write_idx is the producer's next: a reader that
+ * far behind is overrun, and stream_read() re-checks the index after the
+ * copy so a slot overwritten during the copy is not handed out.
  *
  * Buffer must be power of 2 for fast modulo via mask.
  */

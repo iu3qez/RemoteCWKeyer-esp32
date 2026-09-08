@@ -4,7 +4,7 @@
  *
  * ARCHITECTURE.md compliance:
  * - RULE 3.1.1: Only atomic operations for synchronization
- * - RULE 3.1.2: AcqRel for read-modify-write
+ * - RULE 3.1.2: The one producer stores the sample, then publishes write_idx (release)
  * - RULE 3.1.3: Acquire for read operations
  * - RULE 3.1.4: No operation shall block
  */
@@ -46,14 +46,20 @@ void stream_init(keying_stream_t *stream, stream_sample_t *buffer, size_t capaci
  * @brief Write a slot to the ring buffer
  *
  * Internal function - always writes, no compression.
+ *
+ * Single producer: nobody else moves write_idx, so it is read relaxed,
+ * the sample is stored, and only then the index is published with
+ * release. A consumer that acquires the new index sees the whole sample
+ * (RULE 3.1.2). Publishing first, as fetch_add did, let a consumer read
+ * the slot before or during the store (#57).
  */
 static inline bool stream_write_slot(keying_stream_t *stream, stream_sample_t sample) {
-    /* RULE 3.1.2: AcqRel for read-modify-write */
-    size_t idx = atomic_fetch_add_explicit(&stream->write_idx, 1, memory_order_acq_rel);
+    size_t idx = atomic_load_explicit(&stream->write_idx, memory_order_relaxed);
     size_t slot_idx = idx & stream->mask;
 
-    /* Write sample to slot */
     stream->buffer[slot_idx] = sample;
+
+    atomic_store_explicit(&stream->write_idx, idx + 1, memory_order_release);
 
     return true;
 }
@@ -116,13 +122,26 @@ bool stream_read(const keying_stream_t *stream, size_t idx, stream_sample_t *out
         /* Not yet written */
         return false;
     }
-    if (behind > stream->capacity) {
-        /* Overwritten (consumer too slow) */
+    if (behind >= stream->capacity) {
+        /* Overwritten, or being overwritten: at behind == capacity the slot
+         * is the one the producer writes next (consumer too slow) */
         return false;
     }
 
     size_t slot_idx = idx & stream->mask;
     *out = stream->buffer[slot_idx];
+
+    /* The producer may have reached this slot while we copied it. It
+     * publishes after the store, so an index that still says the slot is
+     * ours proves the copy was whole. The fence is what orders the copy's
+     * loads before the re-read: an acquire load alone lets earlier loads
+     * complete after it on a weakly ordered core (seqlock reader, RULE
+     * 3.1.3). */
+    atomic_thread_fence(memory_order_acquire);
+    write = atomic_load_explicit(&stream->write_idx, memory_order_relaxed);
+    if (write - idx >= stream->capacity) {
+        return false;
+    }
 
     return true;
 }
@@ -140,7 +159,7 @@ size_t stream_lag(const keying_stream_t *stream, size_t read_idx) {
 
 bool stream_is_overrun(const keying_stream_t *stream, size_t read_idx) {
     assert(stream != NULL);
-    return stream_lag(stream, read_idx) > stream->capacity;
+    return stream_lag(stream, read_idx) >= stream->capacity;
 }
 
 /* ============================================================================
@@ -205,11 +224,12 @@ void consumer_resync(stream_consumer_t *consumer) {
     assert(consumer != NULL);
 
     size_t write_pos = stream_write_position(consumer->stream);
-    size_t capacity = stream_capacity(consumer->stream);
+    size_t oldest = stream_capacity(consumer->stream) - 1;
 
-    /* Move to oldest valid position */
-    if (write_pos >= capacity) {
-        consumer->read_idx = write_pos - capacity;
+    /* Move to the oldest readable position: capacity - 1 behind, since the
+     * slot capacity behind is the producer's next */
+    if (write_pos > oldest) {
+        consumer->read_idx = write_pos - oldest;
     } else {
         consumer->read_idx = 0;
     }
