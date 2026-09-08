@@ -196,8 +196,15 @@ void rt_task(void *arg) {
             iambic_cfg.mem_window_start_pct = CONFIG_GET_MEM_WINDOW_START_PCT();
             iambic_cfg.mem_window_end_pct = CONFIG_GET_MEM_WINDOW_END_PCT();
 
-            /* Verify generation didn't change mid-read (optimistic read) */
-            uint16_t gen_after = atomic_load_explicit(&g_config.generation, memory_order_acquire);
+            /* Verify generation didn't change mid-read (optimistic read).
+             * The fence orders the field loads above before the re-read; an
+             * acquire load alone does not, so a field read after the re-read
+             * could carry a value whose bump the re-read did not see (RULE
+             * 3.1.3, the same seqlock reader as stream_read(); #69). Each
+             * field is its own atomic, so what this guards is the set, not a
+             * value: WPM from one change with the mode from another. */
+            atomic_thread_fence(memory_order_acquire);
+            uint16_t gen_after = atomic_load_explicit(&g_config.generation, memory_order_relaxed);
             if (gen_after != current_gen) {
                 continue;  /* Torn read - retry next tick */
             }
