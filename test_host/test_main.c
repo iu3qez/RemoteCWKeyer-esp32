@@ -238,6 +238,7 @@ void test_client_rx_event_carries_reception_time(void);
 void test_client_rx_fifo_full_drops_and_counts(void);
 void test_client_rx_ignores_ci_v_and_spectrum(void);
 void test_client_latency_peak_holds_and_decays_like_the_reference(void);
+void test_client_round_trip_returns_the_edges_sent(void);
 void test_client_rejects_events_when_not_ready(void);
 void test_client_handles_invalid_frame(void);
 void test_client_handles_disconnect_during_operation(void);
@@ -545,6 +546,7 @@ int main(void) {
     RUN_TEST(test_client_rx_fifo_full_drops_and_counts);
     RUN_TEST(test_client_rx_ignores_ci_v_and_spectrum);
     RUN_TEST(test_client_latency_peak_holds_and_decays_like_the_reference);
+    RUN_TEST(test_client_round_trip_returns_the_edges_sent);
     RUN_TEST(test_client_rejects_events_when_not_ready);
     /* Error Handling */
     RUN_TEST(test_client_handles_invalid_frame);
