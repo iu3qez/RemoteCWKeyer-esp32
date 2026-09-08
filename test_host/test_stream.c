@@ -8,6 +8,8 @@
 #include "sample.h"
 #include "consumer.h"
 #include "stubs/esp_stubs.h"
+#include <pthread.h>
+#include <stdatomic.h>
 
 /* Test buffer */
 #define TEST_BUFFER_SIZE 64
@@ -116,4 +118,125 @@ void test_stream_multiple_consumers(void) {
     ok = stream_read(&s_stream, 0, &sample3);
     TEST_ASSERT_TRUE(ok);
     TEST_ASSERT_EQUAL(0, sample3.local_key);
+}
+
+/* ============================================================================
+ * The slot being overwritten is not readable (#57)
+ * ============================================================================ */
+
+/* A sample that carries its own index, so a stale or torn copy shows */
+static stream_sample_t sample_for_index(size_t idx) {
+    stream_sample_t s = STREAM_SAMPLE_EMPTY;
+    s.local_key = (uint8_t)((idx >> 8) & 0xFF);
+    s.audio_level = (uint8_t)(idx & 0xFF);
+    s.config_gen = (uint16_t)((idx * 7919u) & 0xFFFF);
+    return s;
+}
+
+static bool sample_is_index(const stream_sample_t *s, size_t idx) {
+    stream_sample_t want = sample_for_index(idx);
+    return s->local_key == want.local_key && s->audio_level == want.audio_level &&
+           s->config_gen == want.config_gen;
+}
+
+void test_stream_read_rejects_the_slot_being_overwritten(void) {
+    stream_init(&s_stream, s_test_buffer, TEST_BUFFER_SIZE);
+    for (size_t i = 0; i < TEST_BUFFER_SIZE; i++) {
+        stream_push_raw(&s_stream, sample_for_index(i));
+    }
+
+    /* Index 0 lives in the slot the producer writes next: gone, whatever
+     * the slot still holds. Index 1 is the oldest readable. */
+    stream_sample_t out;
+    TEST_ASSERT_EQUAL(TEST_BUFFER_SIZE, stream_lag(&s_stream, 0));
+    TEST_ASSERT_FALSE(stream_read(&s_stream, 0, &out));
+    TEST_ASSERT_TRUE(stream_is_overrun(&s_stream, 0));
+    TEST_ASSERT_TRUE(stream_read(&s_stream, 1, &out));
+    TEST_ASSERT_TRUE(sample_is_index(&out, 1));
+    TEST_ASSERT_FALSE(stream_is_overrun(&s_stream, 1));
+}
+
+void test_stream_resync_lands_on_the_oldest_readable(void) {
+    stream_init(&s_stream, s_test_buffer, TEST_BUFFER_SIZE);
+    stream_consumer_t consumer;
+    consumer_init(&consumer, &s_stream);
+    for (size_t i = 0; i < 100; i++) {
+        stream_push_raw(&s_stream, sample_for_index(i));
+    }
+
+    TEST_ASSERT_TRUE(consumer_is_overrun(&consumer));
+    consumer_resync(&consumer);
+    TEST_ASSERT_FALSE(consumer_is_overrun(&consumer));
+
+    /* 100 written, 64 slots: 37..99 are readable, 36 is the next slot written */
+    stream_sample_t out;
+    TEST_ASSERT_TRUE(consumer_next(&consumer, &out));
+    TEST_ASSERT_TRUE(sample_is_index(&out, 100 - (TEST_BUFFER_SIZE - 1)));
+}
+
+/* Producer and consumer on two threads, a 64-slot ring, the producer never
+ * waiting: every sample the consumer accepts must be the one its index
+ * says. A publish before the store, or a read of the slot being written,
+ * hands out a stale or torn sample. */
+#define STRESS_SAMPLES 400000u
+
+static atomic_size_t s_stress_produced;
+
+static void *stress_producer(void *arg) {
+    (void)arg;
+    for (size_t i = 0; i < STRESS_SAMPLES; i++) {
+        stream_push_raw(&s_stream, sample_for_index(i));
+        atomic_store_explicit(&s_stress_produced, i + 1, memory_order_release);
+    }
+    return NULL;
+}
+
+void test_stream_two_threads_never_accept_a_stale_or_torn_sample(void) {
+    stream_init(&s_stream, s_test_buffer, TEST_BUFFER_SIZE);
+    atomic_store(&s_stress_produced, 0);
+    stream_consumer_t consumer;
+    consumer_init(&consumer, &s_stream);
+
+    pthread_t producer;
+    TEST_ASSERT_EQUAL(0, pthread_create(&producer, NULL, stress_producer, NULL));
+
+    size_t accepted = 0;
+    size_t wrong = 0;
+    size_t resyncs = 0;
+    /* A consumer that neither reads nor resyncs is stuck: bound the wait so
+     * a regression fails instead of hanging the runner */
+    size_t idle_turns = 0;
+    for (;;) {
+        stream_sample_t out;
+        size_t idx = consumer.read_idx;
+        if (consumer_next(&consumer, &out)) {
+            accepted++;
+            idle_turns = 0;
+            if (!sample_is_index(&out, idx)) {
+                wrong++;
+            }
+            continue;
+        }
+        if (consumer_is_overrun(&consumer)) {
+            consumer_resync(&consumer);
+            resyncs++;
+            continue;
+        }
+        if (atomic_load_explicit(&s_stress_produced, memory_order_acquire) == STRESS_SAMPLES &&
+            consumer.read_idx == stream_write_position(&s_stream)) {
+            break;
+        }
+        if (++idle_turns > 100000000u) {
+            TEST_FAIL_MESSAGE("consumer made no progress for 100M turns");
+        }
+    }
+    TEST_ASSERT_EQUAL(0, pthread_join(producer, NULL));
+
+    /* The regime must be the concurrent one: a producer that finished before
+     * the consumer started leaves exactly one drain of capacity - 1 samples.
+     * Under sanitizers the consumer keeps up with well under 1% of the
+     * samples, so the floor is drains, not a fraction of the run. */
+    TEST_ASSERT_GREATER_THAN_MESSAGE(4 * TEST_BUFFER_SIZE, accepted, "the threads did not run concurrently");
+    TEST_ASSERT_EQUAL_MESSAGE(0, wrong, "a consumer accepted a sample that is not the one its index says");
+    (void)resyncs;
 }

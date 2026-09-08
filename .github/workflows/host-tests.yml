@@ -9,16 +9,21 @@ on:
 
 jobs:
   host-tests:
-    runs-on: ubuntu-latest
+    # Two architectures: x86-64 is TSO and cannot fail on a missing acquire
+    # fence in the stream's seqlock reader (ARCHITECTURE.md 3.1.3); arm64 can.
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+        name: [plain, asan-ubsan]
         include:
           - name: plain
             cflags: ""
           - name: asan-ubsan
             cflags: "-fsanitize=address,undefined -fno-omit-frame-pointer"
-    name: host-tests (${{ matrix.name }})
+    name: host-tests (${{ matrix.name }}, ${{ matrix.os }})
     steps:
       # components/keyer_iambic is the private submodule iu3qez/Esp32KeyerTest.
       # GITHUB_TOKEN cannot read it; a read-only deploy key on that repo can.

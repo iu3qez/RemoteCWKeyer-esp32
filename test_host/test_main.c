@@ -12,6 +12,9 @@ void test_stream_push_pop(void);
 void test_stream_wrap_around(void);
 void test_stream_overrun_detection(void);
 void test_stream_multiple_consumers(void);
+void test_stream_read_rejects_the_slot_being_overwritten(void);
+void test_stream_resync_lands_on_the_oldest_readable(void);
+void test_stream_two_threads_never_accept_a_stale_or_torn_sample(void);
 
 
 
@@ -289,6 +292,9 @@ int main(void) {
     RUN_TEST(test_stream_wrap_around);
     RUN_TEST(test_stream_overrun_detection);
     RUN_TEST(test_stream_multiple_consumers);
+    RUN_TEST(test_stream_read_rejects_the_slot_being_overwritten);
+    RUN_TEST(test_stream_resync_lands_on_the_oldest_readable);
+    RUN_TEST(test_stream_two_threads_never_accept_a_stale_or_torn_sample);
 
     /* Sidetone tests */
     printf("\n=== Sidetone Tests ===\n");

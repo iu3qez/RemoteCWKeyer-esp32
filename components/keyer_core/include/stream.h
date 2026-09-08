@@ -41,8 +41,12 @@ extern "C" {
  * All coordination through atomic operations.
  *
  * Memory ordering:
- * - Producer uses memory_order_acq_rel for write_idx.fetch_add()
+ * - Producer: release fence, store the sample, publish write_idx with memory_order_release
  * - Consumer uses memory_order_acquire for write_idx.load()
+ *
+ * The slot capacity behind write_idx is the producer's next: a reader that
+ * far behind is overrun, and stream_read() re-checks the index after the
+ * copy so a slot overwritten during the copy is not handed out.
  *
  * Buffer must be power of 2 for fast modulo via mask.
  */
@@ -81,7 +85,7 @@ void stream_init(keying_stream_t *stream, stream_sample_t *buffer, size_t capaci
 bool stream_push(keying_stream_t *stream, stream_sample_t sample);
 
 /**
- * @brief Push sample unconditionally (no silence compression)
+ * @brief Push sample unconditionally (no silence compression) (producer only, RT thread: the one producer, RULE 2.1.4)
  *
  * Use when every sample must be recorded.
  *
@@ -92,7 +96,7 @@ bool stream_push(keying_stream_t *stream, stream_sample_t sample);
 bool stream_push_raw(keying_stream_t *stream, stream_sample_t sample);
 
 /**
- * @brief Flush accumulated idle ticks as silence marker
+ * @brief Flush accumulated idle ticks as silence marker (producer only, RT thread: the one producer, RULE 2.1.4)
  *
  * Call before shutdown to ensure all state is captured.
  *
