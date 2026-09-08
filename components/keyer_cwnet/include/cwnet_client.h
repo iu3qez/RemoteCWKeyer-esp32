@@ -300,7 +300,6 @@ typedef struct {
 
     /* Who has the key, from the server's last TX_INFO */
     cwnet_key_holder_t key_holder;
-    int8_t key_holder_index;     /**< The announced index; -1 until one arrives */
     char key_holder_name[CWNET_KEY_HOLDER_NAME_LEN]; /**< The announced callsign, "" until one arrives */
     uint32_t key_announcements;  /**< TX_INFO frames taken this session */
 

@@ -337,7 +337,6 @@ static void handle_rig_string(cwnet_client_t *client, const uint8_t *payload, si
  */
 static void forget_key_holder(cwnet_client_t *client) {
     client->key_holder = CWNET_KEY_HOLDER_UNKNOWN;
-    client->key_holder_index = -1;
     client->key_holder_name[0] = '\0';
     client->key_announcements = 0;
 }
@@ -360,7 +359,6 @@ static void handle_tx_info(cwnet_client_t *client, const uint8_t *payload, size_
         n++;
     }
     client->key_holder_name[n] = '\0';
-    client->key_holder_index = index;
 
     cwnet_key_holder_t was = client->key_holder;
     if (index < 0) {
@@ -375,15 +373,9 @@ static void handle_tx_info(cwnet_client_t *client, const uint8_t *payload, size_
     /* The mine/free alternation is the server's timer at work, once a
      * second during an over: noise at INFO. Somebody else taking or leaving
      * the key is what the operator must know. */
-    int64_t now_us = esp_timer_get_time();
     bool other_changed = (was == CWNET_KEY_HOLDER_OTHER) != (client->key_holder == CWNET_KEY_HOLDER_OTHER);
-    if (other_changed) {
-        RT_INFO(&g_bg_log_stream, now_us, "CWNet key: %s (%s)",
-                cwnet_client_key_holder_str(client->key_holder), client->key_holder_name);
-    } else {
-        RT_DEBUG(&g_bg_log_stream, now_us, "CWNet key: %s (%s)",
-                 cwnet_client_key_holder_str(client->key_holder), client->key_holder_name);
-    }
+    RT_LOG(&g_bg_log_stream, other_changed ? LOG_LEVEL_INFO : LOG_LEVEL_DEBUG, esp_timer_get_time(),
+           "CWNet key: %s (%s)", cwnet_client_key_holder_str(client->key_holder), client->key_holder_name);
 }
 
 /**
@@ -449,6 +441,18 @@ static void process_frame(cwnet_client_t *client, const cwnet_parse_result_t *re
 /* Public API                                                                */
 /*===========================================================================*/
 
+/**
+ * @brief Copy a C string into a fixed buffer, truncated to fit, always terminated
+ */
+static void copy_string(char *dst, size_t dst_size, const char *src) {
+    size_t len = strlen(src);
+    if (len >= dst_size) {
+        len = dst_size - 1;
+    }
+    memcpy(dst, src, len);
+    dst[len] = '\0';
+}
+
 cwnet_client_err_t cwnet_client_init(cwnet_client_t *client,
                                       const cwnet_client_config_t *config) {
     if (client == NULL || config == NULL) {
@@ -467,33 +471,16 @@ cwnet_client_err_t cwnet_client_init(cwnet_client_t *client,
     memset(client, 0, sizeof(*client));
 
     /* Copy configuration */
-    size_t host_len = strlen(config->server_host);
-    if (host_len >= CWNET_MAX_HOST_LEN) {
-        host_len = CWNET_MAX_HOST_LEN - 1;
-    }
-    memcpy(client->server_host, config->server_host, host_len);
-    client->server_host[host_len] = '\0';
-
+    copy_string(client->server_host, sizeof(client->server_host), config->server_host);
     client->server_port = config->server_port;
-
     if (config->username != NULL) {
-        size_t user_len = strlen(config->username);
-        if (user_len >= CWNET_MAX_USERNAME_LEN) {
-            user_len = CWNET_MAX_USERNAME_LEN - 1;
-        }
-        memcpy(client->username, config->username, user_len);
-        client->username[user_len] = '\0';
+        copy_string(client->username, sizeof(client->username), config->username);
     }
 
     /* The callsign the server will announce us by; the username when none */
     const char *callsign = (config->callsign != NULL && config->callsign[0] != '\0')
                            ? config->callsign : client->username;
-    size_t call_len = strlen(callsign);
-    if (call_len >= sizeof(client->callsign)) {
-        call_len = sizeof(client->callsign) - 1;
-    }
-    memcpy(client->callsign, callsign, call_len);
-    client->callsign[call_len] = '\0';
+    copy_string(client->callsign, sizeof(client->callsign), callsign);
 
     /* Set callbacks */
     client->send_cb = config->send_cb;

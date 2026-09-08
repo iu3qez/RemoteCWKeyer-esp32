@@ -69,27 +69,8 @@ static int mock_send_accumulate(const uint8_t *data, size_t len, void *user_data
     return (int)len;
 }
 
-/* A client at READY with TRANSMIT granted, capturing every byte it sends
- * from here on (the CONNECT it sent is dropped). */
-static void ready_client_accumulating(void) {
-    cwnet_client_config_t config = {
-        .server_host = "test.server.com",
-        .server_port = 7373,
-        .username = "TEST",
-        .send_cb = mock_send_accumulate,
-        .get_time_ms_cb = mock_get_time_ms,
-        .user_data = NULL
-    };
-
-    test_setup();
-    mock_tx_all_len = 0;
-    cwnet_client_init(&client, &config);
-    cwnet_client_on_connected(&client);
-    feed_connect_echo();
-    mock_tx_all_len = 0;
-}
-
-/* As ready_client_accumulating(), with the name the server will know us by. */
+/* A client at READY with TRANSMIT granted, logged in under the given name,
+ * capturing every byte it sends from here on (the CONNECT it sent is dropped). */
 static void ready_client_named(const char *username) {
     cwnet_client_config_t config = {
         .server_host = "test.server.com",
@@ -106,6 +87,10 @@ static void ready_client_named(const char *username) {
     cwnet_client_on_connected(&client);
     feed_connect_echo();
     mock_tx_all_len = 0;
+}
+
+static void ready_client_accumulating(void) {
+    ready_client_named("TEST");
 }
 
 /*===========================================================================*/
@@ -1166,70 +1151,4 @@ void test_client_handles_ping_in_fragments(void) {
 
     /* Now should have responded */
     TEST_ASSERT_GREATER_THAN(0, mock_tx_len);
-}
-
-/*===========================================================================*/
-/* Test Runner                                                               */
-/*===========================================================================*/
-
-void run_cwnet_client_tests(void) {
-    /* Initialization */
-    RUN_TEST(test_client_init_basic);
-    RUN_TEST(test_client_init_null_client);
-    RUN_TEST(test_client_init_null_config);
-    RUN_TEST(test_client_init_null_callbacks);
-    RUN_TEST(test_client_init_empty_host);
-    RUN_TEST(test_client_init_empty_username);
-
-    /* State Transitions */
-    RUN_TEST(test_client_connect_transitions_to_connecting);
-    RUN_TEST(test_client_disconnect_from_any_state);
-
-    /* Protocol Handshake */
-    RUN_TEST(test_client_sends_ident_on_connect);
-    RUN_TEST(test_client_reaches_ready_on_connect_echo);
-
-    /* PING Handling */
-    RUN_TEST(test_client_responds_to_ping_request);
-    RUN_TEST(test_client_syncs_timer_on_ping_request);
-    RUN_TEST(test_client_updates_latency_on_ping_response2);
-
-    /* CW Events */
-    RUN_TEST(test_client_tx_first_transition_of_an_over_waits_zero);
-    RUN_TEST(test_client_tx_wait_is_measured_from_previous_transition);
-    RUN_TEST(test_client_tx_first_over_matches_reference_capture);
-    RUN_TEST(test_client_tx_advances_by_encoded_not_measured_ms);
-    RUN_TEST(test_client_tx_splits_wait_above_1165_ms);
-    RUN_TEST(test_client_tx_end_of_over_after_14_dot_times);
-    RUN_TEST(test_client_tx_end_of_over_splits_at_slow_speed);
-    RUN_TEST(test_client_tx_ignores_repeated_key_state);
-    RUN_TEST(test_client_tx_wait_beyond_one_frame_rebases_on_the_edge);
-    RUN_TEST(test_client_rx_decodes_every_event_of_a_morse_frame);
-    RUN_TEST(test_client_rx_synthetic_frame_from_reference_encoder);
-    RUN_TEST(test_client_rx_frame_in_fragments);
-    RUN_TEST(test_client_rx_event_carries_reception_time);
-    RUN_TEST(test_client_rx_fifo_full_drops_and_counts);
-    RUN_TEST(test_client_rx_ignores_ci_v_and_spectrum);
-    RUN_TEST(test_client_latency_peak_holds_and_decays_like_the_reference);
-    RUN_TEST(test_client_round_trip_returns_the_edges_sent);
-    RUN_TEST(test_client_tx_first_over_with_ptt_matches_reference_capture_whole);
-    RUN_TEST(test_client_tx_ptt_holds_across_gaps_shorter_than_the_tail);
-    RUN_TEST(test_client_abort_over_drops_ptt_too);
-    RUN_TEST(test_client_rx_keeps_the_rig_result);
-    RUN_TEST(test_client_rejects_events_when_not_ready);
-    RUN_TEST(test_client_key_holder_unknown_until_announced);
-    RUN_TEST(test_client_key_holder_reads_the_three_captured_announcements);
-    RUN_TEST(test_client_key_holder_another_client_is_other);
-    RUN_TEST(test_client_key_holder_alternates_as_the_reference_announces);
-    RUN_TEST(test_client_key_holder_frame_in_fragments);
-    RUN_TEST(test_client_key_holder_ignores_malformed_tx_info);
-    RUN_TEST(test_client_key_holder_forgotten_across_a_reconnect);
-
-    /* Error Handling */
-    RUN_TEST(test_client_handles_invalid_frame);
-    RUN_TEST(test_client_handles_disconnect_during_operation);
-
-    /* Fragmentation */
-    RUN_TEST(test_client_handles_fragmented_frame);
-    RUN_TEST(test_client_handles_ping_in_fragments);
 }
