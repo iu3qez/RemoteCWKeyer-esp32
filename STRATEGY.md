@@ -26,9 +26,10 @@ originali, il keyer contro il K1EL K8 eseguito: input umano → output K8,
 riproducibile, fino a 40 WPM. Il K8 è riferimento del feeling, non
 dell'implementazione: i limiti di un PIC12 del 1998 non sono i nostri.
 Il programma DL4YHF è riferimento del protocollo, non del prodotto: il
-prodotto è la coppia scatola + server nostro, e le scelte di stazione (PTT,
-cessione della chiave, buffer di riproduzione) sono nostre, prese una volta
-sola perché possediamo i due capi. CWNet trasporta anche audio, CI-V e
+prodotto sono i due capi nostri, il server e un client che è la scatola o un
+programma su PC, e le scelte di stazione (PTT, cessione della chiave, buffer
+di riproduzione) sono nostre, prese una volta sola perché possediamo i due
+capi. CWNet trasporta anche audio, CI-V e
 spettro: noi lo usiamo per la manipolazione e per ciò che le serve; il resto
 della stazione non è impegnato a passare da lì.
 TX e RX crescono insieme perché la catena TX→RX in loop, sullo stesso
@@ -42,6 +43,10 @@ una RS-232, senza configurare VPN e redirect audio, senza un PC Windows in
 mezzo. Lato stazione: Orion MkII + Thetis, e il server nostro su un PC Linux
 o Mac al posto del programma DL4YHF.
 
+**Primary, client su PC:** l'OM che manipola da un PC Windows con il paddle
+sulle linee di controllo di una seriale, senza scatola. Stesso core del
+client, stessa FSM del keyer.
+
 **Secondary:** lo sviluppatore/tester - l'unico utente finché il riferimento
 non è dimostrato. Il suo strumento è la console seriale, non la WebUI.
 
@@ -54,7 +59,15 @@ non è dimostrato. Il suo strumento è la console seriale, non la WebUI.
   riferimento eseguibile prova non si popola. Best effort, nessun investimento.
 - Sopra i 40 WPM il K8 non è più riferimento: le finestre configurabili sono
   best effort, senza metrica.
-- Niente clone di DL4YHF: compatibile sul filo, non replica di tutto.
+- Niente clone di DL4YHF: compatibile sul filo, non replica di tutto. Vale
+  di più ora che i due capi sono nostri anche su PC: CW-only, niente CI-V,
+  niente audio dentro CWNet.
+- Client su Mac: best effort. Il client host è portabile, Windows primo
+  target, Linux dopo; il paddle entra dalle linee di controllo di una seriale
+  USB e con il driver di sistema del Mac il latency timer resta a 16 ms.
+  Nessuna metrica, nessun investimento.
+- Feeling del K8 sul client PC: senza metrica finché il jitter del tick da
+  1 ms su Windows non è misurato. La metrica resta della scatola.
 - Audio, CI-V e spettro dentro CWNet: nessun impegno. Il server nostro
   implementa i comandi che la manipolazione richiede; il resto della stazione
   passa da dove passa oggi.
@@ -118,7 +131,11 @@ come daemon su PC di stazione, Linux o Mac, contro il client DL4YHF, con le
 policy di stazione decise da noi. Il daemon è in C, in questo repo, sullo
 stesso codec di `keyer_cwnet` compilato per host: un solo filo, un solo
 test. L'echo server del banco resta il capo RX del loop di test ed è il
-seme del daemon.
+seme del daemon. Il client esiste anche come programma host portabile,
+Windows primo target, con il paddle sulle linee di controllo di una seriale:
+stesso core di `keyer_cwnet` e stessa FSM del submodule; `cwnet_socket` è
+l'unico file di piattaforma. Il loop client-daemon sulla stessa macchina è
+il banco senza scatola.
 
 _Why it serves the approach:_ il filo è del golden standard, le policy di
 stazione sono nostre: possedere i due capi è il modo di deciderle una volta
