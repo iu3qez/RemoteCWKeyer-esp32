@@ -49,3 +49,21 @@ Il client DL4YHF risponde alla REQUEST copiando i tre timestamp del suo array (`
 - Config hot-reload: optimistic generation re-check in rt_task.c
 - fade_duration_ms: clamp prima del cast uint16_t
 - log_stream_push: memory ordering rilassato per read_idx
+
+## Daemon di stazione (2026-09-10, #64)
+
+- **L'archivio DL4YHF è incompleto solo delle librerie personali dell'autore.**
+  I file del protocollo ci sono tutti: `HamlibResultCodes.h`, dato per mancante
+  dal piano del daemon, è nell'archivio (2051 byte). Prima di scrivere «X non
+  c'è», `unzip -l ~/Downloads/Remote_CW_Keyer_Sources.zip | grep -i <nome>`.
+- **Un'attesa spezzata e una fine over sono identiche sul filo**: byte
+  consecutivi con lo stesso stato del tasto. `cwnet_play` le distingue con la
+  convenzione dell'encoder (`CwStreamEnc.c:135-146`): ogni pezzo tranne l'ultimo
+  porta il campo a 7 bit al massimo. Il costo, scritto in `cwnet_play.h`, è che
+  un'attesa lunga esattamente il massimo codificabile perde il suo fronte e
+  suona come silenzio. Il ricevitore del riferimento invece lo applica subito e
+  manipola fino a 830 ms in anticipo: quello è timing corrotto, e non si copia.
+- **Su macOS `time.monotonic()` di Python e `CLOCK_MONOTONIC` del daemon non
+  condividono l'epoca**, su Linux sì. `tools/cwnet/cwnet_jitter.py` si calibra
+  sul primo fronte per questo; su Linux quella calibrazione nasconde un
+  controllo che lì sarebbe vero. Vedi #76.
