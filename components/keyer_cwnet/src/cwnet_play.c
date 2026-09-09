@@ -113,7 +113,11 @@ static void arm_from_byte(cwnet_play_t *play, uint8_t cmd, int64_t base_ms) {
     play->pending_key_down = is_split_chunk(cmd, play->key_down)
                                  ? play->key_down
                                  : ((cmd & KEY_BIT) != 0u);
-    play->prev_byte_key_down = (cmd & KEY_BIT) != 0u;
+    /* The state this byte actually leaves on the key, not the bit it carries:
+     * a chunk of a split wait carries the state the wait ENDS in, and taking
+     * its raw bit makes two chunks of a long key-down look like the two
+     * key-up bytes that end an over. */
+    play->prev_byte_key_down = play->pending_key_down;
     play->have_prev_byte = true;
     play->deadline_ms = base_ms + wait_ms;
     play->state = CWNET_PLAY_RUNNING;
@@ -183,6 +187,15 @@ static void do_deadline(cwnet_play_t *play, int64_t at_ms, cwnet_play_result_t *
      * The second one is not waited out: its time is silence, and the sooner
      * the key is free the sooner the other end can come back. */
     if (play->have_prev_byte && !play->prev_byte_key_down && ((cmd & KEY_BIT) == 0u)) {
+        /* Whatever brought us here, the engine does not come to rest with the
+         * key down: a stuck carrier is the worst outcome this module has
+         * (ARCHITECTURE.md 8.1). Free it before closing, at this instant. */
+        if (play->key_down) {
+            play->key_down = false;
+            emit(out, CWNET_PLAY_EV_KEY_UP, at_ms);
+            ptt_off_no_later_than(play, at_ms + (int64_t)play->cfg.ptt_tail_ms);
+        }
+        play->pending_key_down = false;
         emit(out, CWNET_PLAY_EV_END_OF_OVER, at_ms);
         play->state = CWNET_PLAY_CLOSING;
         play->have_prev_byte = false;

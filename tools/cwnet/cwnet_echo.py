@@ -24,7 +24,7 @@ import argparse, asyncio, sys, time
 
 from cwnet_wire import (CMD_CONNECT, CMD_DISCONNECT, CMD_MORSE, CMD_PING,
                         CMD_PRINT, CMD_RIG, CMD_TX_INFO, NAMES, FrameParser,
-                        decode7, encode7, frame, le32)
+                        decode7, frame, le32)
 
 
 def hostport(s):
@@ -37,15 +37,6 @@ def now_ms():
 
 
 NOBODY = b"-- nobody --\0"
-
-
-def hostport(s):
-    h, _, p = s.rpartition(":")
-    return h, int(p)
-
-
-def now_ms():
-    return int(time.monotonic() * 1000) & 0x7FFFFFFF
 
 
 class Hub:

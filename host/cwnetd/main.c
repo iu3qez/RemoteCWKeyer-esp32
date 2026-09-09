@@ -28,6 +28,16 @@
  *   - text that came from a client is escaped before it reaches stdout, so
  *     a callsign carrying ESC[2J cannot clear the operator's terminal.
  *
+ * Events are diagnostics, the state is the truth
+ * ----------------------------------------------
+ * A cwnet_server_result_t carries at most CWNET_SERVER_MAX_EVENTS and counts
+ * the rest in `dropped`; a single burst of keying schedules more than that.
+ * So the edges are never what the output is built from: after every batch of
+ * events the key and the PTT are aligned to the state the core declares
+ * (reconcile_output()). A lost key-up must not leave the transmitter keyed —
+ * corrupted timing is worse than silence, and a key stuck down is worse than
+ * both (ARCHITECTURE.md 8.1).
+ *
  * SIGINT and SIGTERM close the clients and put the output back to rest. The
  * key is never left down on the way out.
  */
@@ -67,6 +77,18 @@
 
 /** One read from a socket per pass round the FIFO */
 #define CWNETD_RECV_CHUNK 4096u
+
+/**
+ * Reads from one client in a single pass of the loop at most.
+ *
+ * Without a ceiling, a peer that keeps its socket full holds the only thread
+ * inside do_recv(): playback does not run, the safety nets do not fire, and
+ * the timeline stands still for as long as the peer cares to push. Bounded,
+ * the backlog is taken over several passes instead — the socket stays
+ * readable, so the next sock_poll() returns at once and nothing is lost.
+ * Same shape as CWNET_FEED_MAX_EDGES_PER_PASS on the box side.
+ */
+#define CWNETD_RECV_MAX_PASSES 8u
 
 /**
  * Unsent bytes one client may accumulate before we give up on it.
@@ -331,14 +353,47 @@ static const char *name_of(int client_idx) {
 }
 
 /**
+ * @brief Align the output to the state the core declares
+ *
+ * The edges are not the authority: a result holds at most
+ * CWNET_SERVER_MAX_EVENTS, and one burst of keying can schedule more, so a
+ * key-up can be counted in `dropped` instead of reported. Nothing else
+ * drives key_output, and the core never re-sends an edge it has already
+ * applied — the key would stay down for the rest of the session. Hence this,
+ * after every batch: two comparisons against the truth.
+ *
+ * key_output_set_*() drops a write that changes nothing, so on the normal
+ * path it prints nothing at all. The order is key_output_release()'s, and for
+ * the same reason: raise the PTT before the key goes down, and lower the key
+ * before the PTT goes away. Never a key down with no PTT behind it.
+ *
+ * @param now_ms The correction happens now; it is not a scheduled instant.
+ */
+static void reconcile_output(int64_t now_ms) {
+    bool key = cwnet_server_key_down(&g_srv);
+    bool ptt = cwnet_server_ptt_on(&g_srv);
+
+    if (ptt) {
+        key_output_set_ptt(&g_out, true, now_ms);
+        key_output_set_key(&g_out, key, now_ms);
+    } else {
+        key_output_set_key(&g_out, key, now_ms);
+        key_output_set_ptt(&g_out, false, now_ms);
+    }
+}
+
+/**
  * @brief Print what the core did, and put its keying edges on the output
  *
  * The core reports; the daemon decides what that looks like (KTD10). Every
  * line carries the client index, so two clients never blur together, and the
  * instants are the scheduled ones, so an over can be reconstructed from the
  * lines alone (U6 Verification).
+ *
+ * @param now_ms The instant of the call, for the reconciliation that closes
+ *               it — not for the events, which carry their own.
  */
-static void handle_events(const cwnet_server_result_t *res) {
+static void handle_events(const cwnet_server_result_t *res, int64_t now_ms) {
     for (size_t i = 0; i < res->count; i++) {
         const cwnet_server_event_t *e = &res->ev[i];
         switch (e->type) {
@@ -416,6 +471,7 @@ static void handle_events(const cwnet_server_result_t *res) {
     if (res->dropped > 0u) {
         status_line("stato eventi persi %zu", res->dropped);
     }
+    reconcile_output(now_ms);
 }
 
 /*===========================================================================*/
@@ -426,7 +482,15 @@ static void do_accept(sock_handle_t listener, int64_t now_ms) {
     for (;;) {
         sock_handle_t h = SOCK_INVALID;
         if (!sock_accept(listener, &h)) {
-            return; /* nothing pending, or an error we will see again */
+            /* "Nothing pending" and "the listener is in trouble" arrive the
+             * same way; every other error path here says its piece, and a
+             * station that has quietly stopped accepting is worth a line.
+             * One per pass at most: we return either way. */
+            int err = sock_last_error();
+            if (!sock_would_block(err) && err != EINTR) {
+                status_line("stato accept fallita: %s", strerror(err));
+            }
+            return;
         }
 
         cwnet_server_result_t res;
@@ -444,20 +508,30 @@ static void do_accept(sock_handle_t listener, int64_t now_ms) {
             sock_close(&h);
             continue;
         }
+        if (c->in_use) {
+            /* The core handed back a slot the daemon still believes is live:
+             * the CLIENT_CLOSED that freed it was one of the events a full
+             * result dropped. Overwriting c->sock here would leak the
+             * descriptor and leave the old peer connected to nothing. Say so
+             * — silence is the worse half of this — and close it properly. */
+            status_line("stato slot client %d ancora in uso da %s: chiudo la "
+                        "connessione precedente", idx, c->peer);
+            conn_drop(idx);
+        }
         c->in_use = true;
         c->sock = h;
         c->out_len = 0;
         c->name[0] = '\0';
         (void)sock_peer_string(h, c->peer, sizeof(c->peer));
         status_line("stato accettato client %d da %s", idx, c->peer);
-        handle_events(&res);
+        handle_events(&res, now_ms);
     }
 }
 
 static void do_disconnect(int client_idx, int64_t now_ms) {
     cwnet_server_result_t res;
     cwnet_server_on_disconnected(&g_srv, client_idx, now_ms, &res);
-    handle_events(&res);
+    handle_events(&res, now_ms);
     conn_drop(client_idx); /* no-op when the event above already did it */
 }
 
@@ -467,13 +541,24 @@ static void do_recv(int client_idx, int64_t now_ms) {
         return;
     }
     uint8_t buf[CWNETD_RECV_CHUNK];
+    int64_t t_ms = now_ms;
 
-    for (;;) {
+    /* Bounded: a client that never lets the socket run short does not get to
+     * own the thread. What it left behind keeps the socket readable, so the
+     * next sock_poll() returns immediately and the reading resumes there —
+     * with the playback and the safety nets having had their turn between. */
+    for (unsigned pass = 0; pass < CWNETD_RECV_MAX_PASSES; pass++) {
+        if (pass > 0u) {
+            /* Re-read the clock every round: the core schedules against the
+             * instant it is handed, and a burst must not freeze it. */
+            t_ms = (int64_t)clock_now_ms();
+        }
+
         int n = sock_recv(c->sock, buf, sizeof(buf));
         if (n > 0) {
             cwnet_server_result_t res;
-            cwnet_server_on_data(&g_srv, client_idx, buf, (size_t)n, now_ms, &res);
-            handle_events(&res);
+            cwnet_server_on_data(&g_srv, client_idx, buf, (size_t)n, t_ms, &res);
+            handle_events(&res, t_ms);
             if (!c->in_use) {
                 return; /* the core closed it on us */
             }
@@ -483,13 +568,13 @@ static void do_recv(int client_idx, int64_t now_ms) {
             continue;
         }
         if (n == 0) {
-            do_disconnect(client_idx, now_ms);
+            do_disconnect(client_idx, t_ms);
             return;
         }
         if (sock_would_block(sock_last_error())) {
             return;
         }
-        do_disconnect(client_idx, now_ms);
+        do_disconnect(client_idx, t_ms);
         return;
     }
 }
@@ -814,9 +899,13 @@ int main(int argc, char **argv) {
             }
         }
 
+        /* Read again: the socket work above is bounded but not free, and the
+         * engine must be ticked with the instant it is actually at. */
+        now_ms = (int64_t)clock_now_ms();
+
         cwnet_server_result_t res;
         cwnet_server_poll(&g_srv, now_ms, &res);
-        handle_events(&res);
+        handle_events(&res, now_ms);
     }
 
     int64_t now_ms = (int64_t)clock_now_ms();

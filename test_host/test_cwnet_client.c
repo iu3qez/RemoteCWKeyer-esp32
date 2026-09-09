@@ -1149,6 +1149,30 @@ static void feed_rtt(int32_t rtt_ms) {
     cwnet_client_on_data(&client, frame, sizeof(frame));
 }
 
+/* A PING RESPONSE_2 with explicit t0/t2, for cases feed_rtt() cannot express:
+ * a "negative RTT" produced by the 31-bit clock wrapping between the two,
+ * rather than by a straightforward round trip. */
+static void feed_response2_explicit(int32_t t0_ms, int32_t t2_ms) {
+    uint8_t frame[2 + CWNET_PING_PAYLOAD_SIZE] = {
+        0x43, 0x10,
+        0x02, 0x01, 0x00, 0x00,   /* RESPONSE_2, id 1 */
+        0x00, 0x00, 0x00, 0x00,   /* t0, filled below */
+        0x00, 0x00, 0x00, 0x00,   /* t1, unused for latency */
+        0x00, 0x00, 0x00, 0x00,   /* t2, filled below */
+    };
+    uint32_t t0 = (uint32_t)t0_ms;
+    frame[6] = (uint8_t)(t0 & 0xFFu);
+    frame[7] = (uint8_t)((t0 >> 8) & 0xFFu);
+    frame[8] = (uint8_t)((t0 >> 16) & 0xFFu);
+    frame[9] = (uint8_t)((t0 >> 24) & 0xFFu);
+    uint32_t t2 = (uint32_t)t2_ms;
+    frame[14] = (uint8_t)(t2 & 0xFFu);
+    frame[15] = (uint8_t)((t2 >> 8) & 0xFFu);
+    frame[16] = (uint8_t)((t2 >> 16) & 0xFFu);
+    frame[17] = (uint8_t)((t2 >> 24) & 0xFFu);
+    cwnet_client_on_data(&client, frame, sizeof(frame));
+}
+
 void test_client_latency_peak_holds_and_decays_like_the_reference(void) {
     ready_client_accumulating();
     TEST_ASSERT_EQUAL(-1, cwnet_client_get_latency_peak_ms(&client));
@@ -1181,6 +1205,42 @@ void test_client_latency_peak_holds_and_decays_like_the_reference(void) {
         feed_rtt(loopback[i]);
         TEST_ASSERT_EQUAL(7, cwnet_client_get_latency_peak_ms(&client));
     }
+}
+
+/*
+ * KTD2 (the station daemon plan) changed the peak-hold gate to reject RTTs
+ * outside 0..2000 ms, not only negative ones, and promised the change "pins
+ * with a client test" -- cwnet_ping_peak_hold_update() is pinned at the codec
+ * level (test_ping_peak_hold_gate_rejects_over_2000ms and
+ * test_ping_peak_hold_gate_rejects_negative_rtt_from_wrap in
+ * test_cwnet_ping.c), but nothing exercised the same gate through the box
+ * that actually receives RESPONSE_2 off the wire: cwnet_client_on_data().
+ * This is that missing counterpart.
+ */
+void test_client_ping_peak_hold_gate_rejects_out_of_range_rtt(void) {
+    ready_client_accumulating();
+    TEST_ASSERT_EQUAL(-1, cwnet_client_get_latency_ms(&client));
+    TEST_ASSERT_EQUAL(-1, cwnet_client_get_latency_peak_ms(&client));
+
+    /* Comfortably over the 2000 ms gate: rejected before it touches either
+     * the instant latency or the peak-hold. */
+    feed_rtt(2500);
+    TEST_ASSERT_EQUAL(-1, cwnet_client_get_latency_ms(&client));
+    TEST_ASSERT_EQUAL(-1, cwnet_client_get_latency_peak_ms(&client));
+
+    /* A negative RTT from the 31-bit clock wrapping between t0 and t2 (same
+     * shape as test_ping_peak_hold_gate_rejects_negative_rtt_from_wrap),
+     * fed through the client so the wire-to-state path is what gets pinned,
+     * not just the codec function in isolation. */
+    feed_response2_explicit(2147483600, 100);
+    TEST_ASSERT_EQUAL(-1, cwnet_client_get_latency_ms(&client));
+    TEST_ASSERT_EQUAL(-1, cwnet_client_get_latency_peak_ms(&client));
+
+    /* The gate does not wedge the client: a realistic RTT afterwards still
+     * updates both values normally. */
+    feed_rtt(42);
+    TEST_ASSERT_EQUAL(42, cwnet_client_get_latency_ms(&client));
+    TEST_ASSERT_EQUAL(42, cwnet_client_get_latency_peak_ms(&client));
 }
 
 /*===========================================================================*/

@@ -264,6 +264,7 @@ void test_client_rx_event_carries_reception_time(void);
 void test_client_rx_fifo_full_drops_and_counts(void);
 void test_client_rx_ignores_ci_v_and_spectrum(void);
 void test_client_latency_peak_holds_and_decays_like_the_reference(void);
+void test_client_ping_peak_hold_gate_rejects_out_of_range_rtt(void);
 void test_client_round_trip_returns_the_edges_sent(void);
 void test_client_tx_first_over_with_ptt_matches_reference_capture_whole(void);
 void test_client_tx_ptt_holds_across_gaps_shorter_than_the_tail(void);
@@ -314,6 +315,7 @@ void test_play_a_late_tick_does_not_move_the_edges(void);
 void test_play_a_late_byte_does_not_move_the_deadline_it_follows(void);
 void test_play_two_event_frames_play_at_their_encoded_distances(void);
 void test_play_a_split_wait_makes_one_edge_after_the_sum(void);
+void test_play_a_key_down_longer_than_one_byte_is_not_an_end_of_over(void);
 void test_play_underrun_lifts_the_key_at_once_and_reports_it(void);
 void test_play_after_an_underrun_the_next_byte_restarts_with_the_same_buffer(void);
 void test_play_end_of_over_does_not_wait_out_the_marker(void);
@@ -325,6 +327,7 @@ void test_play_force_release_lifts_the_key_and_drops_the_ptt_at_the_tail(void);
 void test_play_force_release_when_idle_finishes_the_over_at_once(void);
 void test_play_start_over_fixes_the_buffer_and_clears_the_queue(void);
 void test_play_survives_null_and_reports_nothing(void);
+void test_play_never_comes_to_rest_with_the_key_down(void);
 
 /* CWNet server core (station side: CONNECT, key, PING, rig strings) */
 void test_server_connect_echo_matches_the_capture(void);
@@ -354,6 +357,12 @@ void test_server_an_over_past_its_ceiling_is_cut_off(void);
 void test_server_a_huge_morse_frame_fills_the_engine_and_counts_the_rest(void);
 void test_server_a_failed_send_closes_that_client(void);
 void test_server_survives_null_and_unknown_indices(void);
+void test_server_a_send_dying_mid_announcement_leaves_no_stale_tx_info(void);
+void test_server_a_link_that_never_answers_inside_the_window_is_not_fit(void);
+void test_server_a_link_that_has_never_been_pinged_still_gets_the_key(void);
+void test_server_an_unfit_link_is_reported_once_not_once_per_frame(void);
+void test_server_next_deadline_is_the_nearest_of_the_over_and_the_pings(void);
+void test_server_next_deadline_takes_an_expiring_handshake_before_the_rest(void);
 
 void setUp(void) {
     /* Called before each test */
@@ -673,6 +682,7 @@ int main(void) {
     RUN_TEST(test_client_rx_fifo_full_drops_and_counts);
     RUN_TEST(test_client_rx_ignores_ci_v_and_spectrum);
     RUN_TEST(test_client_latency_peak_holds_and_decays_like_the_reference);
+    RUN_TEST(test_client_ping_peak_hold_gate_rejects_out_of_range_rtt);
     RUN_TEST(test_client_round_trip_returns_the_edges_sent);
     RUN_TEST(test_client_tx_first_over_with_ptt_matches_reference_capture_whole);
     RUN_TEST(test_client_tx_ptt_holds_across_gaps_shorter_than_the_tail);
@@ -728,6 +738,7 @@ int main(void) {
     RUN_TEST(test_play_a_late_byte_does_not_move_the_deadline_it_follows);
     RUN_TEST(test_play_two_event_frames_play_at_their_encoded_distances);
     RUN_TEST(test_play_a_split_wait_makes_one_edge_after_the_sum);
+    RUN_TEST(test_play_a_key_down_longer_than_one_byte_is_not_an_end_of_over);
     RUN_TEST(test_play_underrun_lifts_the_key_at_once_and_reports_it);
     RUN_TEST(test_play_after_an_underrun_the_next_byte_restarts_with_the_same_buffer);
     RUN_TEST(test_play_end_of_over_does_not_wait_out_the_marker);
@@ -739,6 +750,7 @@ int main(void) {
     RUN_TEST(test_play_force_release_when_idle_finishes_the_over_at_once);
     RUN_TEST(test_play_start_over_fixes_the_buffer_and_clears_the_queue);
     RUN_TEST(test_play_survives_null_and_reports_nothing);
+    RUN_TEST(test_play_never_comes_to_rest_with_the_key_down);
 
     /* CWNet server core: the station takes a client in and arbitrates the key */
     printf("\n=== CWNet Server Tests ===\n");
@@ -769,6 +781,12 @@ int main(void) {
     RUN_TEST(test_server_a_huge_morse_frame_fills_the_engine_and_counts_the_rest);
     RUN_TEST(test_server_a_failed_send_closes_that_client);
     RUN_TEST(test_server_survives_null_and_unknown_indices);
+    RUN_TEST(test_server_a_send_dying_mid_announcement_leaves_no_stale_tx_info);
+    RUN_TEST(test_server_a_link_that_never_answers_inside_the_window_is_not_fit);
+    RUN_TEST(test_server_a_link_that_has_never_been_pinged_still_gets_the_key);
+    RUN_TEST(test_server_an_unfit_link_is_reported_once_not_once_per_frame);
+    RUN_TEST(test_server_next_deadline_is_the_nearest_of_the_over_and_the_pings);
+    RUN_TEST(test_server_next_deadline_takes_an_expiring_handshake_before_the_rest);
 
     return UNITY_END();
 }

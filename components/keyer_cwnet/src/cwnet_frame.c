@@ -156,13 +156,36 @@ cwnet_parse_result_t cwnet_frame_parse(cwnet_frame_parser_t *parser,
                          * below the first time fragmentation is seen, before
                          * any byte of it is buffered, so payload_received
                          * only ever becomes nonzero here when the whole
-                         * thing fits CWNET_FRAME_PARSER_BUF_SIZE. */
+                         * thing fits CWNET_FRAME_PARSER_BUF_SIZE. This branch
+                         * is therefore unreachable today, verified by review;
+                         * it stays as a fail-closed guard rather than being
+                         * "simplified" away, because this parser runs on
+                         * firmware already flashed and a future change to the
+                         * buffering logic above must not silently reopen it
+                         * into an overflow. If it is ever false, the correct
+                         * response is CWNET_PARSE_SKIPPED with no payload
+                         * (the framing stays in sync, R14's SKIPPED state
+                         * exists exactly for this): never a payload whose
+                         * declared length is longer than what was actually
+                         * copied, which a caller trusting payload_len would
+                         * read out of bounds, and never CWNET_PARSE_ERROR,
+                         * which would resync the client's parser inside the
+                         * payload instead of at the next frame boundary. */
                         size_t copy_len = needed;
                         if (parser->payload_received + copy_len <= CWNET_FRAME_PARSER_BUF_SIZE) {
                             memcpy(&parser->payload_buf[parser->payload_received],
                                    &data[pos], copy_len);
+                            result.payload = parser->payload_buf;
+                        } else {
+                            pos += needed;
+                            result.status = CWNET_PARSE_SKIPPED;
+                            result.command = cwnet_frame_get_command(parser->command);
+                            result.payload_len = 0;
+                            result.payload = NULL;
+                            result.bytes_consumed = pos;
+                            cwnet_frame_parser_reset(parser);
+                            return result;
                         }
-                        result.payload = parser->payload_buf;
                     }
 
                     pos += needed;

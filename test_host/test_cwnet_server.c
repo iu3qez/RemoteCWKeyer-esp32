@@ -34,9 +34,12 @@ static uint8_t fake_tx[FAKE_CLIENTS][FAKE_TX_SIZE];
 static size_t fake_tx_len[FAKE_CLIENTS];
 static bool fake_send_fails;
 
+/** Sends to this one client fail; 0 means nobody. Everything else goes out. */
+static int fake_send_fail_idx;
+
 static int fake_send(int client_idx, const uint8_t *data, size_t len, void *user_data) {
     (void)user_data;
-    if (fake_send_fails) {
+    if (fake_send_fails || client_idx == fake_send_fail_idx) {
         return -1;
     }
     TEST_ASSERT_TRUE(client_idx >= CWNET_SERVER_FIRST_CLIENT && client_idx < FAKE_CLIENTS);
@@ -204,6 +207,7 @@ static const uint8_t morse_key_down_held[] = { 0x50, 0x02, 0x80, 0x60 };
 static void server_setup_cfg(const cwnet_server_cfg_t *cfg) {
     wire_clear();
     fake_send_fails = false;
+    fake_send_fail_idx = 0;
     TEST_ASSERT_TRUE(cwnet_server_init(&srv, cfg));
 }
 
@@ -989,4 +993,242 @@ void test_server_a_failed_send_closes_that_client(void) {
     const cwnet_server_event_t *ev = event_first(CWNET_SERVER_EV_CLIENT_CLOSED);
     TEST_ASSERT_NOT_NULL(ev);
     TEST_ASSERT_EQUAL_INT((int32_t)CWNET_SERVER_CLOSE_SEND_FAILED, ev->value);
+}
+
+/*===========================================================================*/
+/* R3: the announcement, when one of its sends dies halfway through          */
+/*===========================================================================*/
+
+/*
+ * The TX_INFO is one payload sent to everybody, and a send inside that loop
+ * can close the client it is writing to. When that client is the one that
+ * has just taken the key, closing it releases the key and announces the
+ * release from inside the loop; whatever the outer loop has not reached yet
+ * would then be told about a holder that no longer exists. The last word a
+ * client hears on the key has to be the state as it is.
+ */
+void test_server_a_send_dying_mid_announcement_leaves_no_stale_tx_info(void) {
+    server_setup();
+    int first = ready_client("Moritz", "Moritz", 1000);
+    int second = ready_client("Karl", "Karl", 1000);
+    int third = ready_client("Anna", "Anna", 1000);
+    TEST_ASSERT_EQUAL_INT(CWNET_SERVER_FIRST_CLIENT + 1, second);
+    TEST_ASSERT_EQUAL_INT(CWNET_SERVER_FIRST_CLIENT + 2, third);
+    wire_clear();
+
+    /* The middle client takes the key and its own copy of the announcement
+     * cannot go out: it is closed, and the key is free again at once */
+    fake_send_fail_idx = second;
+    uint8_t morse[] = { 0x50, 0x01, 0x80 };
+    cwnet_server_on_data(&srv, second, morse, sizeof(morse), 2000, &res);
+
+    TEST_ASSERT_EQUAL_INT(CWNET_SERVER_NOBODY, cwnet_server_key_holder(&srv));
+    TEST_ASSERT_EQUAL_size_t(2u, cwnet_server_client_count(&srv));
+    const cwnet_server_event_t *closed = event_first(CWNET_SERVER_EV_CLIENT_CLOSED);
+    TEST_ASSERT_NOT_NULL(closed);
+    TEST_ASSERT_EQUAL_INT(second, closed->client_idx);
+    TEST_ASSERT_EQUAL_INT((int32_t)CWNET_SERVER_CLOSE_SEND_FAILED, closed->value);
+
+    /* Neither survivor is left believing client 2 is on the key. The one
+     * the loop had not reached yet is the one that used to get it wrong. */
+    uint8_t frame[64];
+    size_t frame_len = 0;
+    TEST_ASSERT_TRUE(wire_frame(first, (uint8_t)CWNET_CMD_TX_INFO, SIZE_MAX,
+                                frame, sizeof(frame), &frame_len));
+    TEST_ASSERT_EQUAL_size_t(sizeof(ref_tx_info_nobody), frame_len);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(ref_tx_info_nobody, frame, sizeof(ref_tx_info_nobody));
+
+    TEST_ASSERT_TRUE(wire_frame(third, (uint8_t)CWNET_CMD_TX_INFO, SIZE_MAX,
+                                frame, sizeof(frame), &frame_len));
+    TEST_ASSERT_EQUAL_size_t(sizeof(ref_tx_info_nobody), frame_len);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(ref_tx_info_nobody, frame, sizeof(ref_tx_info_nobody));
+}
+
+/*===========================================================================*/
+/* R7: a link that answers, but never inside the window                      */
+/*===========================================================================*/
+
+/*
+ * The peak-hold only moves when a sample lands inside the gate's 0..2000 ms
+ * window. A link whose every answer is slower than that never records one,
+ * so its peak stays at the -1 that also means "never pinged". The two are
+ * not the same client: one has produced no evidence yet, the other has
+ * produced nothing but evidence that it is too slow to be heard.
+ */
+void test_server_a_link_that_never_answers_inside_the_window_is_not_fit(void) {
+    cwnet_server_cfg_t cfg;
+    cwnet_server_cfg_defaults(&cfg);
+    cfg.send_cb = fake_send;
+    /* Wide enough that the slow answer still matches the pending request */
+    cfg.ping_interval_ms = 10000u;
+    server_setup_cfg(&cfg);
+
+    int idx = ready_client("Moritz", "Moritz", 1000);
+    TEST_ASSERT_EQUAL_INT32(-1, cwnet_server_client_peak_ms(&srv, idx));
+
+    /* Three answers, none of them inside the window: no peak is ever held */
+    ping_exchange(idx, 11000, 2500);
+    ping_exchange(idx, 21000, 3000);
+    ping_exchange(idx, 31000, 4000);
+    TEST_ASSERT_EQUAL_INT32(-1, cwnet_server_client_peak_ms(&srv, idx));
+    TEST_ASSERT_EQUAL_INT32(-1, cwnet_server_client_latency_ms(&srv, idx));
+    TEST_ASSERT_EQUAL_size_t(0u, event_count(CWNET_SERVER_EV_LATENCY));
+    wire_clear();
+
+    uint8_t morse[] = { 0x50, 0x01, 0x80 };
+    cwnet_server_on_data(&srv, idx, morse, sizeof(morse), 40000, &res);
+
+    /* It does not take the key, nothing of its is played, and it is told */
+    TEST_ASSERT_EQUAL_INT(CWNET_SERVER_NOBODY, cwnet_server_key_holder(&srv));
+    TEST_ASSERT_EQUAL_size_t(0u, wire_frame_count(idx, (uint8_t)CWNET_CMD_TX_INFO));
+    TEST_ASSERT_EQUAL_UINT32(1u, cwnet_server_morse_ignored(&srv));
+    TEST_ASSERT_EQUAL_size_t(1u, event_count(CWNET_SERVER_EV_LINK_UNFIT));
+
+    uint8_t frame[128];
+    size_t frame_len = 0;
+    TEST_ASSERT_TRUE(wire_frame(idx, (uint8_t)CWNET_SERVER_CMD_PRINT, 0,
+                                frame, sizeof(frame), &frame_len));
+    TEST_ASSERT_NOT_NULL(strstr((const char *)frame + 2, "not fit"));
+
+    cwnet_server_poll(&srv, 41000, &res);
+    TEST_ASSERT_FALSE(cwnet_server_key_down(&srv));
+    TEST_ASSERT_FALSE(cwnet_server_ptt_on(&srv));
+}
+
+void test_server_a_link_that_has_never_been_pinged_still_gets_the_key(void) {
+    server_setup();
+    int idx = ready_client("Moritz", "Moritz", 1000);
+
+    /* No PING has been answered at all: no measurement is not a bad one, or
+     * every client would be refused for its first two seconds */
+    TEST_ASSERT_EQUAL_INT32(-1, cwnet_server_client_peak_ms(&srv, idx));
+
+    uint8_t morse[] = { 0x50, 0x01, 0x80 };
+    cwnet_server_on_data(&srv, idx, morse, sizeof(morse), 2000, &res);
+
+    TEST_ASSERT_EQUAL_INT(idx, cwnet_server_key_holder(&srv));
+    TEST_ASSERT_EQUAL_UINT32(CWNET_SERVER_DEFAULT_BUFFER_FLOOR_MS,
+                             cwnet_server_buffer_ms(&srv));
+    TEST_ASSERT_EQUAL_size_t(0u, event_count(CWNET_SERVER_EV_LINK_UNFIT));
+}
+
+/*
+ * A refused client keeps sending: it does not know it is refused until the
+ * PRINT reaches it, and it may not stop even then. One event per rejected
+ * byte fills the result's array and starts costing the daemon the events it
+ * needs, so the refusal is reported exactly as often as it is printed: once,
+ * until a sample brings the peak back under the ceiling.
+ */
+void test_server_an_unfit_link_is_reported_once_not_once_per_frame(void) {
+    server_setup();
+    int idx = ready_client("Moritz", "Moritz", 1000);
+
+    ping_exchange(idx, 3000, 1200);   /* over the 1000 ms ceiling */
+    TEST_ASSERT_EQUAL_INT32(1200, cwnet_server_client_peak_ms(&srv, idx));
+    wire_clear();
+
+    /* Forty MORSE frames in one read: forty asks for a key it cannot have */
+    uint8_t stream[40u * 3u];
+    for (size_t i = 0; i < 40u; i++) {
+        static const uint8_t key_down = 0x80u;
+        uint8_t one[3];
+        TEST_ASSERT_EQUAL_size_t(sizeof(one),
+                                 build_frame(one, sizeof(one), (uint8_t)CWNET_CMD_MORSE,
+                                             &key_down, 1u));
+        memcpy(stream + i * 3u, one, sizeof(one));
+    }
+    cwnet_server_on_data(&srv, idx, stream, sizeof(stream), 5000, &res);
+
+    TEST_ASSERT_EQUAL_INT(CWNET_SERVER_NOBODY, cwnet_server_key_holder(&srv));
+    TEST_ASSERT_EQUAL_UINT32(40u, cwnet_server_morse_ignored(&srv));
+    TEST_ASSERT_EQUAL_size_t(1u, event_count(CWNET_SERVER_EV_LINK_UNFIT));
+    TEST_ASSERT_EQUAL_size_t(1u, wire_frame_count(idx, (uint8_t)CWNET_SERVER_CMD_PRINT));
+    /* And the result still has room for the events that matter */
+    TEST_ASSERT_EQUAL_size_t(0u, res.dropped);
+}
+
+/*===========================================================================*/
+/* The next deadline, with several of them in competition                    */
+/*===========================================================================*/
+
+/*
+ * cwnet_server_next_deadline() is the daemon's loop timeout: everything the
+ * server does on time does it because this number was the true minimum.
+ */
+void test_server_next_deadline_is_the_nearest_of_the_over_and_the_pings(void) {
+    cwnet_server_cfg_t cfg;
+    cwnet_server_cfg_defaults(&cfg);
+    cfg.send_cb = fake_send;
+    cfg.ping_interval_ms = 10000u;
+    cfg.idle_timeout_ms = 4000u;
+    server_setup_cfg(&cfg);
+
+    int first = ready_client("Moritz", "Moritz", 1000);   /* PING due at 11000 */
+    int second = ready_client("Karl", "Karl", 5000);      /* PING due at 15000 */
+    TEST_ASSERT_EQUAL_INT(CWNET_SERVER_FIRST_CLIENT + 1, second);
+
+    int64_t at = 0;
+    TEST_ASSERT_TRUE(cwnet_server_next_deadline(&srv, &at));
+    TEST_ASSERT_EQUAL_INT64(11000, at);   /* the nearer of the two PINGs */
+
+    /* The key is taken at 6000. With no measurement B is the floor, so the
+     * first edge is due at 6050: nearer than either PING and nearer than the
+     * idle net at 10000 and the over ceiling at 126000. */
+    cwnet_server_on_data(&srv, first, morse_key_down_held, sizeof(morse_key_down_held),
+                         6000, &res);
+    TEST_ASSERT_EQUAL_INT(first, cwnet_server_key_holder(&srv));
+    TEST_ASSERT_TRUE(cwnet_server_next_deadline(&srv, &at));
+    TEST_ASSERT_EQUAL_INT64(6050, at);
+
+    /* Played out — the two bytes hold the key down and then lift it, and
+     * with an empty FIFO under them that is an underrun (R8), not the end of
+     * an over: the holder keeps the key and the idle net is now the nearest
+     * thing the server has to do. */
+    cwnet_server_poll(&srv, 7000, &res);
+    TEST_ASSERT_EQUAL_INT(first, cwnet_server_key_holder(&srv));
+    TEST_ASSERT_TRUE(cwnet_server_next_deadline(&srv, &at));
+    TEST_ASSERT_EQUAL_INT64(10000, at);   /* 6000 + the idle timeout */
+
+    /* And that instant is the real one */
+    cwnet_server_poll(&srv, 10000, &res);
+    TEST_ASSERT_EQUAL_INT(CWNET_SERVER_NOBODY, cwnet_server_key_holder(&srv));
+    const cwnet_server_event_t *fault = event_first(CWNET_SERVER_EV_FAULT);
+    TEST_ASSERT_NOT_NULL(fault);
+    TEST_ASSERT_EQUAL_INT((int32_t)CWNET_SERVER_FAULT_IDLE, fault->value);
+
+    /* With the over gone the nearer PING comes back to the front */
+    TEST_ASSERT_TRUE(cwnet_server_next_deadline(&srv, &at));
+    TEST_ASSERT_EQUAL_INT64(11000, at);
+}
+
+void test_server_next_deadline_takes_an_expiring_handshake_before_the_rest(void) {
+    cwnet_server_cfg_t cfg;
+    cwnet_server_cfg_defaults(&cfg);
+    cfg.send_cb = fake_send;
+    cfg.handshake_timeout_ms = 200u;
+    server_setup_cfg(&cfg);
+
+    int ready = ready_client("Moritz", "Moritz", 1000);   /* PING due at 3000 */
+    int64_t at = 0;
+    TEST_ASSERT_TRUE(cwnet_server_next_deadline(&srv, &at));
+    TEST_ASSERT_EQUAL_INT64(1000 + CWNET_SERVER_DEFAULT_PING_INTERVAL_MS, at);
+
+    /* A second connection that has not logged in: its handshake runs out at
+     * 2700, before anything else the server owes anybody */
+    int silent = cwnet_server_on_connected(&srv, 2500, &res);
+    TEST_ASSERT_EQUAL_INT(CWNET_SERVER_FIRST_CLIENT + 1, silent);
+    TEST_ASSERT_TRUE(cwnet_server_next_deadline(&srv, &at));
+    TEST_ASSERT_EQUAL_INT64(2700, at);
+
+    cwnet_server_poll(&srv, at, &res);
+    TEST_ASSERT_EQUAL_size_t(1u, cwnet_server_client_count(&srv));
+    TEST_ASSERT_TRUE(cwnet_server_client_ready(&srv, ready));
+    const cwnet_server_event_t *closed = event_first(CWNET_SERVER_EV_CLIENT_CLOSED);
+    TEST_ASSERT_NOT_NULL(closed);
+    TEST_ASSERT_EQUAL_INT(silent, closed->client_idx);
+    TEST_ASSERT_EQUAL_INT((int32_t)CWNET_SERVER_CLOSE_HANDSHAKE, closed->value);
+
+    /* With it gone the PING is the front of the queue again */
+    TEST_ASSERT_TRUE(cwnet_server_next_deadline(&srv, &at));
+    TEST_ASSERT_EQUAL_INT64(1000 + CWNET_SERVER_DEFAULT_PING_INTERVAL_MS, at);
 }

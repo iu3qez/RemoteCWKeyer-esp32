@@ -15,6 +15,10 @@ add_compile_options(
     -Wdouble-promotion
     -Wformat=2
     -Wnull-dereference
+    # keyer_cwnet's module brief promises these two for the whole component,
+    # and two of its files are compiled only here.
+    -Wshadow
+    -Wstrict-prototypes
     -g
 )
 

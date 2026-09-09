@@ -14,6 +14,10 @@ add_compile_options(
     -Wdouble-promotion
     -Wformat=2
     -Wnull-dereference
+    # keyer_cwnet's module brief promises these two; the suite compiles that
+    # component's sources, so the promise is kept here as well as in host/.
+    -Wshadow
+    -Wstrict-prototypes
     -g
 )
 

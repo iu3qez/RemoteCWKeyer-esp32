@@ -349,6 +349,56 @@ void test_play_a_split_wait_makes_one_edge_after_the_sum(void) {
     TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_END_OF_OVER));
 }
 
+/*
+ * The other half of the split: an ELEMENT longer than one byte can carry.
+ * Holding the key down to tune is ordinary practice, and at 1994 ms the
+ * key-up edge that closes it does not fit one byte either. send_morse()
+ * splits it exactly as CwStream_EncodeKeyUpDownEvent does — a full chunk
+ * of 1165 ms, then the remainder — and both chunks carry the state the
+ * wait ends in, up (cwnet_client.c:157-186).
+ *
+ *   0x80  key down, 0x00                                 ->    0 ms
+ *   0x7F  key up,   0x7F -> 157 + 16*(0x7F-0x40) = 1165  -> 1165 ms, split
+ *   0x6A  key up,   0x6A -> 157 + 16*(0x6A-0x40)         ->  829 ms
+ *
+ * Two key-up bytes in a row, and they are NOT the end-of-over marker: the
+ * first spends its time in the state the key is already in, so the single
+ * edge lands after the sum, 1165 + 829 = 1994.
+ *
+ *   first byte: T0 + 0 + B(50)   = T0 +   50  key down
+ *   += 1165 (no edge, split)     = T0 + 1215
+ *   += 829                       = T0 + 2044  key up   (= 50 + 1994)
+ *   last key-up + tail(100)      = T0 + 2144  PTT off
+ *
+ * Taken for an end of over at T0+1215 instead, the over goes to CLOSING
+ * with the key still down, the PTT still up and nothing scheduled: the
+ * carrier stays on air until something outside this module notices.
+ */
+void test_play_a_key_down_longer_than_one_byte_is_not_an_end_of_over(void) {
+    cwnet_play_t play;
+    play_setup(&play, 0u, B_MS);
+
+    const uint8_t long_down[] = { 0x80, 0x7F, 0x6A };
+    push_bytes(&play, long_down, sizeof long_down, T0);
+
+    evlog_t log = { .n = 0 };
+    run_until(&play, &log, T0 + 3000);
+
+    const exp_ev_t want[] = {
+        { CWNET_PLAY_EV_PTT_ON,   T0 + 50 },
+        { CWNET_PLAY_EV_KEY_DOWN, T0 + 50 },
+        { CWNET_PLAY_EV_KEY_UP,   T0 + 2044 },
+        { CWNET_PLAY_EV_PTT_OFF,  T0 + 2144 },
+    };
+    assert_log(&log, want, sizeof want / sizeof want[0]);
+
+    /* One edge for one element, and no end of over anywhere near it */
+    TEST_ASSERT_EQUAL_size_t(1u, count_of(&log, CWNET_PLAY_EV_KEY_UP));
+    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_END_OF_OVER));
+    TEST_ASSERT_FALSE(cwnet_play_key_down(&play));
+    TEST_ASSERT_FALSE(cwnet_play_ptt_on(&play));
+}
+
 /*===========================================================================*/
 /* AE6: the FIFO runs dry under a key-down                                   */
 /*===========================================================================*/
@@ -667,4 +717,65 @@ void test_play_survives_null_and_reports_nothing(void) {
     TEST_ASSERT_EQUAL_size_t(4u, log.n);
     TEST_ASSERT_EQUAL_INT(CWNET_PLAY_EV_PTT_OFF, (int)log.ev[3].type);
     TEST_ASSERT_EQUAL_INT64(T0 + 198, log.ev[3].at_ms);
+}
+
+/*===========================================================================*/
+/* The invariant: the engine never comes to rest with the key down           */
+/*===========================================================================*/
+
+/**
+ * @brief Tick once, then check the one state that must never exist
+ *
+ * A key that is down with nothing scheduled is a carrier nobody will ever
+ * lower: no byte sequence may leave the engine there (ARCHITECTURE.md 8.1,
+ * corrupted timing is worse than silence, and a stuck carrier is worse
+ * than both).
+ */
+static void tick_and_check_invariant(cwnet_play_t *play, int64_t now_ms) {
+    cwnet_play_result_t r;
+    cwnet_play_tick(play, now_ms, &r);
+
+    int64_t next = 0;
+    bool scheduled = cwnet_play_next_deadline(play, &next);
+    if (cwnet_play_key_down(play) && !scheduled) {
+        char msg[128];
+        snprintf(msg, sizeof msg, "key down at T0%+lld with nothing scheduled",
+                 (long long)(now_ms - T0));
+        TEST_FAIL_MESSAGE(msg);
+    }
+}
+
+/*
+ * The sequences this file pins, plus the reference's own slow end of over
+ * (keyer_sim.c case F, 80 31 7F 44), each ticked at every millisecond of
+ * its span. The engine is allowed to key down, to underrun, to close and
+ * to stall for want of bytes; it is never allowed to stop with the key
+ * down and no deadline in the diary.
+ */
+void test_play_never_comes_to_rest_with_the_key_down(void) {
+    static const uint8_t long_down[]   = { 0x80, 0x7F, 0x6A };              /* 1994 ms down */
+    static const uint8_t split_gap[]   = { 0x80, 0x14, 0xFF, 0xEA, 0x21 };  /* 1994 ms up */
+    static const uint8_t end_of_over[] = { 0x80, 0x24, 0x24 };
+    static const uint8_t starved[]     = { 0x80 };
+    static const uint8_t slow_eoo[]    = { 0x80, 0x31, 0x7F, 0x44 };
+
+    const struct {
+        const uint8_t *bytes;
+        size_t len;
+    } cases[] = {
+        { long_down,   sizeof long_down },
+        { split_gap,   sizeof split_gap },
+        { end_of_over, sizeof end_of_over },
+        { starved,     sizeof starved },
+        { slow_eoo,    sizeof slow_eoo },
+    };
+
+    for (size_t c = 0; c < sizeof cases / sizeof cases[0]; c++) {
+        cwnet_play_t play;
+        play_setup(&play, 0u, B_MS);
+        push_bytes(&play, cases[c].bytes, cases[c].len, T0);
+        for (int64_t t = T0; t <= T0 + 2400; t++) {
+            tick_and_check_invariant(&play, t);
+        }
+    }
 }

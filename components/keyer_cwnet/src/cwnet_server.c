@@ -187,14 +187,17 @@ static size_t build_tx_info(const cwnet_server_t *srv, uint8_t *payload, size_t 
 /**
  * @brief Tell every confirmed client who has the key now
  *
- * A client whose send fails is closed here. That client cannot be the
- * holder — the holder was set or cleared before this call — so the close
- * cannot come back into this function for a second announcement.
+ * The payload is built inside the loop, once per client, because the loop
+ * can change what it has to say. A send that fails closes the client it was
+ * writing to, and take_key() sets the holder BEFORE announcing it, so that
+ * client may well be the holder: closing it releases the key and announces
+ * the release from in here. One payload built ahead of the loop would then
+ * go on being sent, after the fact, to every client the loop had not
+ * reached yet — and each of those would keep a holder the server no longer
+ * has, with nothing further coming to correct it. Each client is told the
+ * state as it stands when its own frame leaves.
  */
 static void announce_key(cwnet_server_t *srv, int64_t now_ms, cwnet_server_result_t *out) {
-    uint8_t payload[CWNET_SERVER_NAME_LEN + 1];
-    size_t len = build_tx_info(srv, payload, sizeof(payload));
-
     emit(out, CWNET_SERVER_EV_KEY_HOLDER, srv->key_holder, 0, 0, now_ms);
 
     for (int i = 0; i < (int)srv->cfg.max_clients; i++) {
@@ -203,6 +206,8 @@ static void announce_key(cwnet_server_t *srv, int64_t now_ms, cwnet_server_resul
         if (c == NULL || !c->confirmed) {
             continue;
         }
+        uint8_t payload[CWNET_SERVER_NAME_LEN + 1];
+        size_t len = build_tx_info(srv, payload, sizeof(payload));
         (void)send_or_close(srv, idx, (uint8_t)CWNET_CMD_TX_INFO, payload, len, now_ms, out);
     }
 }
@@ -437,6 +442,9 @@ static void handle_ping(cwnet_server_t *srv, int client_idx,
 
     c->ping_pending = false;
     c->ping_misses = 0u;
+    /* An answer came back. Whether the sample survives the gate below is a
+     * different question, and take_key() needs both answers apart. */
+    c->ping_answered = true;
 
     int32_t latency = t2 - ping.t0_ms;
     if (cwnet_ping_peak_hold_update(&c->latency_peak_ms, latency)) {
@@ -538,14 +546,32 @@ static bool take_key(cwnet_server_t *srv, int client_idx, int64_t now_ms,
     }
     int32_t peak = c->latency_peak_ms;
 
-    if (peak >= 0 && (uint32_t)peak > srv->cfg.buffer_ceiling_ms) {
-        emit(out, CWNET_SERVER_EV_LINK_UNFIT, client_idx, peak, peak, now_ms);
+    /* A peak of -1 has two meanings and only one of them is innocent. The
+     * peak-hold takes a sample only if it lands inside the gate's window
+     * (cwnet_ping.h); a link whose every answer is slower than that never
+     * records one, so it would present itself exactly like a client that
+     * has only just connected and play at the floor. That is the link the
+     * ceiling exists for. Answered but never measurable is not fit. */
+    bool never_measurable = (peak < 0) && c->ping_answered;
+
+    if (never_measurable || (peak >= 0 && (uint32_t)peak > srv->cfg.buffer_ceiling_ms)) {
+        /* Once per refusal, exactly as often as the PRINT. A refused client
+         * does not stop sending, and one event per rejected byte fills the
+         * result's array with the same line and costs the daemon the events
+         * it needs. The flag is re-armed when a sample brings the peak back
+         * under the ceiling, in handle_ping(). */
         if (!c->unfit_notified) {
             c->unfit_notified = true;
-            char msg[96];
-            (void)snprintf(msg, sizeof(msg),
-                           "Link not fit to transmit: %d ms, ceiling %u ms",
-                           (int)peak, (unsigned)srv->cfg.buffer_ceiling_ms);
+            emit(out, CWNET_SERVER_EV_LINK_UNFIT, client_idx, peak, peak, now_ms);
+            char measured[96];
+            const char *msg = "Link not fit to transmit: no PING answered inside "
+                              "the measurement window";
+            if (!never_measurable) {
+                (void)snprintf(measured, sizeof(measured),
+                               "Link not fit to transmit: %d ms, ceiling %u ms",
+                               (int)peak, (unsigned)srv->cfg.buffer_ceiling_ms);
+                msg = measured;
+            }
             send_print(srv, client_idx, msg, now_ms, out);
         }
         return false;

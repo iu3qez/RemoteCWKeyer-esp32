@@ -56,6 +56,14 @@
  * A client that has never had a PING answered has no measurement (peak
  * -1): it is treated as fit and plays with B at the floor. Refusing it
  * would refuse every client for the first two seconds of its session.
+ *
+ * A client that HAS answered and still has no peak is the opposite case.
+ * The peak-hold only takes a sample the gate lets through (cwnet_ping.h,
+ * cwnet_ping_peak_hold_update): a link slow enough that every answer misses
+ * that window never records one. Left together with the client above it
+ * would look identical — fit, and playing at the floor — which is exactly
+ * the link the ceiling exists to keep off the air. So the two are kept
+ * apart: never answered is fit, answered but never measurable is not.
  */
 
 #pragma once
@@ -156,7 +164,14 @@ typedef enum {
     CWNET_SERVER_EV_CLIENT_CLOSED,    /**< Connection over; value = cwnet_server_close_reason_t */
     CWNET_SERVER_EV_KEY_HOLDER,       /**< The key changed hands; client_idx or CWNET_SERVER_NOBODY */
     CWNET_SERVER_EV_LATENCY,          /**< A PING closed; value = RTT ms, peak = peak-hold ms */
-    CWNET_SERVER_EV_LINK_UNFIT,       /**< Refused the key; value = the peak-hold that refused it */
+    /**
+     * Refused the key. Reported once per refusal, as often as the PRINT
+     * that goes with it and no more: a refused client keeps sending, and
+     * one event per rejected byte would fill this array with one line.
+     * value = the peak-hold that refused it, or -1 when the client has
+     * answered PINGs but never inside the measurement window.
+     */
+    CWNET_SERVER_EV_LINK_UNFIT,
     CWNET_SERVER_EV_OVER_BUFFER,      /**< An over started; value = B in ms */
     CWNET_SERVER_EV_KEY_DOWN,         /**< Key output: carrier on */
     CWNET_SERVER_EV_KEY_UP,           /**< Key output: carrier off */
@@ -248,6 +263,7 @@ typedef struct {
 
     int32_t latency_ms;             /**< Last gated RTT, -1 until one lands */
     int32_t latency_peak_ms;        /**< Peak-hold of it, -1 until one lands */
+    bool ping_answered;             /**< A PING came back, gate or no gate */
 } cwnet_server_client_t;
 
 /**

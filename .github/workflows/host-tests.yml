@@ -98,7 +98,13 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-    name: host-build (${{ matrix.os }})
+        name: [plain, asan-ubsan]
+        include:
+          - name: plain
+            cflags: ""
+          - name: asan-ubsan
+            cflags: "-fsanitize=address,undefined -fno-omit-frame-pointer"
+    name: host-build (${{ matrix.name }}, ${{ matrix.os }})
     steps:
       - uses: actions/checkout@v4
 
@@ -111,9 +117,12 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends cmake gcc
 
+      # The daemon is the only network-facing program in this repository and
+      # the pure core is already sanitized in host-tests; without this leg
+      # main.c and sock.c would never see ASan or UBSan anywhere.
       - name: Configure
         working-directory: host
-        run: cmake -B build
+        run: cmake -B build -DCMAKE_C_FLAGS="${{ matrix.cflags }}"
 
       - name: Build
         working-directory: host

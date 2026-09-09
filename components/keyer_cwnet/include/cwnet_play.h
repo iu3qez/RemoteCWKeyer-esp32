@@ -42,7 +42,10 @@
  * End of over is the reference's mark: two consecutive key-up bytes
  * (CwStream_CheckForAnyEndOfTransmissionInFifo). It is reported when the
  * second one is consumed, without waiting out its encoded time, and the
- * over is finished once the PTT has dropped.
+ * over is finished once the PTT has dropped. What counts is the state each
+ * byte leaves on the key, not the bit it carries: a chunk of a long
+ * key-down carries the up bit and is no part of the mark. Whatever the
+ * bytes say, the key never stays down across that mark.
  *
  * Underrun
  * --------
@@ -151,7 +154,7 @@ typedef struct {
     int64_t deadline_ms;          /**< Next keying deadline (CWNET_PLAY_RUNNING) */
     bool pending_key_down;        /**< State to apply at that deadline */
     bool key_down;                /**< State on the output now */
-    bool prev_byte_key_down;      /**< Key bit of the last byte consumed */
+    bool prev_byte_key_down;      /**< State the last byte consumed leaves on the key */
     bool have_prev_byte;          /**< A byte has been consumed in this over */
 
     bool ptt_on;                  /**< PTT on the output now */
@@ -218,11 +221,11 @@ void cwnet_play_tick(cwnet_play_t *play, int64_t now_ms, cwnet_play_result_t *ou
  */
 void cwnet_play_force_release(cwnet_play_t *play, int64_t now_ms, cwnet_play_result_t *out);
 
-/** @brief Key state on the output */
 /** B of the over in progress, zero when no over is open. The engine owns
  *  this number: it is fixed when the over is armed and does not move. */
 uint32_t cwnet_play_buffer_ms(const cwnet_play_t *play);
 
+/** @brief Key state on the output */
 bool cwnet_play_key_down(const cwnet_play_t *play);
 
 /** @brief PTT state on the output */
