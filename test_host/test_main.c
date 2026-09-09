@@ -326,6 +326,34 @@ void test_play_force_release_when_idle_finishes_the_over_at_once(void);
 void test_play_start_over_fixes_the_buffer_and_clears_the_queue(void);
 void test_play_survives_null_and_reports_nothing(void);
 
+/* CWNet server core (station side: CONNECT, key, PING, rig strings) */
+void test_server_connect_echo_matches_the_capture(void);
+void test_server_connect_of_the_wrong_length_closes_the_client(void);
+void test_server_connect_arriving_one_byte_at_a_time_still_logs_in(void);
+void test_server_an_empty_callsign_is_announced_as_nocall(void);
+void test_server_connect_fields_without_a_nul_are_read_no_further(void);
+void test_server_a_connection_past_the_limit_is_accepted_and_closed(void);
+void test_server_a_client_that_never_logs_in_is_closed(void);
+void test_server_three_unanswered_pings_close_the_client(void);
+void test_server_ping_request_and_response2_carry_the_reference_layout(void);
+void test_server_a_response_that_matches_no_pending_request_is_ignored(void);
+void test_server_answers_a_ping_request_from_the_client(void);
+void test_server_set_ptt_is_acknowledged_and_never_applied(void);
+void test_server_any_other_rig_string_gets_a_negative_code(void);
+void test_server_a_rig_string_without_a_nul_closes_the_client(void);
+void test_server_ignores_ci_v_and_spectrum_and_closes_on_a_parse_error(void);
+void test_server_plays_the_first_over_of_the_capture_and_announces_both_ends(void);
+void test_server_morse_from_a_client_without_the_key_is_dropped_in_silence(void);
+void test_server_announces_the_holder_to_every_client(void);
+void test_server_a_link_over_the_ceiling_does_not_get_the_key(void);
+void test_server_a_link_under_the_ceiling_sets_the_buffer_to_its_peak(void);
+void test_server_the_holder_disconnecting_frees_the_key_for_the_others(void);
+void test_server_silence_from_the_holder_releases_the_key_with_a_fault(void);
+void test_server_an_over_past_its_ceiling_is_cut_off(void);
+void test_server_a_huge_morse_frame_fills_the_engine_and_counts_the_rest(void);
+void test_server_a_failed_send_closes_that_client(void);
+void test_server_survives_null_and_unknown_indices(void);
+
 void setUp(void) {
     /* Called before each test */
 }
@@ -710,6 +738,35 @@ int main(void) {
     RUN_TEST(test_play_force_release_when_idle_finishes_the_over_at_once);
     RUN_TEST(test_play_start_over_fixes_the_buffer_and_clears_the_queue);
     RUN_TEST(test_play_survives_null_and_reports_nothing);
+
+    /* CWNet server core: the station takes a client in and arbitrates the key */
+    printf("\n=== CWNet Server Tests ===\n");
+    RUN_TEST(test_server_connect_echo_matches_the_capture);
+    RUN_TEST(test_server_connect_of_the_wrong_length_closes_the_client);
+    RUN_TEST(test_server_connect_arriving_one_byte_at_a_time_still_logs_in);
+    RUN_TEST(test_server_an_empty_callsign_is_announced_as_nocall);
+    RUN_TEST(test_server_connect_fields_without_a_nul_are_read_no_further);
+    RUN_TEST(test_server_a_connection_past_the_limit_is_accepted_and_closed);
+    RUN_TEST(test_server_a_client_that_never_logs_in_is_closed);
+    RUN_TEST(test_server_three_unanswered_pings_close_the_client);
+    RUN_TEST(test_server_ping_request_and_response2_carry_the_reference_layout);
+    RUN_TEST(test_server_a_response_that_matches_no_pending_request_is_ignored);
+    RUN_TEST(test_server_answers_a_ping_request_from_the_client);
+    RUN_TEST(test_server_set_ptt_is_acknowledged_and_never_applied);
+    RUN_TEST(test_server_any_other_rig_string_gets_a_negative_code);
+    RUN_TEST(test_server_a_rig_string_without_a_nul_closes_the_client);
+    RUN_TEST(test_server_ignores_ci_v_and_spectrum_and_closes_on_a_parse_error);
+    RUN_TEST(test_server_plays_the_first_over_of_the_capture_and_announces_both_ends);
+    RUN_TEST(test_server_morse_from_a_client_without_the_key_is_dropped_in_silence);
+    RUN_TEST(test_server_announces_the_holder_to_every_client);
+    RUN_TEST(test_server_a_link_over_the_ceiling_does_not_get_the_key);
+    RUN_TEST(test_server_a_link_under_the_ceiling_sets_the_buffer_to_its_peak);
+    RUN_TEST(test_server_the_holder_disconnecting_frees_the_key_for_the_others);
+    RUN_TEST(test_server_silence_from_the_holder_releases_the_key_with_a_fault);
+    RUN_TEST(test_server_an_over_past_its_ceiling_is_cut_off);
+    RUN_TEST(test_server_a_huge_morse_frame_fills_the_engine_and_counts_the_rest);
+    RUN_TEST(test_server_a_failed_send_closes_that_client);
+    RUN_TEST(test_server_survives_null_and_unknown_indices);
 
     return UNITY_END();
 }
