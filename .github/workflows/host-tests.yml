@@ -86,3 +86,39 @@ jobs:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
           ASAN_OPTIONS: detect_leaks=1
         run: ./build/test_runner
+
+  host-build:
+    # cwnetd (host/) links components/keyer_cwnet's server-side core directly
+    # by path (host/CMakeLists.txt) and never touches keyer_iambic, so this
+    # job needs neither the private submodule nor its deploy key — that is
+    # why it is a separate job rather than more steps on host-tests above.
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    name: host-build (${{ matrix.os }})
+    steps:
+      - uses: actions/checkout@v4
+
+      # macOS runners already carry cmake and AppleClang; nothing to install
+      # there, and no Ninja anywhere — the default generator builds six files
+      # and a brew step is one more thing that can fail on a green tree.
+      - name: Install toolchain (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends cmake gcc
+
+      - name: Configure
+        working-directory: host
+        run: cmake -B build
+
+      - name: Build
+        working-directory: host
+        run: cmake --build build
+
+      - name: Test
+        working-directory: host
+        run: ctest --test-dir build --output-on-failure
