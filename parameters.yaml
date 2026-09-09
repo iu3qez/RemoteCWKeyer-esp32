@@ -1152,7 +1152,7 @@ families:
 
       server_port:
         type: u16
-        default: 7373
+        default: 7355
         range: [1, 65535]
         nvs_key: "cwnet_port"
         runtime_change: reboot
@@ -1165,8 +1165,8 @@ families:
             en: "CWNet Server Port"
             it: "Porta Server CWNet"
           description:
-            en: "CWNet server TCP port (default: 7373)"
-            it: "Porta TCP del server CWNet (default: 7373)"
+            en: "CWNet server TCP port (default: 7355)"
+            it: "Porta TCP del server CWNet (default: 7355)"
           widget: spinbox
           widget_config:
             step: 1
