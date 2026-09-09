@@ -815,6 +815,33 @@ void test_server_a_link_under_the_ceiling_sets_the_buffer_to_its_peak(void) {
 /* R6: the safety nets                                                       */
 /*===========================================================================*/
 
+/*
+ * A holder that vanishes inside the buffer B, before a single edge has been
+ * played, leaves no PTT raised — so the playback engine finishes the over
+ * inside the very call that forces the release, and the key is free before
+ * the fault is emitted. The fault must still name the client that had the
+ * key: that line is how the operator learns who dropped, and "nobody
+ * dropped" tells him nothing.
+ */
+void test_server_a_holder_lost_inside_the_buffer_is_still_named_in_the_fault(void) {
+    server_setup();
+    int holder = ready_client("Moritz", "Moritz", 1000);
+
+    /* The key is taken at 2000; with B at the floor nothing plays until 2050 */
+    cwnet_server_on_data(&srv, holder, morse_key_down_held, sizeof(morse_key_down_held),
+                         2000, &res);
+    TEST_ASSERT_EQUAL_INT(holder, cwnet_server_key_holder(&srv));
+    TEST_ASSERT_FALSE(cwnet_server_ptt_on(&srv));
+
+    cwnet_server_on_disconnected(&srv, holder, 2020, &res);
+
+    const cwnet_server_event_t *fault = event_first(CWNET_SERVER_EV_FAULT);
+    TEST_ASSERT_NOT_NULL(fault);
+    TEST_ASSERT_EQUAL_INT((int32_t)CWNET_SERVER_FAULT_HOLDER_GONE, fault->value);
+    TEST_ASSERT_EQUAL_INT(holder, fault->client_idx);
+    TEST_ASSERT_EQUAL_INT(CWNET_SERVER_NOBODY, cwnet_server_key_holder(&srv));
+}
+
 void test_server_the_holder_disconnecting_frees_the_key_for_the_others(void) {
     server_setup();
     int first = ready_client("Moritz", "Moritz", 1000);
@@ -834,6 +861,9 @@ void test_server_the_holder_disconnecting_frees_the_key_for_the_others(void) {
     const cwnet_server_event_t *fault = event_first(CWNET_SERVER_EV_FAULT);
     TEST_ASSERT_NOT_NULL(fault);
     TEST_ASSERT_EQUAL_INT((int32_t)CWNET_SERVER_FAULT_HOLDER_GONE, fault->value);
+    /* The fault names the client that lost the key, not the emptiness left
+     * behind: the daemon prints this line and the operator has to know who. */
+    TEST_ASSERT_EQUAL_INT(first, fault->client_idx);
     TEST_ASSERT_NOT_NULL(event_first(CWNET_SERVER_EV_KEY_UP));
     TEST_ASSERT_EQUAL_INT64(2200, event_first(CWNET_SERVER_EV_KEY_UP)->at_ms);
 

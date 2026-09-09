@@ -272,10 +272,15 @@ static void run_play(cwnet_server_t *srv, int64_t now_ms, cwnet_server_result_t 
  */
 static void force_release(cwnet_server_t *srv, cwnet_server_fault_t why,
                           int64_t now_ms, cwnet_server_result_t *out) {
+    /* Taken before the engine runs: a release with no PTT raised finishes
+     * the over inside that call, which frees the key. The fault has to name
+     * the client that lost it, not the emptiness left behind. */
+    int holder = srv->key_holder;
+
     cwnet_play_result_t pr;
     cwnet_play_force_release(&srv->play, now_ms, &pr);
     map_play_events(srv, &pr, out);
-    emit(out, CWNET_SERVER_EV_FAULT, srv->key_holder, (int32_t)why, 0, now_ms);
+    emit(out, CWNET_SERVER_EV_FAULT, holder, (int32_t)why, 0, now_ms);
     release_key(srv, now_ms, out);
 }
 

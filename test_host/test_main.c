@@ -348,6 +348,7 @@ void test_server_announces_the_holder_to_every_client(void);
 void test_server_a_link_over_the_ceiling_does_not_get_the_key(void);
 void test_server_a_link_under_the_ceiling_sets_the_buffer_to_its_peak(void);
 void test_server_the_holder_disconnecting_frees_the_key_for_the_others(void);
+void test_server_a_holder_lost_inside_the_buffer_is_still_named_in_the_fault(void);
 void test_server_silence_from_the_holder_releases_the_key_with_a_fault(void);
 void test_server_an_over_past_its_ceiling_is_cut_off(void);
 void test_server_a_huge_morse_frame_fills_the_engine_and_counts_the_rest(void);
@@ -762,6 +763,7 @@ int main(void) {
     RUN_TEST(test_server_a_link_over_the_ceiling_does_not_get_the_key);
     RUN_TEST(test_server_a_link_under_the_ceiling_sets_the_buffer_to_its_peak);
     RUN_TEST(test_server_the_holder_disconnecting_frees_the_key_for_the_others);
+    RUN_TEST(test_server_a_holder_lost_inside_the_buffer_is_still_named_in_the_fault);
     RUN_TEST(test_server_silence_from_the_holder_releases_the_key_with_a_fault);
     RUN_TEST(test_server_an_over_past_its_ceiling_is_cut_off);
     RUN_TEST(test_server_a_huge_morse_frame_fills_the_engine_and_counts_the_rest);
