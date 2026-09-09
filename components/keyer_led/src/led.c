@@ -12,24 +12,7 @@
 
 static const char *TAG = "led";
 
-/* Maximum number of LEDs supported */
-#define MAX_LEDS 16
-
-/* RGB color definitions (format: 0xRRGGBB) */
-#define COLOR_OFF       0x000000U
-#define COLOR_RED       0xFF0000U   /* R=FF, G=0, B=0 */
-#define COLOR_GREEN     0x00FF00U   /* R=0, G=FF, B=0 */
-#define COLOR_BLUE      0x0000FFU   /* R=0, G=0, B=FF */
-#define COLOR_ORANGE    0xFF8000U   /* R=FF, G=80, B=0 */
-#define COLOR_YELLOW    0xFFA000U   /* R=FF, G=A0, B=0 */
-#define COLOR_MAGENTA   0xFF00FFU   /* R=FF, G=0, B=FF */
-
-/* Animation timing constants */
-#define BREATH_PERIOD_US    2000000  /* 2s full breath cycle */
-#define FLASH_DURATION_US   100000   /* 100ms per flash */
-#define FLASH_GAP_US        100000   /* 100ms between flashes */
-#define RED_FLASH_US        500000   /* 500ms red flash */
-#define AP_TOGGLE_US        500000   /* 500ms alternating */
+/* Colours, animation clocks and the render itself: led_render.h */
 
 /* RMT configuration */
 #define RMT_RESOLUTION_HZ   10000000 /* 10MHz resolution (100ns) */
@@ -58,9 +41,11 @@ static struct {
     led_config_t config;
     rmt_channel_handle_t rmt_channel;
     rmt_encoder_handle_t encoder;
-    uint8_t pixel_buf[MAX_LEDS * 3];
-    _Atomic led_state_t state;
-    int64_t state_start_us;
+    uint8_t pixel_buf[LED_MAX_COUNT * 3];
+    _Atomic led_situation_t situation;
+    int64_t situation_start_us;
+    int64_t notify_start_us;
+    bool notify_active;
     _Atomic uint8_t brightness;
     _Atomic uint8_t brightness_dim;
 } s_led;
@@ -201,52 +186,6 @@ static esp_err_t led_strip_reset(rmt_encoder_t *encoder)
 }
 
 /**
- * @brief Apply brightness scaling to a 24-bit GRB color
- */
-static uint32_t apply_brightness(uint32_t color, uint8_t brightness)
-{
-    if (brightness >= 100U) {
-        return color;
-    }
-
-    uint8_t g = (uint8_t)((color >> 16) & 0xFFU);
-    uint8_t r = (uint8_t)((color >> 8) & 0xFFU);
-    uint8_t b = (uint8_t)(color & 0xFFU);
-
-    g = (uint8_t)((g * brightness) / 100U);
-    r = (uint8_t)((r * brightness) / 100U);
-    b = (uint8_t)((b * brightness) / 100U);
-
-    return ((uint32_t)g << 16) | ((uint32_t)r << 8) | (uint32_t)b;
-}
-
-/**
- * @brief Set all LEDs to a single color
- */
-static void set_all_leds(uint32_t color)
-{
-    for (size_t i = 0; i < s_led.config.led_count; i++) {
-        s_led.pixel_buf[i * 3U + 0U] = (uint8_t)((color >> 16) & 0xFFU); /* R */
-        s_led.pixel_buf[i * 3U + 1U] = (uint8_t)((color >> 8) & 0xFFU);  /* G */
-        s_led.pixel_buf[i * 3U + 2U] = (uint8_t)(color & 0xFFU);         /* B */
-    }
-}
-
-/**
- * @brief Set a single LED to a color
- */
-static void set_led(size_t index, uint32_t color)
-{
-    if (index >= s_led.config.led_count) {
-        return;
-    }
-
-    s_led.pixel_buf[index * 3U + 0U] = (uint8_t)((color >> 16) & 0xFFU); /* R */
-    s_led.pixel_buf[index * 3U + 1U] = (uint8_t)((color >> 8) & 0xFFU);  /* G */
-    s_led.pixel_buf[index * 3U + 2U] = (uint8_t)(color & 0xFFU);         /* B */
-}
-
-/**
  * @brief Transmit pixel buffer to LEDs
  */
 static void transmit_leds(void)
@@ -267,27 +206,6 @@ static void transmit_leds(void)
     }
 }
 
-/**
- * @brief Calculate breathing brightness (triangle wave)
- */
-static uint8_t calculate_breathing(int64_t elapsed_us, uint8_t brightness)
-{
-    /* Triangle wave: 0 -> max -> 0 over BREATH_PERIOD_US */
-    int64_t phase = elapsed_us % BREATH_PERIOD_US;
-    uint32_t half_period = (uint32_t)(BREATH_PERIOD_US / 2);
-
-    uint32_t value;
-    if (phase < (int64_t)half_period) {
-        /* Rising edge: 0 to brightness */
-        value = ((uint32_t)phase * brightness) / half_period;
-    } else {
-        /* Falling edge: brightness to 0 */
-        value = (((uint32_t)(BREATH_PERIOD_US - phase)) * brightness) / half_period;
-    }
-
-    return (uint8_t)value;
-}
-
 esp_err_t led_init(const led_config_t *config)
 {
     if (config == NULL) {
@@ -299,8 +217,8 @@ esp_err_t led_init(const led_config_t *config)
         return ESP_OK;
     }
 
-    if (config->led_count > MAX_LEDS) {
-        ESP_LOGE(TAG, "led_count %u exceeds MAX_LEDS %u", config->led_count, MAX_LEDS);
+    if (config->led_count > LED_MAX_COUNT) {
+        ESP_LOGE(TAG, "led_count %u exceeds LED_MAX_COUNT %u", config->led_count, LED_MAX_COUNT);
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -313,8 +231,10 @@ esp_err_t led_init(const led_config_t *config)
     s_led.config = *config;
     atomic_store_explicit(&s_led.brightness, config->brightness, memory_order_relaxed);
     atomic_store_explicit(&s_led.brightness_dim, config->brightness_dim, memory_order_relaxed);
-    atomic_store_explicit(&s_led.state, LED_STATE_OFF, memory_order_relaxed);
-    s_led.state_start_us = 0;
+    atomic_store_explicit(&s_led.situation, LED_SITUATION_STARTING, memory_order_relaxed);
+    s_led.situation_start_us = 0;
+    s_led.notify_start_us = 0;
+    s_led.notify_active = false;
 
     /* Configure RMT TX channel */
     rmt_tx_channel_config_t tx_config = {
@@ -380,19 +300,25 @@ void led_deinit(void)
     ESP_LOGI(TAG, "Deinitialized");
 }
 
-void led_set_state(led_state_t state)
+void led_set_situation(led_situation_t situation)
 {
-    led_state_t old_state = atomic_load_explicit(&s_led.state, memory_order_relaxed);
-    if (state != old_state) {
-        atomic_store_explicit(&s_led.state, state, memory_order_relaxed);
-        s_led.state_start_us = esp_timer_get_time();
-        ESP_LOGI(TAG, "State: %d -> %d", old_state, state);
+    led_situation_t previous = atomic_load_explicit(&s_led.situation, memory_order_relaxed);
+    if (situation != previous) {
+        atomic_store_explicit(&s_led.situation, situation, memory_order_relaxed);
+        s_led.situation_start_us = esp_timer_get_time();
+        ESP_LOGI(TAG, "Situation: %d -> %d", (int)previous, (int)situation);
     }
 }
 
-led_state_t led_get_state(void)
+led_situation_t led_get_situation(void)
 {
-    return atomic_load_explicit(&s_led.state, memory_order_relaxed);
+    return atomic_load_explicit(&s_led.situation, memory_order_relaxed);
+}
+
+void led_notify(void)
+{
+    s_led.notify_start_us = esp_timer_get_time();
+    s_led.notify_active = true;
 }
 
 void led_tick(int64_t now_us, bool dit, bool dah)
@@ -401,113 +327,33 @@ void led_tick(int64_t now_us, bool dit, bool dah)
         return;
     }
 
-    led_state_t current_state = atomic_load_explicit(&s_led.state, memory_order_relaxed);
-    int64_t elapsed_us = now_us - s_led.state_start_us;
-    uint8_t brightness = atomic_load_explicit(&s_led.brightness, memory_order_relaxed);
-    uint8_t brightness_dim = atomic_load_explicit(&s_led.brightness_dim, memory_order_relaxed);
-
-    switch (current_state) {
-    case LED_STATE_OFF:
-        set_all_leds(COLOR_OFF);
-        break;
-
-    case LED_STATE_BOOT:
-    case LED_STATE_WIFI_CONNECTING: {
-        /* Orange breathing */
-        uint8_t breath = calculate_breathing(elapsed_us, brightness);
-        uint32_t color = apply_brightness(COLOR_ORANGE, breath);
-        set_all_leds(color);
-        break;
-    }
-
-    case LED_STATE_WIFI_FAILED: {
-        /* Red flash for 500ms, then auto-transition to DEGRADED */
-        if (elapsed_us < RED_FLASH_US) {
-            uint32_t color = apply_brightness(COLOR_RED, brightness);
-            set_all_leds(color);
-        } else {
-            led_set_state(LED_STATE_DEGRADED);
-            return; /* Will be rendered on next tick */
+    int64_t notify_elapsed = -1;
+    if (s_led.notify_active) {
+        notify_elapsed = now_us - s_led.notify_start_us;
+        if (notify_elapsed >= LED_NOTIFY_TOTAL_US) {
+            s_led.notify_active = false;
+            notify_elapsed = -1;
         }
-        break;
     }
 
-    case LED_STATE_DEGRADED: {
-        /* Dim yellow steady */
-        uint32_t color = apply_brightness(COLOR_YELLOW, brightness_dim);
-        set_all_leds(color);
-        break;
-    }
+    const led_scene_t scene = {
+        .situation = atomic_load_explicit(&s_led.situation, memory_order_relaxed),
+        .situation_elapsed_us = now_us - s_led.situation_start_us,
+        .notify_elapsed_us = notify_elapsed,
+        .dit = dit,
+        .dah = dah,
+        .count = s_led.config.led_count,
+        .brightness = atomic_load_explicit(&s_led.brightness, memory_order_relaxed),
+        .brightness_dim = atomic_load_explicit(&s_led.brightness_dim, memory_order_relaxed),
+    };
 
-    case LED_STATE_AP_MODE: {
-        /* Alternating orange/blue every 500ms */
-        int64_t phase = elapsed_us % (AP_TOGGLE_US * 2);
-        uint32_t base_color = (phase < AP_TOGGLE_US) ? COLOR_ORANGE : COLOR_BLUE;
-        uint32_t color = apply_brightness(base_color, brightness);
-        set_all_leds(color);
-        break;
-    }
+    led_frame_t frame;
+    led_render(&scene, &frame);
 
-    case LED_STATE_PROVISIONING: {
-        /* Blue breathing for provisioning mode */
-        uint8_t breath_brightness = calculate_breathing(elapsed_us, brightness);
-        uint32_t color = apply_brightness(COLOR_BLUE, breath_brightness);
-        set_all_leds(color);
-        break;
-    }
-
-    case LED_STATE_CONNECTED: {
-        /* 3 quick green flashes, then auto-transition to IDLE */
-        int64_t flash_cycle = FLASH_DURATION_US + FLASH_GAP_US;
-        int64_t flash_num = elapsed_us / flash_cycle;
-
-        if (flash_num >= 3) {
-            led_set_state(LED_STATE_IDLE);
-            return; /* Will be rendered on next tick */
-        }
-
-        int64_t phase = elapsed_us % flash_cycle;
-        if (phase < FLASH_DURATION_US) {
-            uint32_t color = apply_brightness(COLOR_GREEN, brightness);
-            set_all_leds(color);
-        } else {
-            set_all_leds(COLOR_OFF);
-        }
-        break;
-    }
-
-    case LED_STATE_IDLE: {
-        /* Dim green steady with keying overlay */
-        uint32_t base_color = apply_brightness(COLOR_GREEN, brightness_dim);
-        set_all_leds(base_color);
-
-        /* Keying overlay */
-        if (dit && dah) {
-            /* Squeeze: center LED magenta */
-            size_t center = (size_t)s_led.config.led_count / 2U;
-            uint32_t magenta = apply_brightness(COLOR_MAGENTA, brightness);
-            set_led(center, magenta);
-        } else if (dit) {
-            /* DIT: left LEDs bright green */
-            size_t center = (size_t)s_led.config.led_count / 2U;
-            uint32_t bright_green = apply_brightness(COLOR_GREEN, brightness);
-            for (size_t i = 0; i < center; i++) {
-                set_led(i, bright_green);
-            }
-        } else if (dah) {
-            /* DAH: right LEDs bright green */
-            size_t center = (size_t)s_led.config.led_count / 2U;
-            uint32_t bright_green = apply_brightness(COLOR_GREEN, brightness);
-            for (size_t i = center + 1U; i < s_led.config.led_count; i++) {
-                set_led(i, bright_green);
-            }
-        }
-        break;
-    }
-
-    default:
-        set_all_leds(COLOR_OFF);
-        break;
+    for (uint8_t i = 0; i < frame.count; i++) {
+        s_led.pixel_buf[i * 3U + 0U] = (uint8_t)((frame.color[i] >> 16) & 0xFFU); /* R */
+        s_led.pixel_buf[i * 3U + 1U] = (uint8_t)((frame.color[i] >> 8) & 0xFFU);  /* G */
+        s_led.pixel_buf[i * 3U + 2U] = (uint8_t)(frame.color[i] & 0xFFU);         /* B */
     }
 
     transmit_leds();

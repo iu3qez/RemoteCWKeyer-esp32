@@ -532,6 +532,16 @@ uint32_t cwnet_client_get_key_announcements(const cwnet_client_t *client) {
     return client->key_announcements;
 }
 
+bool cwnet_client_can_transmit(const cwnet_client_t *client) {
+    if (client == NULL || client->state != CWNET_STATE_READY) {
+        return false;
+    }
+    if ((client->permissions & CWNET_PERMISSION_TRANSMIT) == 0) {
+        return false;
+    }
+    return client->key_holder == CWNET_KEY_HOLDER_FREE || client->key_holder == CWNET_KEY_HOLDER_MINE;
+}
+
 const char *cwnet_client_key_holder_str(cwnet_key_holder_t holder) {
     switch (holder) {
         case CWNET_KEY_HOLDER_FREE:  return "free";

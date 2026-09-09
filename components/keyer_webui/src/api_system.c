@@ -50,6 +50,7 @@ esp_err_t api_status_handler(httpd_req_t *req) {
     cJSON_AddStringToObject(cwnet, "key_holder",
                             cwnet_client_key_holder_str(cwnet_socket_get_key_holder()));
     cJSON_AddStringToObject(cwnet, "key_holder_name", cwnet_socket_get_key_holder_name());
+    cJSON_AddBoolToObject(cwnet, "can_transmit", cwnet_socket_can_transmit());
     cJSON_AddItemToObject(root, "cwnet", cwnet);
 
     char *json_str = cJSON_PrintUnformatted(root);

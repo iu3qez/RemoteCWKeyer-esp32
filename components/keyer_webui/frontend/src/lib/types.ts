@@ -1,6 +1,12 @@
 export interface CWNetStatus {
   state: string;
   latency_ms: number;
+  /** "unknown" | "free" | "mine" | "other": who has the server's key */
+  key_holder?: string;
+  /** The name the server announced with the key, "" until one arrives */
+  key_holder_name?: string;
+  /** READY, TRANSMIT granted, key free or ours: our keying goes on the air */
+  can_transmit?: boolean;
 }
 
 export interface DeviceStatus {

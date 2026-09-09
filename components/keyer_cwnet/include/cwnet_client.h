@@ -492,6 +492,22 @@ uint32_t cwnet_client_get_key_announcements(const cwnet_client_t *client);
 /** @return "unknown", "free", "mine" or "other" */
 const char *cwnet_client_key_holder_str(cwnet_key_holder_t holder);
 
+/**
+ * @brief Whether the next MORSE byte we send is played by the server
+ *
+ * What the reference server does with a MORSE frame (CwNet.c:2875-2902):
+ * it takes the key for the sender when nobody has it and the sender has
+ * TRANSMIT, keeps playing while the sender holds it, and drops the frame
+ * otherwise. So: READY, TRANSMIT granted, and the key announced free or
+ * ours. UNKNOWN counts as not ours: the announcement follows the CONNECT
+ * echo within the same burst in the capture, so the gap is milliseconds,
+ * and a doubt reads as "do not key" (FAULT philosophy).
+ *
+ * @param client Client context
+ * @return true when our keying goes on the air, false otherwise or if NULL
+ */
+bool cwnet_client_can_transmit(const cwnet_client_t *client);
+
 void cwnet_client_on_data(cwnet_client_t *client,
                            const uint8_t *data,
                            size_t len);

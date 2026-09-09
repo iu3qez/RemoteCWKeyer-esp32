@@ -227,9 +227,9 @@ void provisioning_start(void)
     /* Start HTTP server */
     prov_http_start();
 
-    /* Set LED to blue breathing to indicate provisioning mode */
+    /* Blue breathing: come to the access point */
     if (led_is_initialized()) {
-        led_set_state(LED_STATE_PROVISIONING);
+        led_set_situation(LED_SITUATION_SETUP);
     }
 
     ESP_LOGI(TAG, "Provisioning ready. Connect to 'CWKeyer-Setup' and open http://192.168.4.1");

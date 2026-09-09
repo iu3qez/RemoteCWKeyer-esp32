@@ -87,6 +87,16 @@ cwnet_key_holder_t cwnet_socket_get_key_holder(void);
 const char *cwnet_socket_get_key_holder_name(void);
 
 /**
+ * @brief Whether our keying goes on the air right now
+ *
+ * READY, TRANSMIT granted and the key free or ours (#26). false when
+ * disabled, not connected, not permitted, or someone else has the key:
+ * in all of those the operator hears the sidetone and the server plays
+ * nothing.
+ */
+bool cwnet_socket_can_transmit(void);
+
+/**
  * @brief Get state as string (for logging)
  */
 const char *cwnet_socket_state_str(cwnet_socket_state_t state);
