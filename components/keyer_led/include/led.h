@@ -1,13 +1,10 @@
 /**
  * @file led.h
- * @brief WS2812B RGB LED status driver
+ * @brief WS2812B RGB LED status driver: the RMT shell
  *
- * Displays keyer state through RGB LEDs:
- * - Boot/connecting: orange breathing
- * - Connected: green flash then dim
- * - AP mode: alternating orange/blue
- * - Degraded: dim yellow
- * - Keying: DIT/DAH/squeeze indication
+ * What the strip shows, and the colour rule it obeys, is led_render.h.
+ * This header is the driver around it: the RMT channel, the situation and
+ * its clock, and the periodic tick.
  */
 
 #ifndef KEYER_LED_H
@@ -16,25 +13,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "esp_err.h"
+#include "led_render.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/**
- * @brief LED state machine states
- */
-typedef enum {
-    LED_STATE_OFF = 0,          /**< LEDs off */
-    LED_STATE_BOOT,             /**< Boot: orange breathing */
-    LED_STATE_WIFI_CONNECTING,  /**< Connecting: orange breathing */
-    LED_STATE_WIFI_FAILED,      /**< Brief red flash */
-    LED_STATE_DEGRADED,         /**< Dim yellow steady */
-    LED_STATE_AP_MODE,          /**< Alternating orange/blue */
-    LED_STATE_PROVISIONING,     /**< Provisioning: blue breathing */
-    LED_STATE_CONNECTED,        /**< Green flash sequence */
-    LED_STATE_IDLE,             /**< Dim green steady */
-} led_state_t;
 
 /**
  * @brief LED configuration
@@ -72,29 +55,35 @@ esp_err_t led_init(const led_config_t *config);
 void led_deinit(void);
 
 /**
- * @brief Set LED state
+ * @brief Set the situation the strip shows
  *
- * @param state New state
+ * Idempotent: setting the situation already showing does not restart its
+ * animation clock, so this may be called every tick from a mapping.
+ *
+ * @param situation What the box is doing now
  */
-void led_set_state(led_state_t state);
+void led_set_situation(led_situation_t situation);
 
 /**
- * @brief Get current LED state
- *
- * @return Current state
+ * @brief The situation the strip is showing
  */
-led_state_t led_get_state(void);
+led_situation_t led_get_situation(void);
+
+/**
+ * @brief Ask for attention: three flashes, then back to the situation
+ *
+ * The flashes are in the colour of whatever situation they land on, so an
+ * event can never assert a colour the situation contradicts. Use it for a
+ * change worth looking up for, such as the link coming up.
+ */
+void led_notify(void);
 
 /**
  * @brief Update LED display (call periodically from bg_task)
  *
- * Handles:
- * - State machine animations (breathing, flashing)
- * - Keying overlay (DIT/DAH/squeeze)
- *
  * @param now_us Current timestamp in microseconds
- * @param dit DIT paddle pressed
- * @param dah DAH paddle pressed
+ * @param dit DIT pin closed, read raw
+ * @param dah DAH pin closed, read raw
  */
 void led_tick(int64_t now_us, bool dit, bool dah);
 

@@ -52,21 +52,36 @@ static uint8_t s_tl_prev_local_key = 0;
 /**
  * @brief Map WiFi state to LED state
  */
-static led_state_t wifi_to_led_state(wifi_state_t ws) {
+/**
+ * @brief The situation the LEDs show, from WiFi and from CWNet (#26)
+ *
+ * The rule is green means the operator's CW goes out (led_render.h), so
+ * this answers exactly that. WiFi off in config is not a degradation: the
+ * box was asked to be a local keyer and it is one, and the key line still
+ * works, so it is green. WiFi asked for and missing is yellow. With the
+ * link up, CWNet decides: disabled promises nothing remote and stays
+ * green, otherwise the server has to be ready, TRANSMIT granted and the
+ * key free or ours, which is what cwnet_socket_can_transmit() is.
+ */
+static led_situation_t led_situation_now(wifi_state_t ws) {
     switch (ws) {
-        case WIFI_STATE_DISABLED:
-            return LED_STATE_IDLE;  /* Skip to idle if WiFi disabled */
         case WIFI_STATE_CONNECTING:
-            return LED_STATE_WIFI_CONNECTING;
-        case WIFI_STATE_CONNECTED:
-            return LED_STATE_CONNECTED;
-        case WIFI_STATE_FAILED:
-            return LED_STATE_WIFI_FAILED;
+            return LED_SITUATION_STARTING;
         case WIFI_STATE_AP_MODE:
-            return LED_STATE_AP_MODE;
+            return LED_SITUATION_SETUP;
+        case WIFI_STATE_FAILED:
+            return LED_SITUATION_LOCAL_ONLY;
+        case WIFI_STATE_CONNECTED:
+            break;
+        case WIFI_STATE_DISABLED:
         default:
-            return LED_STATE_IDLE;
+            return LED_SITUATION_ON_AIR;
     }
+
+    if (cwnet_socket_get_state() == CWNET_SOCK_DISABLED) {
+        return LED_SITUATION_ON_AIR;
+    }
+    return cwnet_socket_can_transmit() ? LED_SITUATION_ON_AIR : LED_SITUATION_OFF_AIR;
 }
 
 void bg_task(void *arg) {
@@ -88,19 +103,24 @@ void bg_task(void *arg) {
     uint32_t stats_counter = 0;
     wifi_state_t prev_wifi_state = WIFI_STATE_DISABLED;
     vpn_state_t prev_vpn_state = VPN_STATE_DISABLED;
-    bool wifi_connected_flash_done = false;
 
     for (;;) {
         now_us = esp_timer_get_time();
 
-        /* Update LED state from WiFi */
+        /* What the LEDs show, from WiFi and CWNet. Recomputed every tick:
+         * the key can change hands without WiFi moving at all, and
+         * led_set_situation() only restarts a clock on a real change. */
         if (led_is_initialized()) {
             wifi_state_t ws = wifi_get_state();
 
+            led_set_situation(led_situation_now(ws));
+
             /* Detect state changes */
             if (ws != prev_wifi_state) {
-                led_state_t new_led_state = wifi_to_led_state(ws);
-                led_set_state(new_led_state);
+                /* An event worth looking up for, in the colour it lands on */
+                if (ws == WIFI_STATE_CONNECTED || ws == WIFI_STATE_FAILED) {
+                    led_notify();
+                }
 
                 /* Log state change */
                 if (ws == WIFI_STATE_CONNECTED) {
@@ -108,7 +128,6 @@ void bg_task(void *arg) {
                     if (wifi_get_ip(ip_buf, sizeof(ip_buf))) {
                         RT_INFO(&g_bg_log_stream, now_us, "WiFi connected: %s", ip_buf);
                     }
-                    wifi_connected_flash_done = false;
                 } else if (ws == WIFI_STATE_AP_MODE) {
                     RT_INFO(&g_bg_log_stream, now_us, "WiFi AP mode active");
                 } else if (ws == WIFI_STATE_FAILED) {
@@ -143,13 +162,9 @@ void bg_task(void *arg) {
                 prev_vpn_state = vs;
             }
 
-            /* After connected flash sequence, transition to idle */
-            led_state_t current_led = led_get_state();
-            if (current_led == LED_STATE_IDLE && !wifi_connected_flash_done) {
-                wifi_connected_flash_done = true;
-            }
-
-            /* Read paddle state for keying overlay */
+            /* The paddle overlay is a second, independent read of the pins,
+             * upstream of the debounce and the FSM: lit but silent means the
+             * fault is in software, dark means the contact never closed. */
             gpio_state_t paddles = hal_gpio_read_paddles();
             led_tick(now_us, gpio_dit(paddles), gpio_dah(paddles));
         }

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { api } from '../lib/api';
-  import type { SystemStats, DeviceStatus, VpnStatus } from '../lib/types';
+  import type { SystemStats, DeviceStatus, VpnStatus, CWNetStatus } from '../lib/types';
 
   let status = $state<DeviceStatus | null>(null);
   let stats = $state<SystemStats | null>(null);
@@ -15,6 +15,17 @@
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  }
+
+  /** What the server does with our keying, in words, with the name where it matters */
+  function keyLabel(c: CWNetStatus): string {
+    if (c.state !== 'READY') return '---';
+    switch (c.key_holder) {
+      case 'free':  return c.can_transmit ? 'FREE' : 'NOT PERMITTED';
+      case 'mine':  return c.can_transmit ? 'MINE' : 'NOT PERMITTED';
+      case 'other': return 'BUSY: ' + (c.key_holder_name || '?');
+      default:      return 'WAITING';
+    }
   }
 
   function getStateClass(state: string): string {
@@ -180,6 +191,12 @@
             <span class="stat-label">RTT</span>
             <span class="stat-value rtt">
               {status.cwnet.latency_ms >= 0 ? status.cwnet.latency_ms + ' ms' : '---'}
+            </span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">KEY</span>
+            <span class="stat-value" class:key-free={status.cwnet.can_transmit} class:key-busy={status.cwnet.state === 'READY' && !status.cwnet.can_transmit}>
+              {keyLabel(status.cwnet)}
             </span>
           </div>
         </div>
@@ -471,6 +488,14 @@
   }
 
   .stat-value.cwnet-error {
+    color: var(--accent-red);
+  }
+
+  .stat-value.key-free {
+    color: var(--accent-green);
+  }
+
+  .stat-value.key-busy {
     color: var(--accent-red);
   }
 

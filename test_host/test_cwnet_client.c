@@ -847,6 +847,69 @@ void test_client_rx_keeps_the_rig_result(void) {
 /* Who has the key: the server's TX_INFO announcements                       */
 /*===========================================================================*/
 
+/*
+ * What the reference server does with a MORSE frame (CwNet.c:2875-2902):
+ * plays it when the key is free or the sender's and the sender has
+ * TRANSMIT, drops it otherwise. can_transmit is that verdict, taken from
+ * the CONNECT echo (permissions 7 in the capture) and the announcements.
+ */
+void test_client_can_transmit_only_when_the_reference_would_play_it(void) {
+    ready_client_named("Moritz");
+    TEST_ASSERT_EQUAL(CWNET_PERMISSION_TALK | CWNET_PERMISSION_TRANSMIT | CWNET_PERMISSION_CTRL_RIG,
+                      cwnet_client_get_permissions(&client));
+    /* READY with TRANSMIT, nothing announced yet: a doubt reads as no */
+    TEST_ASSERT_FALSE(cwnet_client_can_transmit(&client));
+
+    cwnet_client_on_data(&client, ref_tx_info_nobody, sizeof(ref_tx_info_nobody));
+    TEST_ASSERT_TRUE(cwnet_client_can_transmit(&client));   /* free: the first byte takes it */
+    cwnet_client_on_data(&client, ref_tx_info_moritz, sizeof(ref_tx_info_moritz));
+    TEST_ASSERT_TRUE(cwnet_client_can_transmit(&client));   /* ours: it keeps playing */
+    cwnet_client_on_data(&client, ref_tx_info_sysop, sizeof(ref_tx_info_sysop));
+    TEST_ASSERT_FALSE(cwnet_client_can_transmit(&client));  /* the sysop's: ours is dropped */
+    cwnet_client_on_data(&client, ref_tx_info_nobody, sizeof(ref_tx_info_nobody));
+    TEST_ASSERT_TRUE(cwnet_client_can_transmit(&client));
+
+    /* Another client's key, even with our permissions intact */
+    ready_client_named("TEST");
+    cwnet_client_on_data(&client, ref_tx_info_moritz, sizeof(ref_tx_info_moritz));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_OTHER, cwnet_client_get_key_holder(&client));
+    TEST_ASSERT_FALSE(cwnet_client_can_transmit(&client));
+}
+
+void test_client_can_transmit_needs_transmit_permission_and_ready(void) {
+    /* The captured echo with TRANSMIT cleared: TALK | CTRL_RIG only */
+    cwnet_client_config_t config = {
+        .server_host = "test.server.com",
+        .server_port = 7373,
+        .username = "Moritz",
+        .send_cb = mock_send_accumulate,
+        .get_time_ms_cb = mock_get_time_ms,
+        .user_data = NULL
+    };
+    test_setup();
+    cwnet_client_init(&client, &config);
+    cwnet_client_on_connected(&client);
+    TEST_ASSERT_FALSE(cwnet_client_can_transmit(&client));  /* not READY yet */
+
+    uint8_t echo[sizeof(ref_connect_echo)];
+    memcpy(echo, ref_connect_echo, sizeof(echo));
+    echo[2 + CWNET_CONNECT_PERMISSIONS_OFFSET] &= (uint8_t)~CWNET_PERMISSION_TRANSMIT;
+    cwnet_client_on_data(&client, echo, sizeof(echo));
+    TEST_ASSERT_EQUAL(CWNET_STATE_READY, cwnet_client_get_state(&client));
+    TEST_ASSERT_EQUAL(CWNET_PERMISSION_TALK | CWNET_PERMISSION_CTRL_RIG, cwnet_client_get_permissions(&client));
+
+    cwnet_client_on_data(&client, ref_tx_info_nobody, sizeof(ref_tx_info_nobody));
+    TEST_ASSERT_FALSE(cwnet_client_can_transmit(&client));  /* free, but not permitted */
+    cwnet_client_on_data(&client, ref_tx_info_moritz, sizeof(ref_tx_info_moritz));
+    TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_MINE, cwnet_client_get_key_holder(&client));
+    TEST_ASSERT_FALSE(cwnet_client_can_transmit(&client));
+
+    /* Losing the connection forgets everything */
+    cwnet_client_on_disconnected(&client);
+    TEST_ASSERT_FALSE(cwnet_client_can_transmit(&client));
+    TEST_ASSERT_FALSE(cwnet_client_can_transmit(NULL));
+}
+
 void test_client_key_holder_unknown_until_announced(void) {
     ready_client_accumulating();
     TEST_ASSERT_EQUAL(CWNET_KEY_HOLDER_UNKNOWN, cwnet_client_get_key_holder(&client));

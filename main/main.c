@@ -156,7 +156,7 @@ void app_main(void) {
     };
     ret = led_init(&led_cfg);
     if (ret == ESP_OK) {
-        led_set_state(LED_STATE_BOOT);
+        led_set_situation(LED_SITUATION_STARTING);
     } else {
         ESP_LOGW(TAG, "LED init failed (non-fatal): %s", esp_err_to_name(ret));
     }
@@ -178,15 +178,15 @@ void app_main(void) {
 
         ret = wifi_app_init(&wifi_cfg);
         if (ret == ESP_OK) {
-            led_set_state(LED_STATE_WIFI_CONNECTING);
+            led_set_situation(LED_SITUATION_STARTING);
             wifi_app_start();
         } else {
             ESP_LOGE(TAG, "WiFi init failed: %s", esp_err_to_name(ret));
-            led_set_state(LED_STATE_DEGRADED);
+            led_set_situation(LED_SITUATION_LOCAL_ONLY);
         }
     } else {
         ESP_LOGI(TAG, "WiFi disabled");
-        led_set_state(LED_STATE_IDLE);
+        led_set_situation(LED_SITUATION_ON_AIR);
     }
 
     /* Initialize VPN if enabled (requires WiFi) */

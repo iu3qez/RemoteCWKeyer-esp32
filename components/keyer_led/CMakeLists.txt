@@ -3,6 +3,7 @@
 idf_component_register(
     SRCS
         "src/led.c"
+        "src/led_render.c"
     INCLUDE_DIRS "include"
     REQUIRES driver esp_driver_rmt esp_timer
 )

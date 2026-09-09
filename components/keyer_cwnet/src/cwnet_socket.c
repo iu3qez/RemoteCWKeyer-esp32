@@ -421,6 +421,10 @@ const char *cwnet_socket_get_key_holder_name(void) {
     return cwnet_client_get_key_holder_name(&s_ctx.client);
 }
 
+bool cwnet_socket_can_transmit(void) {
+    return s_ctx.state == CWNET_SOCK_READY && cwnet_client_can_transmit(&s_ctx.client);
+}
+
 const char *cwnet_socket_state_str(cwnet_socket_state_t state) {
     switch (state) {
         case CWNET_SOCK_DISABLED:     return "DISABLED";

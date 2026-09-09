@@ -247,6 +247,17 @@ void test_client_tx_ptt_holds_across_gaps_shorter_than_the_tail(void);
 void test_client_abort_over_drops_ptt_too(void);
 void test_client_rx_keeps_the_rig_result(void);
 void test_client_rejects_events_when_not_ready(void);
+/* LED vocabulary: the colour rule (#26) */
+void test_led_green_belongs_to_on_air_and_to_nothing_else(void);
+void test_led_each_situation_carries_its_own_colour(void);
+void test_led_a_steady_situation_lights_the_whole_strip_dim(void);
+void test_led_overlay_carries_position_and_never_a_colour(void);
+void test_led_overlay_shows_the_paddle_in_every_situation(void);
+void test_led_notification_flashes_in_the_colour_it_lands_on(void);
+void test_led_breathing_rises_and_falls_over_the_period(void);
+void test_led_render_clamps_the_strip_and_survives_null(void);
+void test_client_can_transmit_only_when_the_reference_would_play_it(void);
+void test_client_can_transmit_needs_transmit_permission_and_ready(void);
 void test_client_key_holder_unknown_until_announced(void);
 void test_client_key_holder_reads_the_three_captured_announcements(void);
 void test_client_key_holder_another_client_is_other(void);
@@ -573,6 +584,17 @@ int main(void) {
     RUN_TEST(test_client_rx_keeps_the_rig_result);
     RUN_TEST(test_client_rejects_events_when_not_ready);
     /* Who has the key: TX_INFO 0x05 against the 2026-09-05 capture */
+    /* LED vocabulary: green means on air, and nothing else is green */
+    RUN_TEST(test_led_green_belongs_to_on_air_and_to_nothing_else);
+    RUN_TEST(test_led_each_situation_carries_its_own_colour);
+    RUN_TEST(test_led_a_steady_situation_lights_the_whole_strip_dim);
+    RUN_TEST(test_led_overlay_carries_position_and_never_a_colour);
+    RUN_TEST(test_led_overlay_shows_the_paddle_in_every_situation);
+    RUN_TEST(test_led_notification_flashes_in_the_colour_it_lands_on);
+    RUN_TEST(test_led_breathing_rises_and_falls_over_the_period);
+    RUN_TEST(test_led_render_clamps_the_strip_and_survives_null);
+    RUN_TEST(test_client_can_transmit_only_when_the_reference_would_play_it);
+    RUN_TEST(test_client_can_transmit_needs_transmit_permission_and_ready);
     RUN_TEST(test_client_key_holder_unknown_until_announced);
     RUN_TEST(test_client_key_holder_reads_the_three_captured_announcements);
     RUN_TEST(test_client_key_holder_another_client_is_other);

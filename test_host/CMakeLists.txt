@@ -43,6 +43,7 @@ include_directories(
     ${COMPONENT_DIR}/keyer_config           # Generated headers in root
     ${COMPONENT_DIR}/keyer_decoder/include
     ${COMPONENT_DIR}/keyer_cwnet/include
+    ${COMPONENT_DIR}/keyer_led/include
     ${CMAKE_SOURCE_DIR}/stubs
 )
 
@@ -86,6 +87,7 @@ set(DECODER_SOURCES
 
 # CWNet sources (TDD - implementation files added as they are created)
 set(CWNET_SOURCES
+    ${COMPONENT_DIR}/keyer_led/src/led_render.c
     ${COMPONENT_DIR}/keyer_cwnet/src/cwnet_timestamp.c
     ${COMPONENT_DIR}/keyer_cwnet/src/cwnet_frame.c
     ${COMPONENT_DIR}/keyer_cwnet/src/cwnet_ping.c
@@ -104,6 +106,7 @@ set(TEST_SOURCES
     # test_history.c  # Excluded: requires console system
     # test_completion.c  # Excluded: requires commands.c
     test_rt_diag.c
+    test_led.c
     test_morse_table.c
     test_timing_classifier.c
     test_decoder.c
