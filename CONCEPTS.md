@@ -16,6 +16,12 @@ Un artefatto **eseguibile** derivato dal riferimento — un modulo suo ricompila
 
 ## Keying
 
+### Keying stream
+Il ring in RAM, lock-free, attraverso cui passa ogni evento di keying della scatola: un solo produttore, il task real-time, lo alimenta a ogni tick e scrive uno slot solo quando lo stato cambia; ogni consumer legge da un proprio indice, senza mai bloccare il produttore né gli altri consumer. È l'unica interfaccia fra chi produce keying e chi lo consuma: nessun altro stato condiviso, nessun callback.
+*Avoid:* stream (quando ambiguo con il flusso CWNet), buffer.
+
+Un consumer che resta indietro di un intero giro è in overrun: lo slot che il produttore sta per riscrivere non è leggibile, e il consumer si riallinea alla posizione più vecchia ancora leggibile. Un campione uguale al precedente non occupa uno slot: il produttore conta i tick di silenzio e li consegna come marker, così un consumer ricostruisce il tempo di stream senza un campione per tick. Non è il [MORSE keying stream](#morse-keying-stream), che è la codifica del keying sul filo CWNet.
+
 ### MORSE keying stream
 Il flusso di keying CW trasportato da CWNet come sequenza di byte a 7 bit — non testo, non un timestamp assoluto per evento. Ogni byte porta lo stato del tasto (giù/su) e il tempo di attesa prima di applicarlo. Viaggia su un proprio comando dedicato, distinto da quelli di CI-V, spettro e audio.
 
@@ -32,3 +38,7 @@ Lo scambio di misura del tempo di andata e ritorno, in tre fasi con tre timestam
 
 ### Peak-hold latency
 Il valore di latenza mostrato e usato per dimensionare il jitter buffer: sale immediatamente a ogni nuovo picco e scende lentamente, quindi diverge dal valore istantaneo di round-trip in presenza di jitter. È un parametro di controllo, non una misura istantanea.
+
+## Flagged ambiguities
+
+- «keying stream» era usato sia per il ring in RAM sia per il flusso di byte a 7 bit di CWNet: il ring è il Keying stream, il flusso sul filo è il MORSE keying stream.

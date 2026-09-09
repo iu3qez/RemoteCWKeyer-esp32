@@ -91,6 +91,13 @@ atomic_store_explicit(&idx, new_idx, memory_order_relaxed);
 - `memory_order_release` - Producer writing shared data
 - `memory_order_seq_cst` - Avoid unless absolutely necessary (performance cost)
 
+The tags order only one side of the operation: an acquire load orders what comes *after* it,
+a release store what comes *before* it. A seqlock-style reader that copies a payload and then
+re-reads the index, or a producer that stores a slot after the previous publish, needs
+`atomic_thread_fence()` between the two (ARCHITECTURE.md RULE 3.1.2 / 3.1.3; `stream.c`,
+`rt_task.c`). x86-64 hides the missing fence; the arm64 CI leg does not. See
+[docs/solutions/architecture-patterns/a-seqlock-has-two-halves-and-needs-two-fences.md](docs/solutions/architecture-patterns/a-seqlock-has-two-halves-and-needs-two-fences.md).
+
 ---
 
 ## Defensive Coding Patterns
