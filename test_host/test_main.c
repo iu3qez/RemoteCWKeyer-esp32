@@ -294,6 +294,24 @@ void test_feed_send_failure_closes_the_over_and_retries(void);
 void test_feed_disconnect_mid_over_then_reconnect(void);
 void test_feed_long_key_down_is_sent_in_full(void);
 
+/* CWNet playback engine (station side: bytes -> key edges and PTT) */
+void test_play_first_over_of_the_capture_plays_at_the_encoded_instants(void);
+void test_play_a_late_tick_does_not_move_the_edges(void);
+void test_play_a_late_byte_does_not_move_the_deadline_it_follows(void);
+void test_play_two_event_frames_play_at_their_encoded_distances(void);
+void test_play_a_split_wait_makes_one_edge_after_the_sum(void);
+void test_play_underrun_lifts_the_key_at_once_and_reports_it(void);
+void test_play_after_an_underrun_the_next_byte_restarts_with_the_same_buffer(void);
+void test_play_end_of_over_does_not_wait_out_the_marker(void);
+void test_play_key_ups_split_by_a_key_down_are_not_an_end_of_over(void);
+void test_play_ptt_lead_raises_the_ptt_before_the_first_key_down(void);
+void test_play_ptt_lead_is_clamped_to_the_buffer(void);
+void test_play_a_full_fifo_drops_the_byte_and_counts_it(void);
+void test_play_force_release_lifts_the_key_and_drops_the_ptt_at_the_tail(void);
+void test_play_force_release_when_idle_finishes_the_over_at_once(void);
+void test_play_start_over_fixes_the_buffer_and_clears_the_queue(void);
+void test_play_survives_null_and_reports_nothing(void);
+
 void setUp(void) {
     /* Called before each test */
 }
@@ -643,6 +661,25 @@ int main(void) {
     RUN_TEST(test_feed_send_failure_closes_the_over_and_retries);
     RUN_TEST(test_feed_disconnect_mid_over_then_reconnect);
     RUN_TEST(test_feed_long_key_down_is_sent_in_full);
+
+    /* CWNet playback: the station plays the key holder's bytes and the PTT */
+    printf("\n=== CWNet Playback Tests ===\n");
+    RUN_TEST(test_play_first_over_of_the_capture_plays_at_the_encoded_instants);
+    RUN_TEST(test_play_a_late_tick_does_not_move_the_edges);
+    RUN_TEST(test_play_a_late_byte_does_not_move_the_deadline_it_follows);
+    RUN_TEST(test_play_two_event_frames_play_at_their_encoded_distances);
+    RUN_TEST(test_play_a_split_wait_makes_one_edge_after_the_sum);
+    RUN_TEST(test_play_underrun_lifts_the_key_at_once_and_reports_it);
+    RUN_TEST(test_play_after_an_underrun_the_next_byte_restarts_with_the_same_buffer);
+    RUN_TEST(test_play_end_of_over_does_not_wait_out_the_marker);
+    RUN_TEST(test_play_key_ups_split_by_a_key_down_are_not_an_end_of_over);
+    RUN_TEST(test_play_ptt_lead_raises_the_ptt_before_the_first_key_down);
+    RUN_TEST(test_play_ptt_lead_is_clamped_to_the_buffer);
+    RUN_TEST(test_play_a_full_fifo_drops_the_byte_and_counts_it);
+    RUN_TEST(test_play_force_release_lifts_the_key_and_drops_the_ptt_at_the_tail);
+    RUN_TEST(test_play_force_release_when_idle_finishes_the_over_at_once);
+    RUN_TEST(test_play_start_over_fixes_the_buffer_and_clears_the_queue);
+    RUN_TEST(test_play_survives_null_and_reports_nothing);
 
     return UNITY_END();
 }

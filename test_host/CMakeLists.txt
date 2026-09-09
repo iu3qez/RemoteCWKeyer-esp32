@@ -93,6 +93,7 @@ set(CWNET_SOURCES
     ${COMPONENT_DIR}/keyer_cwnet/src/cwnet_ping.c
     ${COMPONENT_DIR}/keyer_cwnet/src/cwnet_client.c
     ${COMPONENT_DIR}/keyer_cwnet/src/cwnet_feed.c
+    ${COMPONENT_DIR}/keyer_cwnet/src/cwnet_play.c  # Host-only: the station daemon's playback engine
 )
 
 # Test sources
@@ -115,6 +116,7 @@ set(TEST_SOURCES
     test_cwnet_ping.c
     test_cwnet_client.c
     test_cwnet_feed.c
+    test_cwnet_play.c
     stubs/esp_stubs.c
 )
 

@@ -11,6 +11,9 @@ idf_component_register(
         "src/cwnet_client.c"
         "src/cwnet_feed.c"
         "src/cwnet_socket.c"
+        # src/cwnet_play.c is deliberately absent: the station daemon's
+        # playback engine is host-only (KTD2). It has no place on the box,
+        # whose RT path never plays a remote client's keying.
     INCLUDE_DIRS "include"
     REQUIRES
         keyer_core
