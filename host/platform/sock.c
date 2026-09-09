@@ -129,6 +129,28 @@ bool sock_local_port(sock_handle_t h, uint16_t *out_port) {
     return true;
 }
 
+bool sock_peer_string(sock_handle_t h, char *dst, size_t dst_size) {
+    if (dst == NULL || dst_size == 0u) {
+        return false;
+    }
+
+    struct sockaddr_in addr;
+    socklen_t len = sizeof(addr);
+    char ip[INET_ADDRSTRLEN];
+
+    memset(&addr, 0, sizeof(addr));
+    if (!sock_valid(h) ||
+        getpeername((int)h.native_handle, (struct sockaddr *)&addr, &len) != 0 ||
+        addr.sin_family != AF_INET ||
+        inet_ntop(AF_INET, &addr.sin_addr, ip, sizeof(ip)) == NULL) {
+        (void)snprintf(dst, dst_size, "?");
+        return false;
+    }
+
+    (void)snprintf(dst, dst_size, "%s:%u", ip, (unsigned)ntohs(addr.sin_port));
+    return true;
+}
+
 sock_handle_t sock_connect(const char *host, uint16_t port) {
     sock_handle_t h = SOCK_INVALID;
 

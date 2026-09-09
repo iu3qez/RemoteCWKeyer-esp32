@@ -69,6 +69,17 @@ sock_handle_t sock_listen(const char *bind_addr, uint16_t port, int backlog);
 bool sock_local_port(sock_handle_t h, uint16_t *out_port);
 
 /**
+ * The peer of a connected handle, written as "a.b.c.d:port". Writes "?"
+ * and returns false when the peer cannot be had — an already-closed
+ * handle, or a family this layer does not speak. Never leaves dst unset.
+ *
+ * It lives here, and not in the caller, because reading the peer means
+ * touching the native handle: a caller that does that itself is a caller
+ * the winsock port has to rewrite.
+ */
+bool sock_peer_string(sock_handle_t h, char *dst, size_t dst_size);
+
+/**
  * Client-side connect, non-blocking: this returns before the handshake
  * completes (mirrors cwnet_socket.c's start_connect()/EINPROGRESS pattern).
  * Poll the handle for writability, then check sock_last_error() the way

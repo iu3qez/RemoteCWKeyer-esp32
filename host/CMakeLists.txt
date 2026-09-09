@@ -33,3 +33,24 @@ add_executable(loopback_test tests/loopback_test.c)
 target_link_libraries(loopback_test PRIVATE host_platform)
 
 add_test(NAME loopback_test COMMAND loopback_test)
+
+# cwnetd: the station daemon (U6). The core it drives — cwnet_server.c and
+# cwnet_play.c — is host-only by KTD2 and deliberately absent from the
+# ESP-IDF component's SRCS, so it is listed here by hand. cwnet_client.c is
+# NOT linked: the daemon is the other end of the wire (KTD10).
+set(CWNET_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../components/keyer_cwnet)
+
+add_library(cwnet_core STATIC
+    ${CWNET_DIR}/src/cwnet_frame.c
+    ${CWNET_DIR}/src/cwnet_ping.c
+    ${CWNET_DIR}/src/cwnet_timestamp.c
+    ${CWNET_DIR}/src/cwnet_play.c
+    ${CWNET_DIR}/src/cwnet_server.c
+)
+target_include_directories(cwnet_core PUBLIC ${CWNET_DIR}/include)
+
+add_executable(cwnetd
+    cwnetd/main.c
+    cwnetd/key_output.c
+)
+target_link_libraries(cwnetd PRIVATE host_platform cwnet_core)
