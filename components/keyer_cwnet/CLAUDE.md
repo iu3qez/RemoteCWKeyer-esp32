@@ -13,7 +13,15 @@ Key abstractions:
   (DISCONNECTED -> CONNECTING -> READY). Socket I/O is injected via send_cb /
   get_time_ms_cb callbacks so it is testable without a network.
 - cwnet_frame_parser_t: streaming, fragmentation-tolerant frame parser
-  (command byte encodes category in bits 7-6, command in bits 5-0).
+  (command byte encodes category in bits 7-6, command in bits 5-0), plus
+  cwnet_frame_build() as the one place a frame is composed.
+- cwnet_server_t / cwnet_play_t: the station side, HOST ONLY. The server core
+  takes a client from CONNECT to READY, arbitrates the key and announces its
+  holder; the playback engine turns a holder's MORSE bytes into key edges and
+  PTT at the right instants. Neither reads a clock nor logs: time is a
+  parameter, events come back in a result struct. They are deliberately absent
+  from this component's SRCS and are compiled by host/CMakeLists.txt and by
+  test_host.
 - cwnet_ping_t / cwnet_timer_t: PING-based clock sync and RTT/latency.
 - cwstream_encode/decode_timestamp: 7-bit non-linear ms timestamp codec.
 - cwnet_socket_*: the concrete ESP-IDF layer (BSD sockets + lwIP DNS) that owns
@@ -40,4 +48,7 @@ Gotchas:
   on_connected / on_data / on_disconnected events into it.
 - Frame parser copies only small fragmented payloads into its 256-byte buffer;
   large payloads are returned as pointers into the input buffer (do not retain).
+  A fragmented payload larger than that buffer is consumed to its declared
+  length and returned as CWNET_PARSE_SKIPPED with a null payload: an error
+  there would make the client resync inside the payload and lose framing.
 <!-- END treecode (auto) -->

@@ -25,10 +25,9 @@ import socket
 import sys
 import time
 
-CMD_CONNECT, CMD_DISCONNECT, CMD_PING, CMD_PRINT, CMD_TX_INFO, CMD_RIG, CMD_MORSE = (
-    1, 2, 3, 4, 5, 6, 0x10)
-NAMES = {1: "CONNECT", 2: "DISCONNECT", 3: "PING", 4: "PRINT", 5: "TX_INFO",
-         6: "RIG", 0x10: "MORSE", 0x14: "CI_V", 0x15: "SPECTRUM", 0x16: "FREQ_REPORT"}
+from cwnet_wire import (CMD_CONNECT, CMD_DISCONNECT, CMD_MORSE, CMD_PING,
+                        CMD_PRINT, CMD_RIG, CMD_TX_INFO, NAMES, FrameParser,
+                        decode7, encode7, frame, le32)
 
 CONNECT_FIELD_LEN = 44          # username e nominativo, a lunghezza fissa
 CONNECT_PAYLOAD_LEN = 92        # 44 + 44 + 4 di permessi
@@ -63,43 +62,6 @@ FIXTURES = {
     # underrun invece di lasciare il tasto giu' (AE6).
     "key_down_only": bytes([0x50, 0x01, 0x80]),
 }
-
-
-def le32(v):
-    return (v & 0xFFFFFFFF).to_bytes(4, "little")
-
-
-def frame(code, payload=b""):
-    """Un frame CWNet: comando con la categoria nei bit 7-6, lunghezza, payload."""
-    if not payload:
-        return bytes([code & 0x3F])
-    if len(payload) <= 255:
-        return bytes([0x40 | (code & 0x3F), len(payload)]) + payload
-    return bytes([0x80 | (code & 0x3F), len(payload) & 0xFF, len(payload) >> 8]) + payload
-
-
-def decode7(b):
-    """Attesa in ms dai 7 bit bassi, come CwStreamEnc_7BitTimestampToMilliseconds."""
-    v = b & 0x7F
-    if v <= 0x1F:
-        return v
-    if v <= 0x3F:
-        return 32 + 4 * (v - 0x20)
-    return 157 + 16 * (v - 0x40)
-
-
-def encode7(ms):
-    """Inversa di decode7, stessa divisione intera troncata di
-    cwstream_encode_timestamp() (components/keyer_cwnet/src/cwnet_timestamp.c)."""
-    if ms < 0:
-        return 0
-    if ms <= 31:
-        return ms
-    if ms <= 156:
-        return 0x20 + (ms - 32) // 4
-    if ms <= 1165:
-        return 0x40 + (ms - 157) // 16
-    return 0x7F
 
 
 def build_long_sequence(reps=13, dot_ms=48):
@@ -151,35 +113,6 @@ def safe(b):
         else:
             out.append("\\x%02X" % c)
     return "".join(out)
-
-
-class FrameParser:
-    """Parser a flusso: restituisce (comando, payload) a frame completo."""
-
-    def __init__(self):
-        self.buf = bytearray()
-
-    def feed(self, data):
-        self.buf += data
-        out = []
-        while self.buf:
-            cmd = self.buf[0]
-            cat, code = cmd >> 6, cmd & 0x3F
-            if cat == 0:
-                out.append((code, b""))
-                del self.buf[:1]
-                continue
-            if cat == 3:
-                raise ValueError("categoria riservata nel comando 0x%02X" % cmd)
-            hdr = 2 if cat == 1 else 3
-            if len(self.buf) < hdr:
-                break
-            n = self.buf[1] if cat == 1 else self.buf[1] | (self.buf[2] << 8)
-            if len(self.buf) < hdr + n:
-                break
-            out.append((code, bytes(self.buf[hdr:hdr + n])))
-            del self.buf[:hdr + n]
-        return out
 
 
 class Sender:

@@ -22,10 +22,9 @@ simulare una latenza.
 """
 import argparse, asyncio, sys, time
 
-CMD_CONNECT, CMD_DISCONNECT, CMD_PING, CMD_PRINT, CMD_TX_INFO, CMD_RIG, CMD_MORSE = 1, 2, 3, 4, 5, 6, 0x10
-NAMES = {1: "CONNECT", 2: "DISCONNECT", 3: "PING", 4: "PRINT", 5: "TX_INFO", 6: "RIG", 0x10: "MORSE",
-         0x14: "CI_V", 0x15: "SPECTRUM", 0x16: "FREQ_REPORT"}
-NOBODY = b"-- nobody --\0"
+from cwnet_wire import (CMD_CONNECT, CMD_DISCONNECT, CMD_MORSE, CMD_PING,
+                        CMD_PRINT, CMD_RIG, CMD_TX_INFO, NAMES, FrameParser,
+                        decode7, encode7, frame, le32)
 
 
 def hostport(s):
@@ -37,56 +36,16 @@ def now_ms():
     return int(time.monotonic() * 1000) & 0x7FFFFFFF
 
 
-def le32(v):
-    return (v & 0xFFFFFFFF).to_bytes(4, "little")
+NOBODY = b"-- nobody --\0"
 
 
-def frame(code, payload=b""):
-    """Un frame CWNet: comando con la categoria nei bit 7-6, lunghezza, payload."""
-    if not payload:
-        return bytes([code & 0x3F])
-    if len(payload) <= 255:
-        return bytes([0x40 | (code & 0x3F), len(payload)]) + payload
-    return bytes([0x80 | (code & 0x3F), len(payload) & 0xFF, len(payload) >> 8]) + payload
+def hostport(s):
+    h, _, p = s.rpartition(":")
+    return h, int(p)
 
 
-def decode7(b):
-    """Attesa in ms dai 7 bit bassi, come CwStreamEnc_7BitTimestampToMilliseconds."""
-    v = b & 0x7F
-    if v <= 0x1F:
-        return v
-    if v <= 0x3F:
-        return 32 + 4 * (v - 0x20)
-    return 157 + 16 * (v - 0x40)
-
-
-class FrameParser:
-    """Parser a flusso: restituisce (comando, payload) man mano che i frame sono completi."""
-
-    def __init__(self):
-        self.buf = bytearray()
-
-    def feed(self, data):
-        self.buf += data
-        out = []
-        while self.buf:
-            cmd = self.buf[0]
-            cat, code = cmd >> 6, cmd & 0x3F
-            if cat == 0:
-                out.append((code, b""))
-                del self.buf[:1]
-                continue
-            if cat == 3:
-                raise ValueError(f"categoria riservata nel comando 0x{cmd:02X}")
-            hdr = 2 if cat == 1 else 3
-            if len(self.buf) < hdr:
-                break
-            n = self.buf[1] if cat == 1 else self.buf[1] | (self.buf[2] << 8)
-            if len(self.buf) < hdr + n:
-                break
-            out.append((code, bytes(self.buf[hdr:hdr + n])))
-            del self.buf[:hdr + n]
-        return out
+def now_ms():
+    return int(time.monotonic() * 1000) & 0x7FFFFFFF
 
 
 class Hub:

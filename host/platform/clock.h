@@ -23,11 +23,15 @@ extern "C" {
 uint64_t clock_now_ms(void);
 
 /**
- * The low 31 bits of a monotonic-ms reading — the width the CWNet wire
- * timestamp codec actually carries (see keyer_cwnet's non-linear ms codec
- * upstream of this layer). Callers needing a wire-ready value call this
- * instead of masking clock_now_ms() themselves: the width is a wire
- * contract, not something to reconstruct at each call site.
+ * The low 31 bits of a monotonic-ms reading — the width a CWNet ping
+ * timestamp carries on the wire.
+ *
+ * Nothing in cwnetd calls this: the daemon hands the core 64-bit
+ * milliseconds and the core masks its own timestamps, because it cannot
+ * depend on this layer (it is host-only and also builds in test_host,
+ * without host/platform). It is here for the Windows host client of #68,
+ * which will have to produce wire timestamps itself and should not
+ * re-derive the width at each call site.
  */
 uint32_t clock_wire_ms(uint64_t monotonic_ms);
 

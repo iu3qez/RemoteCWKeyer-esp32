@@ -51,6 +51,17 @@ int32_t cwnet_timer_read_synced_ms(const cwnet_timer_t *timer,
 /* PING Parsing                                                              */
 /*===========================================================================*/
 
+/**
+ * @brief Write a 31-bit wire timestamp little-endian, as the reference does
+ */
+static void put_le32(uint8_t *dst, int32_t value) {
+    uint32_t v = (uint32_t)value;
+    dst[0] = (uint8_t)(v & 0xFFu);
+    dst[1] = (uint8_t)((v >> 8) & 0xFFu);
+    dst[2] = (uint8_t)((v >> 16) & 0xFFu);
+    dst[3] = (uint8_t)((v >> 24) & 0xFFu);
+}
+
 bool cwnet_ping_parse(cwnet_ping_t *ping,
                       const uint8_t *payload,
                       size_t len) {
@@ -104,18 +115,10 @@ bool cwnet_ping_build_response(const cwnet_ping_t *request,
     /* Reserved bytes 2-3 stay zero */
 
     /* t0 = preserve from request (little-endian) */
-    uint32_t t0 = (uint32_t)request->t0_ms;
-    buffer[4] = (uint8_t)(t0 & 0xFF);
-    buffer[5] = (uint8_t)((t0 >> 8) & 0xFF);
-    buffer[6] = (uint8_t)((t0 >> 16) & 0xFF);
-    buffer[7] = (uint8_t)((t0 >> 24) & 0xFF);
+    put_le32(&buffer[4], request->t0_ms);
 
     /* t1 = our time (little-endian) */
-    uint32_t t1 = (uint32_t)our_time_ms;
-    buffer[8] = (uint8_t)(t1 & 0xFF);
-    buffer[9] = (uint8_t)((t1 >> 8) & 0xFF);
-    buffer[10] = (uint8_t)((t1 >> 16) & 0xFF);
-    buffer[11] = (uint8_t)((t1 >> 24) & 0xFF);
+    put_le32(&buffer[8], our_time_ms);
 
     /* t2 = 0 (will be filled by server) */
     /* Already zeroed by memset */
@@ -164,11 +167,7 @@ bool cwnet_ping_build_request(uint8_t id,
     /* Reserved bytes 2-3 stay zero */
 
     /* t0 (little-endian) */
-    uint32_t t0 = (uint32_t)t0_ms;
-    buffer[4] = (uint8_t)(t0 & 0xFF);
-    buffer[5] = (uint8_t)((t0 >> 8) & 0xFF);
-    buffer[6] = (uint8_t)((t0 >> 16) & 0xFF);
-    buffer[7] = (uint8_t)((t0 >> 24) & 0xFF);
+    put_le32(&buffer[4], t0_ms);
 
     /* t1, t2 slots (bytes 8-15) stay zero, already zeroed by memset */
 
@@ -199,25 +198,13 @@ bool cwnet_ping_build_response2(const cwnet_ping_t *response_1,
     /* Reserved bytes 2-3 stay zero */
 
     /* t0 = preserve from the RESPONSE_1 (little-endian) */
-    uint32_t t0 = (uint32_t)response_1->t0_ms;
-    buffer[4] = (uint8_t)(t0 & 0xFF);
-    buffer[5] = (uint8_t)((t0 >> 8) & 0xFF);
-    buffer[6] = (uint8_t)((t0 >> 16) & 0xFF);
-    buffer[7] = (uint8_t)((t0 >> 24) & 0xFF);
+    put_le32(&buffer[4], response_1->t0_ms);
 
     /* t1 = preserve from the RESPONSE_1 (little-endian) */
-    uint32_t t1 = (uint32_t)response_1->t1_ms;
-    buffer[8] = (uint8_t)(t1 & 0xFF);
-    buffer[9] = (uint8_t)((t1 >> 8) & 0xFF);
-    buffer[10] = (uint8_t)((t1 >> 16) & 0xFF);
-    buffer[11] = (uint8_t)((t1 >> 24) & 0xFF);
+    put_le32(&buffer[8], response_1->t1_ms);
 
     /* t2 = our time (little-endian) */
-    uint32_t t2 = (uint32_t)our_time_ms;
-    buffer[12] = (uint8_t)(t2 & 0xFF);
-    buffer[13] = (uint8_t)((t2 >> 8) & 0xFF);
-    buffer[14] = (uint8_t)((t2 >> 16) & 0xFF);
-    buffer[15] = (uint8_t)((t2 >> 24) & 0xFF);
+    put_le32(&buffer[12], our_time_ms);
 
     return true;
 }

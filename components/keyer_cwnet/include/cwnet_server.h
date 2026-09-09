@@ -260,7 +260,6 @@ typedef struct {
     cwnet_play_t play;              /**< The key holder's bytes become edges here */
 
     int key_holder;                 /**< 1.. , or CWNET_SERVER_NOBODY */
-    uint32_t buffer_ms;             /**< B of the over in progress */
     int64_t over_started_at_ms;     /**< When the key was taken */
     int64_t holder_last_byte_ms;    /**< Last MORSE byte from the holder */
 

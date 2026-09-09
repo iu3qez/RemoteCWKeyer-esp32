@@ -216,7 +216,6 @@ static void release_key(cwnet_server_t *srv, int64_t now_ms, cwnet_server_result
         return;
     }
     srv->key_holder = CWNET_SERVER_NOBODY;
-    srv->buffer_ms = 0u;
     announce_key(srv, now_ms, out);
 }
 
@@ -560,7 +559,6 @@ static bool take_key(cwnet_server_t *srv, int client_idx, int64_t now_ms,
     }
 
     srv->key_holder = client_idx;
-    srv->buffer_ms = buffer_ms;
     srv->over_started_at_ms = now_ms;
     srv->holder_last_byte_ms = now_ms;
     cwnet_play_start_over(&srv->play, buffer_ms);
@@ -909,7 +907,9 @@ int32_t cwnet_server_client_peak_ms(const cwnet_server_t *srv, int client_idx) {
 }
 
 uint32_t cwnet_server_buffer_ms(const cwnet_server_t *srv) {
-    return (srv == NULL) ? 0u : srv->buffer_ms;
+    /* The playback engine owns B; asking it beats keeping a second copy in
+     * step with it. */
+    return (srv == NULL) ? 0u : cwnet_play_buffer_ms(&srv->play);
 }
 
 bool cwnet_server_key_down(const cwnet_server_t *srv) {

@@ -380,6 +380,10 @@ void cwnet_play_force_release(cwnet_play_t *play, int64_t now_ms, cwnet_play_res
     }
 }
 
+uint32_t cwnet_play_buffer_ms(const cwnet_play_t *play) {
+    return (play == NULL) ? 0u : play->buffer_ms;
+}
+
 bool cwnet_play_key_down(const cwnet_play_t *play) {
     return (play != NULL) && play->key_down;
 }

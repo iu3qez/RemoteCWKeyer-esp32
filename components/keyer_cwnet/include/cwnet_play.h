@@ -219,6 +219,10 @@ void cwnet_play_tick(cwnet_play_t *play, int64_t now_ms, cwnet_play_result_t *ou
 void cwnet_play_force_release(cwnet_play_t *play, int64_t now_ms, cwnet_play_result_t *out);
 
 /** @brief Key state on the output */
+/** B of the over in progress, zero when no over is open. The engine owns
+ *  this number: it is fixed when the over is armed and does not move. */
+uint32_t cwnet_play_buffer_ms(const cwnet_play_t *play);
+
 bool cwnet_play_key_down(const cwnet_play_t *play);
 
 /** @brief PTT state on the output */
