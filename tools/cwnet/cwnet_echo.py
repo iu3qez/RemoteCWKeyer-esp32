@@ -103,7 +103,7 @@ class Hub:
         if self.holder is None or self.holder not in self.clients:
             return frame(CMD_TX_INFO, b"\xff" + NOBODY)
         c = self.clients[self.holder]
-        return frame(CMD_TX_INFO, bytes([self.holder]) + c.username.encode() + b"\0")
+        return frame(CMD_TX_INFO, bytes([self.holder]) + c.callsign.encode() + b"\0")
 
     async def announce(self):
         f = self.tx_info()
@@ -130,6 +130,7 @@ class Client:
     def __init__(self, hub, index, reader, writer, cfg):
         self.hub, self.index, self.reader, self.writer, self.cfg = hub, index, reader, writer, cfg
         self.username = "?"
+        self.callsign = "?"
         self.parser = FrameParser()
         self.ping_task = None
         self.ping_id = 0
@@ -165,7 +166,9 @@ class Client:
     async def on_frame(self, code, payload):
         if code == CMD_CONNECT and len(payload) == 92:
             self.username = payload[:44].split(b"\0", 1)[0].decode("ascii", "replace")
-            self.log(f"CONNECT user={self.username!r}, permessi 0x{self.cfg.permissions:02X}")
+            call = payload[44:88].split(b"\0", 1)[0].decode("ascii", "replace")
+            self.callsign = call if call else f"NoCall #{self.index}"
+            self.log(f"CONNECT user={self.username!r} call={self.callsign!r}, permessi 0x{self.cfg.permissions:02X}")
             await self.send(frame(CMD_CONNECT, payload[:88] + le32(self.cfg.permissions)), note="CONNECT echo")
             greeting = f"Welcome {self.username}. This is the echo server: what you key comes back.".encode() + b"\0"
             await self.send(frame(CMD_PRINT, greeting), note="PRINT")

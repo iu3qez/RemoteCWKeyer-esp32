@@ -88,6 +88,44 @@ def decode7(b):
     return 157 + 16 * (v - 0x40)
 
 
+def encode7(ms):
+    """Inversa di decode7, stessa divisione intera troncata di
+    cwstream_encode_timestamp() (components/keyer_cwnet/src/cwnet_timestamp.c)."""
+    if ms < 0:
+        return 0
+    if ms <= 31:
+        return ms
+    if ms <= 156:
+        return 0x20 + (ms - 32) // 4
+    if ms <= 1165:
+        return 0x40 + (ms - 157) // 16
+    return 0x7F
+
+
+def build_long_sequence(reps=13, dot_ms=48):
+    """~100 elementi (reps*8) per la misura del jitter (U7): la lettera 'V'
+    (...-) ripetuta, dot/spazio-intra a dot_ms, tratto/spazio-lettera a
+    3*dot_ms. Ogni evento alterna stato rispetto al precedente -- nessuna
+    coppia di key-up consecutivi, cosi' ogni byte mandato produce esattamente
+    un fronte sull'uscita virtuale e il conteggio si verifica a vista.
+
+    Ritorna il frame CWNet completo (comando + lunghezza + payload)."""
+    unit = [dot_ms, dot_ms, dot_ms, dot_ms, dot_ms, dot_ms, 3 * dot_ms, 3 * dot_ms]
+    durations = unit * reps
+    down = True
+    payload = bytearray([0x80])  # primo evento: key down, delay 0
+    for d in durations[:-1]:
+        down = not down
+        payload.append((0x80 if down else 0x00) | encode7(d))
+    return frame(CMD_MORSE, bytes(payload))
+
+
+# "long": 104 elementi, per cwnet_jitter.py (U7, Success Criteria KTD3). Non
+# nel dict letterale sopra perche' si costruisce con encode7()/frame(), non
+# ancora definite li'.
+FIXTURES["long"] = build_long_sequence()
+
+
 def now_ms():
     """Millisecondi monotoni sui 31 bit del filo."""
     return int(time.monotonic() * 1000) & 0x7FFFFFFF
@@ -244,7 +282,8 @@ def main():
     ap.add_argument("--permissions", type=lambda s: int(s, 0), default=0,
                     help="permessi richiesti nel CONNECT; il server li riscrive comunque a 7")
     ap.add_argument("--fixture", choices=sorted(FIXTURES), default="first_over",
-                    help="byte di keying da mandare (default first_over)")
+                    help="byte di keying da mandare (default first_over); "
+                         "'long' e' i 104 elementi sintetici di cwnet_jitter.py")
     ap.add_argument("--file", default=None,
                     help="frame CWNet grezzi da un file, al posto della fixture")
     ap.add_argument("--delay", type=float, default=0.2,
