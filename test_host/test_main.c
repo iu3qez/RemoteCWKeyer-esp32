@@ -183,6 +183,15 @@ void test_parser_reset_clears_state(void);
 void test_parser_init_state(void);
 void test_parser_null_safety(void);
 void test_stream_parse_long_block_partial_length(void);
+void test_parse_fragmented_oversized_long_frame_is_skipped_not_error(void);
+void test_parse_fragmented_256_exact_still_buffers_and_copies(void);
+void test_parse_long_frame_65535_single_read_no_copy(void);
+void test_frame_build_empty_payload_writes_only_command_byte(void);
+void test_frame_build_short_payload_92_bytes(void);
+void test_frame_build_long_payload_300_bytes_little_endian_length(void);
+void test_frame_build_buffer_too_small_rejects_without_writing(void);
+void test_frame_build_matches_ref_tx_info_moritz(void);
+void test_frame_build_matches_ref_tx_info_nobody(void);
 
 /* CWNet PING/Timer tests */
 void test_timer_sync_init(void);
@@ -496,6 +505,16 @@ int main(void) {
     RUN_TEST(test_stream_parse_two_disconnects);
     RUN_TEST(test_stream_parse_disconnect_then_ping);
     RUN_TEST(test_stream_parse_long_block_partial_length);
+    RUN_TEST(test_parse_fragmented_oversized_long_frame_is_skipped_not_error);
+    RUN_TEST(test_parse_fragmented_256_exact_still_buffers_and_copies);
+    RUN_TEST(test_parse_long_frame_65535_single_read_no_copy);
+    /* Frame builders */
+    RUN_TEST(test_frame_build_empty_payload_writes_only_command_byte);
+    RUN_TEST(test_frame_build_short_payload_92_bytes);
+    RUN_TEST(test_frame_build_long_payload_300_bytes_little_endian_length);
+    RUN_TEST(test_frame_build_buffer_too_small_rejects_without_writing);
+    RUN_TEST(test_frame_build_matches_ref_tx_info_moritz);
+    RUN_TEST(test_frame_build_matches_ref_tx_info_nobody);
     /* Error handling */
     RUN_TEST(test_parse_reserved_category);
     RUN_TEST(test_parse_incomplete_returns_need_more);
