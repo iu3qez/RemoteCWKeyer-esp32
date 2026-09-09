@@ -388,3 +388,182 @@ void test_ping_latency_measurement(void) {
     int32_t rtt = cwnet_ping_calc_latency(&response2);
     TEST_ASSERT_EQUAL_INT32(85, rtt);  /* 5085 - 5000 = 85ms */
 }
+
+/*===========================================================================*/
+/* PING REQUEST Building Tests (U2: the daemon as initiator)                 */
+/*===========================================================================*/
+
+void test_ping_build_request_layout(void) {
+    /* CwNet.c:2255-2259 / cwnet_echo.py ping_loop(): id and t0 in an
+     * all-zero 16-byte frame otherwise. AE4: 16 bytes expected exactly. */
+    uint8_t buffer[16];
+    memset(buffer, 0xAA, sizeof(buffer));  /* poison, so untouched bytes show */
+
+    bool ok = cwnet_ping_build_request(1, 12345, buffer, sizeof(buffer));
+    TEST_ASSERT_TRUE(ok);
+
+    static const uint8_t expected[16] = {
+        0x00,                   /* type = REQUEST */
+        0x01,                   /* id = 1 */
+        0x00, 0x00,             /* reserved */
+        0x39, 0x30, 0x00, 0x00, /* t0 = 12345 (LE) */
+        0x00, 0x00, 0x00, 0x00, /* t1 slot = 0 */
+        0x00, 0x00, 0x00, 0x00  /* t2 slot = 0 */
+    };
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, buffer, sizeof(expected));
+
+    /* And it round-trips through the parser */
+    cwnet_ping_t parsed;
+    TEST_ASSERT_TRUE(cwnet_ping_parse(&parsed, buffer, sizeof(buffer)));
+    TEST_ASSERT_EQUAL(CWNET_PING_REQUEST, parsed.type);
+    TEST_ASSERT_EQUAL(1, parsed.id);
+    TEST_ASSERT_EQUAL_INT32(12345, parsed.t0_ms);
+    TEST_ASSERT_EQUAL_INT32(0, parsed.t1_ms);
+    TEST_ASSERT_EQUAL_INT32(0, parsed.t2_ms);
+}
+
+void test_ping_build_request_buffer_too_small(void) {
+    uint8_t buffer[15];
+    TEST_ASSERT_FALSE(cwnet_ping_build_request(1, 1000, buffer, sizeof(buffer)));
+}
+
+void test_ping_build_request_null_buffer(void) {
+    TEST_ASSERT_FALSE(cwnet_ping_build_request(1, 1000, NULL, 16));
+}
+
+/*===========================================================================*/
+/* PING RESPONSE_2 Building Tests (U2: the initiator closes the loop)        */
+/*===========================================================================*/
+
+void test_ping_build_response2_from_response1(void) {
+    /* Covers AE4: RESPONSE_2 built from a RESPONSE_1 keeps t0 and t1
+     * intact and writes t2. */
+    cwnet_ping_t response_1 = {
+        .type = CWNET_PING_RESPONSE_1,
+        .id = 7,
+        .t0_ms = 1000,
+        .t1_ms = 1050,
+        .t2_ms = 0
+    };
+
+    uint8_t buffer[16];
+    bool ok = cwnet_ping_build_response2(&response_1, buffer, sizeof(buffer), 1100);
+    TEST_ASSERT_TRUE(ok);
+
+    TEST_ASSERT_EQUAL_HEX8(0x02, buffer[0]);  /* type = RESPONSE_2 */
+    TEST_ASSERT_EQUAL_HEX8(0x07, buffer[1]);  /* id preserved */
+
+    cwnet_ping_t parsed;
+    TEST_ASSERT_TRUE(cwnet_ping_parse(&parsed, buffer, sizeof(buffer)));
+    TEST_ASSERT_EQUAL(CWNET_PING_RESPONSE_2, parsed.type);
+    TEST_ASSERT_EQUAL(7, parsed.id);
+    TEST_ASSERT_EQUAL_INT32(1000, parsed.t0_ms);  /* intact */
+    TEST_ASSERT_EQUAL_INT32(1050, parsed.t1_ms);  /* intact */
+    TEST_ASSERT_EQUAL_INT32(1100, parsed.t2_ms);  /* written */
+
+    /* And the latency it now carries is the expected RTT */
+    TEST_ASSERT_EQUAL_INT32(100, cwnet_ping_calc_latency(&parsed));
+}
+
+void test_ping_build_response2_wrong_type(void) {
+    /* Can only build a RESPONSE_2 from a RESPONSE_1 */
+    cwnet_ping_t request = {.type = CWNET_PING_REQUEST, .id = 1, .t0_ms = 1000};
+    uint8_t buffer[16];
+    TEST_ASSERT_FALSE(cwnet_ping_build_response2(&request, buffer, sizeof(buffer), 1100));
+}
+
+void test_ping_build_response2_buffer_too_small(void) {
+    cwnet_ping_t response_1 = {.type = CWNET_PING_RESPONSE_1, .id = 1};
+    uint8_t buffer[15];
+    TEST_ASSERT_FALSE(cwnet_ping_build_response2(&response_1, buffer, sizeof(buffer), 1100));
+}
+
+void test_ping_build_response2_null(void) {
+    uint8_t buffer[16];
+    cwnet_ping_t response_1 = {.type = CWNET_PING_RESPONSE_1};
+
+    TEST_ASSERT_FALSE(cwnet_ping_build_response2(NULL, buffer, 16, 1100));
+    TEST_ASSERT_FALSE(cwnet_ping_build_response2(&response_1, NULL, 16, 1100));
+}
+
+/*===========================================================================*/
+/* Peak-Hold Tests (U2: shared by client and server-to-be)                   */
+/*===========================================================================*/
+
+void test_ping_peak_hold_jumps_to_new_peak(void) {
+    /* An unheld peak (-1 sentinel) takes the first sample outright, and a
+     * higher sample afterwards jumps immediately, matching
+     * CwNet.c:1442-1444. */
+    int32_t peak = -1;
+
+    TEST_ASSERT_TRUE(cwnet_ping_peak_hold_update(&peak, 100));
+    TEST_ASSERT_EQUAL_INT32(100, peak);
+
+    TEST_ASSERT_TRUE(cwnet_ping_peak_hold_update(&peak, 200));
+    TEST_ASSERT_EQUAL_INT32(200, peak);
+}
+
+void test_ping_peak_hold_decays_by_tenth_of_gap(void) {
+    /* Plan's scenario: 100 then 200 rises to 200; 100 then drops to 190;
+     * 185 then stays at 190 (gap 5 ms, integer division rounds to 0). */
+    int32_t peak = -1;
+
+    TEST_ASSERT_TRUE(cwnet_ping_peak_hold_update(&peak, 100));
+    TEST_ASSERT_EQUAL_INT32(100, peak);
+
+    TEST_ASSERT_TRUE(cwnet_ping_peak_hold_update(&peak, 200));
+    TEST_ASSERT_EQUAL_INT32(200, peak);
+
+    TEST_ASSERT_TRUE(cwnet_ping_peak_hold_update(&peak, 100));
+    TEST_ASSERT_EQUAL_INT32(190, peak);  /* 200 - (200-100)/10 = 190 */
+
+    TEST_ASSERT_TRUE(cwnet_ping_peak_hold_update(&peak, 185));
+    TEST_ASSERT_EQUAL_INT32(190, peak);  /* gap 5, 5/10 = 0: unchanged */
+}
+
+void test_ping_peak_hold_null(void) {
+    TEST_ASSERT_FALSE(cwnet_ping_peak_hold_update(NULL, 100));
+}
+
+void test_ping_peak_hold_gate_rejects_over_2000ms(void) {
+    /* R4 / CwNet.c:1437: an RTT of 2001 ms is discarded, peak untouched. */
+    int32_t peak = 500;
+    TEST_ASSERT_FALSE(cwnet_ping_peak_hold_update(&peak, 2001));
+    TEST_ASSERT_EQUAL_INT32(500, peak);
+}
+
+void test_ping_peak_hold_gate_boundary(void) {
+    /* CwNet.c:1437 gates on i32 < 2000000 us, strictly: 2000 ms itself is
+     * outside the window, 1999 ms is inside. */
+    int32_t peak = -1;
+    TEST_ASSERT_FALSE(cwnet_ping_peak_hold_update(&peak, 2000));
+    TEST_ASSERT_EQUAL_INT32(-1, peak);  /* still unheld */
+
+    TEST_ASSERT_TRUE(cwnet_ping_peak_hold_update(&peak, 1999));
+    TEST_ASSERT_EQUAL_INT32(1999, peak);
+}
+
+void test_ping_peak_hold_gate_rejects_negative_rtt_from_wrap(void) {
+    /* R4: a negative RTT from the 31-bit wrap between t0 and t2 (same
+     * scenario as test_ping_calc_latency_wrap) is discarded, peak
+     * untouched -- neither latency nor peak-hold see it. */
+    cwnet_ping_t response = {
+        .type = CWNET_PING_RESPONSE_2,
+        .t0_ms = 2147483600,  /* Near INT32_MAX */
+        .t1_ms = 0,
+        .t2_ms = 100          /* Wrapped around */
+    };
+    int32_t latency = cwnet_ping_calc_latency(&response);
+    TEST_ASSERT_TRUE(latency < 0);
+
+    int32_t peak = 42;
+    TEST_ASSERT_FALSE(cwnet_ping_peak_hold_update(&peak, latency));
+    TEST_ASSERT_EQUAL_INT32(42, peak);
+}
+
+void test_ping_peak_hold_accepts_zero(void) {
+    /* Lower bound is inclusive: CwNet.c:1437 accepts i32 >= 0. */
+    int32_t peak = -1;
+    TEST_ASSERT_TRUE(cwnet_ping_peak_hold_update(&peak, 0));
+    TEST_ASSERT_EQUAL_INT32(0, peak);
+}

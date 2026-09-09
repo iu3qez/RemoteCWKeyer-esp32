@@ -137,3 +137,67 @@ bool cwnet_ping_build_response(const cwnet_ping_t *request,
  * @return int32_t RTT in ms (t2 - t0), or -1 on error
  */
 int32_t cwnet_ping_calc_latency(const cwnet_ping_t *response);
+
+/**
+ * @brief Build PING REQUEST, as the initiator
+ *
+ * CwNet.c:2255-2259: the initiator (the daemon, toward each of its clients,
+ * every 2 s) builds:
+ *   - type = REQUEST
+ *   - id = caller-supplied (the reference uses the client's own index)
+ *   - t0 = t0_ms
+ *   - t1, t2 slots = 0
+ *
+ * @param id Sequence/client-index id for this exchange
+ * @param t0_ms Our clock, 31-bit range, for the requester timestamp
+ * @param buffer Output buffer (must be >= 16 bytes)
+ * @param buf_len Buffer size
+ * @return true if built successfully
+ */
+bool cwnet_ping_build_request(uint8_t id,
+                               int32_t t0_ms,
+                               uint8_t *buffer,
+                               size_t buf_len);
+
+/**
+ * @brief Build PING RESPONSE_2 from a received RESPONSE_1
+ *
+ * CwNet.c:1428-1432, and cwnet_echo.py's PING response 2: the initiator
+ * closes the loop with:
+ *   - type = RESPONSE_2
+ *   - id, t0, t1 = copied from the RESPONSE_1
+ *   - t2 = our_time_ms
+ *
+ * @param response_1 Input RESPONSE_1 ping (wrong type or NULL returns false)
+ * @param buffer Output buffer (must be >= 16 bytes)
+ * @param buf_len Buffer size
+ * @param our_time_ms Our timestamp for t2
+ * @return true if built successfully
+ */
+bool cwnet_ping_build_response2(const cwnet_ping_t *response_1,
+                                 uint8_t *buffer,
+                                 size_t buf_len,
+                                 int32_t our_time_ms);
+
+/**
+ * @brief Gate an RTT sample and fold it into a peak-hold value
+ *
+ * CwNet.c:1437-1447: an RTT outside 0..2000 ms is "unrealistic" and is
+ * discarded before it reaches either the instant latency or the peak-hold
+ * (the reference gates on a locally-measured stopwatch in microseconds;
+ * here the same 0..2000 ms window gates the wire-computed latency itself —
+ * a behaviour change from today's box, which only rejected negative values.
+ * Declared in the PR per KTD2).
+ *
+ * When the sample passes the gate: a peak-hold value that is still
+ * unheld (< 0, the -1 sentinel) or a sample at or above the current peak
+ * jumps to the new value immediately; a lower sample decays by a tenth of
+ * the gap (integer division, so a gap under 10 ms no longer descends).
+ *
+ * @param peak_ms Peak-hold value to update in place (NULL is a no-op,
+ *                returns false)
+ * @param latency_ms Candidate RTT in ms (t2 - t0)
+ * @return true if latency_ms passed the gate and *peak_ms was updated;
+ *         false if it was discarded (peak_ms left untouched)
+ */
+bool cwnet_ping_peak_hold_update(int32_t *peak_ms, int32_t latency_ms);

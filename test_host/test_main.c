@@ -217,6 +217,20 @@ void test_ping_calc_latency_wrong_type(void);
 void test_ping_calc_latency_null(void);
 void test_ping_full_sequence(void);
 void test_ping_latency_measurement(void);
+void test_ping_build_request_layout(void);
+void test_ping_build_request_buffer_too_small(void);
+void test_ping_build_request_null_buffer(void);
+void test_ping_build_response2_from_response1(void);
+void test_ping_build_response2_wrong_type(void);
+void test_ping_build_response2_buffer_too_small(void);
+void test_ping_build_response2_null(void);
+void test_ping_peak_hold_jumps_to_new_peak(void);
+void test_ping_peak_hold_decays_by_tenth_of_gap(void);
+void test_ping_peak_hold_null(void);
+void test_ping_peak_hold_gate_rejects_over_2000ms(void);
+void test_ping_peak_hold_gate_boundary(void);
+void test_ping_peak_hold_gate_rejects_negative_rtt_from_wrap(void);
+void test_ping_peak_hold_accepts_zero(void);
 
 /* CWNet Client tests */
 void test_client_init_basic(void);
@@ -574,6 +588,22 @@ int main(void) {
     /* Integration */
     RUN_TEST(test_ping_full_sequence);
     RUN_TEST(test_ping_latency_measurement);
+    /* Initiator side: the daemon builds these (U2) */
+    RUN_TEST(test_ping_build_request_layout);
+    RUN_TEST(test_ping_build_request_buffer_too_small);
+    RUN_TEST(test_ping_build_request_null_buffer);
+    RUN_TEST(test_ping_build_response2_from_response1);
+    RUN_TEST(test_ping_build_response2_wrong_type);
+    RUN_TEST(test_ping_build_response2_buffer_too_small);
+    RUN_TEST(test_ping_build_response2_null);
+    /* Peak-hold, shared by client and server, behind the 0..2000 ms gate */
+    RUN_TEST(test_ping_peak_hold_jumps_to_new_peak);
+    RUN_TEST(test_ping_peak_hold_decays_by_tenth_of_gap);
+    RUN_TEST(test_ping_peak_hold_null);
+    RUN_TEST(test_ping_peak_hold_gate_rejects_over_2000ms);
+    RUN_TEST(test_ping_peak_hold_gate_boundary);
+    RUN_TEST(test_ping_peak_hold_gate_rejects_negative_rtt_from_wrap);
+    RUN_TEST(test_ping_peak_hold_accepts_zero);
 
     /* CWNet Client tests */
     printf("\n=== CWNet Client Tests ===\n");

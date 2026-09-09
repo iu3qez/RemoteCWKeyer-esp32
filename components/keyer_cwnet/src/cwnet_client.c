@@ -260,20 +260,13 @@ static void handle_ping(cwnet_client_t *client,
             break;
 
         case CWNET_PING_RESPONSE_2:
-            /* Update latency measurement */
+            /* Update latency measurement. cwnet_ping_peak_hold_update()
+             * gates the sample to 0..2000 ms (CwNet.c:1437) before either
+             * the instant latency or the peak-hold see it. */
             {
                 int32_t latency = cwnet_ping_calc_latency(&ping);
-                if (latency >= 0) {
+                if (cwnet_ping_peak_hold_update(&client->latency_peak_ms, latency)) {
                     client->latency_ms = latency;
-                    /* CwNet.c:1442-1447: jump to a new peak, otherwise drop
-                     * by a tenth of the gap. Integer division: a gap under
-                     * 10 ms no longer descends, and that is what the
-                     * reference shows. */
-                    if (client->latency_peak_ms < 0 || latency >= client->latency_peak_ms) {
-                        client->latency_peak_ms = latency;
-                    } else {
-                        client->latency_peak_ms -= (client->latency_peak_ms - latency) / 10;
-                    }
                     RT_DEBUG(&g_bg_log_stream, now_us, "RTT=%" PRId32 "ms pk=%" PRId32 "ms",
                              latency, client->latency_peak_ms);
                 }

@@ -140,3 +140,114 @@ int32_t cwnet_ping_calc_latency(const cwnet_ping_t *response) {
     /* RTT = t2 - t0 */
     return response->t2_ms - response->t0_ms;
 }
+
+/*===========================================================================*/
+/* PING Building: initiator side                                            */
+/*===========================================================================*/
+
+bool cwnet_ping_build_request(uint8_t id,
+                               int32_t t0_ms,
+                               uint8_t *buffer,
+                               size_t buf_len) {
+    if (buffer == NULL || buf_len < CWNET_PING_PAYLOAD_SIZE) {
+        return false;
+    }
+
+    memset(buffer, 0, CWNET_PING_PAYLOAD_SIZE);
+
+    /* Type = REQUEST */
+    buffer[0] = (uint8_t)CWNET_PING_REQUEST;
+
+    /* id (CwNet.c:2256: the client's index) */
+    buffer[1] = id;
+
+    /* Reserved bytes 2-3 stay zero */
+
+    /* t0 (little-endian) */
+    uint32_t t0 = (uint32_t)t0_ms;
+    buffer[4] = (uint8_t)(t0 & 0xFF);
+    buffer[5] = (uint8_t)((t0 >> 8) & 0xFF);
+    buffer[6] = (uint8_t)((t0 >> 16) & 0xFF);
+    buffer[7] = (uint8_t)((t0 >> 24) & 0xFF);
+
+    /* t1, t2 slots (bytes 8-15) stay zero, already zeroed by memset */
+
+    return true;
+}
+
+bool cwnet_ping_build_response2(const cwnet_ping_t *response_1,
+                                 uint8_t *buffer,
+                                 size_t buf_len,
+                                 int32_t our_time_ms) {
+    if (response_1 == NULL || buffer == NULL || buf_len < CWNET_PING_PAYLOAD_SIZE) {
+        return false;
+    }
+
+    /* Can only build a RESPONSE_2 from a RESPONSE_1 */
+    if (response_1->type != CWNET_PING_RESPONSE_1) {
+        return false;
+    }
+
+    memset(buffer, 0, CWNET_PING_PAYLOAD_SIZE);
+
+    /* Type = RESPONSE_2 */
+    buffer[0] = (uint8_t)CWNET_PING_RESPONSE_2;
+
+    /* Preserve ID */
+    buffer[1] = response_1->id;
+
+    /* Reserved bytes 2-3 stay zero */
+
+    /* t0 = preserve from the RESPONSE_1 (little-endian) */
+    uint32_t t0 = (uint32_t)response_1->t0_ms;
+    buffer[4] = (uint8_t)(t0 & 0xFF);
+    buffer[5] = (uint8_t)((t0 >> 8) & 0xFF);
+    buffer[6] = (uint8_t)((t0 >> 16) & 0xFF);
+    buffer[7] = (uint8_t)((t0 >> 24) & 0xFF);
+
+    /* t1 = preserve from the RESPONSE_1 (little-endian) */
+    uint32_t t1 = (uint32_t)response_1->t1_ms;
+    buffer[8] = (uint8_t)(t1 & 0xFF);
+    buffer[9] = (uint8_t)((t1 >> 8) & 0xFF);
+    buffer[10] = (uint8_t)((t1 >> 16) & 0xFF);
+    buffer[11] = (uint8_t)((t1 >> 24) & 0xFF);
+
+    /* t2 = our time (little-endian) */
+    uint32_t t2 = (uint32_t)our_time_ms;
+    buffer[12] = (uint8_t)(t2 & 0xFF);
+    buffer[13] = (uint8_t)((t2 >> 8) & 0xFF);
+    buffer[14] = (uint8_t)((t2 >> 16) & 0xFF);
+    buffer[15] = (uint8_t)((t2 >> 24) & 0xFF);
+
+    return true;
+}
+
+/*===========================================================================*/
+/* Peak-hold                                                                 */
+/*===========================================================================*/
+
+/* CwNet.c:1437: "realistic" window, in microseconds there (0 <= i32 <
+ * 2000000); here it gates the wire-computed millisecond latency directly. */
+#define CWNET_PING_LATENCY_GATE_MIN_MS 0
+#define CWNET_PING_LATENCY_GATE_MAX_MS 2000
+
+bool cwnet_ping_peak_hold_update(int32_t *peak_ms, int32_t latency_ms) {
+    if (peak_ms == NULL) {
+        return false;
+    }
+
+    if (latency_ms < CWNET_PING_LATENCY_GATE_MIN_MS ||
+        latency_ms >= CWNET_PING_LATENCY_GATE_MAX_MS) {
+        return false;
+    }
+
+    /* CwNet.c:1442-1447: jump to a new peak, otherwise drop by a tenth of
+     * the gap. Integer division: a gap under 10 ms no longer descends. */
+    if (*peak_ms < 0 || latency_ms >= *peak_ms) {
+        *peak_ms = latency_ms;
+    } else {
+        *peak_ms -= (*peak_ms - latency_ms) / 10;
+    }
+
+    return true;
+}
