@@ -673,6 +673,7 @@ void cwnet_server_cfg_defaults(cwnet_server_cfg_t *cfg) {
     cfg->buffer_ceiling_ms = CWNET_SERVER_DEFAULT_BUFFER_CEILING_MS;
     cfg->play.ptt_lead_ms = 0u;
     cfg->play.ptt_tail_ms = CWNET_PLAY_DEFAULT_PTT_TAIL_MS;
+    cfg->play.key_grace_ms = CWNET_PLAY_DEFAULT_KEY_GRACE_MS;
     cfg->send_cb = NULL;
     cfg->user_data = NULL;
 }

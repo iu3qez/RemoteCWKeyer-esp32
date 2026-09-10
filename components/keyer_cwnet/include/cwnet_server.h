@@ -112,7 +112,7 @@
 #define CWNET_SERVER_DEFAULT_HANDSHAKE_MS 5000u
 #define CWNET_SERVER_DEFAULT_IDLE_MS 5000u
 #define CWNET_SERVER_DEFAULT_OVER_MAX_MS 120000u
-#define CWNET_SERVER_DEFAULT_BUFFER_FLOOR_MS 50u
+#define CWNET_SERVER_DEFAULT_BUFFER_FLOOR_MS 100u
 #define CWNET_SERVER_DEFAULT_BUFFER_CEILING_MS 1000u  /**< The eligibility ceiling */
 
 /** Unanswered PING requests in a row that close a client (R16) */
@@ -233,7 +233,7 @@ typedef struct {
     uint32_t handshake_timeout_ms; /**< Accept to CONNECT (default 5000) */
     uint32_t idle_timeout_ms;      /**< Silence from the holder mid-over (default 5000) */
     uint32_t over_max_ms;          /**< Ceiling on one over (default 120000) */
-    uint32_t buffer_floor_ms;      /**< Floor under B (default 50) */
+    uint32_t buffer_floor_ms;      /**< Floor under B (default 100) */
     uint32_t buffer_ceiling_ms;    /**< Link eligibility ceiling (default 1000) */
     cwnet_play_cfg_t play;         /**< PTT lead and tail for the playback engine */
 

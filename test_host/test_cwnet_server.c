@@ -702,18 +702,21 @@ void test_server_plays_the_first_over_of_the_capture_and_announces_both_ends(voi
 
     TEST_ASSERT_EQUAL_size_t(2u, event_count(CWNET_SERVER_EV_KEY_DOWN));
     TEST_ASSERT_EQUAL_size_t(2u, event_count(CWNET_SERVER_EV_KEY_UP));
-    TEST_ASSERT_EQUAL_INT64(2050, event_nth(CWNET_SERVER_EV_KEY_DOWN, 0)->at_ms);
-    TEST_ASSERT_EQUAL_INT64(2098, event_nth(CWNET_SERVER_EV_KEY_UP, 0)->at_ms);
-    TEST_ASSERT_EQUAL_INT64(2146, event_nth(CWNET_SERVER_EV_KEY_DOWN, 1)->at_ms);
-    TEST_ASSERT_EQUAL_INT64(2290, event_nth(CWNET_SERVER_EV_KEY_UP, 1)->at_ms);
+    /* Written against B, not against a number: the reference fixes the
+     * intervals (+48, +48, +144), the configured floor fixes where they start. */
+    const int64_t start = 2000 + (int64_t)CWNET_SERVER_DEFAULT_BUFFER_FLOOR_MS;
+    TEST_ASSERT_EQUAL_INT64(start, event_nth(CWNET_SERVER_EV_KEY_DOWN, 0)->at_ms);
+    TEST_ASSERT_EQUAL_INT64(start + 48, event_nth(CWNET_SERVER_EV_KEY_UP, 0)->at_ms);
+    TEST_ASSERT_EQUAL_INT64(start + 96, event_nth(CWNET_SERVER_EV_KEY_DOWN, 1)->at_ms);
+    TEST_ASSERT_EQUAL_INT64(start + 240, event_nth(CWNET_SERVER_EV_KEY_UP, 1)->at_ms);
 
     /* The PTT rises with the first key-down and drops a tail after the last
      * key-up (R9), and the key comes back when it does (R6) */
     TEST_ASSERT_NOT_NULL(event_first(CWNET_SERVER_EV_PTT_ON));
     TEST_ASSERT_NOT_NULL(event_first(CWNET_SERVER_EV_PTT_OFF));
     TEST_ASSERT_NOT_NULL(event_first(CWNET_SERVER_EV_KEY_HOLDER));
-    TEST_ASSERT_EQUAL_INT64(2050, event_first(CWNET_SERVER_EV_PTT_ON)->at_ms);
-    TEST_ASSERT_EQUAL_INT64(2290 + CWNET_PLAY_DEFAULT_PTT_TAIL_MS,
+    TEST_ASSERT_EQUAL_INT64(start, event_first(CWNET_SERVER_EV_PTT_ON)->at_ms);
+    TEST_ASSERT_EQUAL_INT64(start + 240 + (int64_t)CWNET_PLAY_DEFAULT_PTT_TAIL_MS,
                             event_first(CWNET_SERVER_EV_PTT_OFF)->at_ms);
     TEST_ASSERT_EQUAL_INT(CWNET_SERVER_NOBODY, cwnet_server_key_holder(&srv));
     TEST_ASSERT_EQUAL_INT(CWNET_SERVER_NOBODY,
@@ -1172,13 +1175,13 @@ void test_server_next_deadline_is_the_nearest_of_the_over_and_the_pings(void) {
     TEST_ASSERT_EQUAL_INT64(11000, at);   /* the nearer of the two PINGs */
 
     /* The key is taken at 6000. With no measurement B is the floor, so the
-     * first edge is due at 6050: nearer than either PING and nearer than the
+     * first edge is due a floor after it: nearer than either PING and than the
      * idle net at 10000 and the over ceiling at 126000. */
     cwnet_server_on_data(&srv, first, morse_key_down_held, sizeof(morse_key_down_held),
                          6000, &res);
     TEST_ASSERT_EQUAL_INT(first, cwnet_server_key_holder(&srv));
     TEST_ASSERT_TRUE(cwnet_server_next_deadline(&srv, &at));
-    TEST_ASSERT_EQUAL_INT64(6050, at);
+    TEST_ASSERT_EQUAL_INT64(6000 + (int64_t)CWNET_SERVER_DEFAULT_BUFFER_FLOOR_MS, at);
 
     /* Played out — the two bytes hold the key down and then lift it, and
      * with an empty FIFO under them that is an underrun (R8), not the end of
