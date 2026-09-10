@@ -3,12 +3,15 @@
  * @brief Where the played keying actually goes: key and PTT behind one seam.
  *
  * R11: "Tasto e PTT passano da un'interfaccia di uscita con un backend
- * virtuale che scrive ogni fronte come riga con l'istante in ms."
+ * virtuale che scrive ogni fronte come riga con l'istante in ms su un
+ * descrittore proprio (file o stderr) che non scarta mai, separato dalle
+ * righe di stato."
  *
  * KTD9 puts the physical transport behind its own Decision, which is not
  * open yet, so the only backend here is the virtual one: every edge becomes
- * a line on stdout. A serial-line or GPIO backend later fills in the same
- * two function pointers and nothing above this file changes.
+ * a line on the descriptor the daemon chose with --edges. A serial-line or
+ * GPIO backend later fills in the same two function pointers and nothing
+ * above this file changes.
  *
  * The instant carried by an edge is the instant it was *scheduled* for, not
  * the instant the daemon noticed it: cwnet_play computes deadlines from the
@@ -20,8 +23,8 @@
  *   - the rest state is key up and PTT off, and key_output_release() must
  *     reach it from any state;
  *   - an edge that does not change the state is not an edge: it is dropped
- *     here, so a backend never sees a redundant write and the lines on
- *     stdout are a clean list of transitions.
+ *     here, so a backend never sees a redundant write and the trace is a
+ *     clean list of transitions.
  */
 #ifndef HOST_CWNETD_KEY_OUTPUT_H
 #define HOST_CWNETD_KEY_OUTPUT_H
@@ -34,10 +37,14 @@ extern "C" {
 #endif
 
 /**
- * A backend's own text output. The daemon owns stdout (non-blocking, lines
- * dropped rather than blocking the timing loop, KTD7), so a backend never
- * writes to it directly: it hands a finished line to this and the daemon
- * decides whether it fits. The line carries no newline.
+ * A backend's own text output. The daemon owns the descriptor, so a backend
+ * never writes to one directly: it hands a finished line to this. The line
+ * carries no newline.
+ *
+ * Unlike the status lines, this sink does not drop: the jitter measurement
+ * reads these lines, and a measurement that silently loses the edges it
+ * measures is worse than no measurement (R11, KTD9). What that costs, and
+ * what the daemon does about it, is main.c's edge_write().
  */
 typedef void (*key_output_line_fn)(void *ctx, const char *line);
 

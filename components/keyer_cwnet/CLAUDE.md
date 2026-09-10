@@ -22,6 +22,14 @@ Key abstractions:
   parameter, events come back in a result struct. They are deliberately absent
   from this component's SRCS and are compiled by host/CMakeLists.txt and by
   test_host.
+- cwnet_rxfifo_t: the received-MORSE byte ring, header-only and shared by the
+  client and the playback engine — one copy of the reference's keying FIFO, of
+  the buffered-milliseconds sum and of the end-of-over mark. Header-only on
+  purpose: cwnet_play.c is host-only, so a shared object file would need a
+  third source in this component just to hold a ring. The bytes are in the
+  ring; each end keeps its own arrival timestamps in a parallel array indexed
+  by the slot push/pop hand back, because the two ends have different clocks
+  (the box's wrapping 31-bit counter, the daemon's 64-bit monotonic one).
 - cwnet_ping_t / cwnet_timer_t: PING-based clock sync and RTT/latency.
 - cwstream_encode/decode_timestamp: 7-bit non-linear ms timestamp codec.
 - cwnet_socket_*: the concrete ESP-IDF layer (BSD sockets + lwIP DNS) that owns

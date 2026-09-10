@@ -112,7 +112,7 @@
 #define CWNET_SERVER_DEFAULT_HANDSHAKE_MS 5000u
 #define CWNET_SERVER_DEFAULT_IDLE_MS 5000u
 #define CWNET_SERVER_DEFAULT_OVER_MAX_MS 120000u
-#define CWNET_SERVER_DEFAULT_BUFFER_FLOOR_MS 50u
+#define CWNET_SERVER_DEFAULT_BUFFER_FLOOR_MS 100u
 #define CWNET_SERVER_DEFAULT_BUFFER_CEILING_MS 1000u  /**< The eligibility ceiling */
 
 /** Unanswered PING requests in a row that close a client (R16) */
@@ -152,7 +152,17 @@ typedef enum {
 
 /** What went wrong badly enough to write a line about */
 typedef enum {
-    CWNET_SERVER_FAULT_UNDERRUN = 0,    /**< The engine ran out of bytes mid-element */
+    /**
+     * The grace ran out with the key down: the key was forced up.
+     *
+     * Not an empty FIFO. An empty FIFO at a deadline is the normal state of
+     * a live over (R8): every byte arrives about B ms before its own
+     * deadline, so any element longer than B empties the queue and the
+     * applied state simply holds. What this fault says is that the holding
+     * lasted longer than cfg.play.key_grace_ms with a carrier up, and the
+     * engine lifted the key rather than leave it there.
+     */
+    CWNET_SERVER_FAULT_GRACE_EXPIRED = 0,
     CWNET_SERVER_FAULT_HOLDER_GONE,     /**< The key holder's TCP closed mid-over */
     CWNET_SERVER_FAULT_IDLE,            /**< Nothing from the holder for the idle timeout */
     CWNET_SERVER_FAULT_OVER_TOO_LONG,   /**< The over outlasted its ceiling */
@@ -177,6 +187,15 @@ typedef enum {
     CWNET_SERVER_EV_KEY_UP,           /**< Key output: carrier off */
     CWNET_SERVER_EV_PTT_ON,           /**< PTT output: on */
     CWNET_SERVER_EV_PTT_OFF,          /**< PTT output: off */
+    /**
+     * A byte arrived after its own deadline: the element on the air came
+     * out longer by the delay (R8). The link is slipping, and this is how
+     * the operator learns it before the grace expires and it becomes a
+     * fault. value = bytes applied late since start, peak_ms = the
+     * milliseconds they added, in total (cwnet_play_late_bytes(),
+     * cwnet_play_late_ms()).
+     */
+    CWNET_SERVER_EV_LATE_BYTE,
     CWNET_SERVER_EV_FAULT,            /**< value = cwnet_server_fault_t */
 } cwnet_server_event_type_t;
 
@@ -190,7 +209,7 @@ typedef struct {
     cwnet_server_event_type_t type;
     int client_idx;   /**< 1..max_clients, CWNET_SERVER_NOBODY, or 0 when it fits no client */
     int32_t value;    /**< Per type: reason, RTT, peak, B */
-    int32_t peak_ms;  /**< CWNET_SERVER_EV_LATENCY only: the peak-hold after the sample */
+    int32_t peak_ms;  /**< LATENCY: the peak-hold after the sample. LATE_BYTE: total late ms */
     int64_t at_ms;
 } cwnet_server_event_t;
 
@@ -233,7 +252,7 @@ typedef struct {
     uint32_t handshake_timeout_ms; /**< Accept to CONNECT (default 5000) */
     uint32_t idle_timeout_ms;      /**< Silence from the holder mid-over (default 5000) */
     uint32_t over_max_ms;          /**< Ceiling on one over (default 120000) */
-    uint32_t buffer_floor_ms;      /**< Floor under B (default 50) */
+    uint32_t buffer_floor_ms;      /**< Floor under B (default 100) */
     uint32_t buffer_ceiling_ms;    /**< Link eligibility ceiling (default 1000) */
     cwnet_play_cfg_t play;         /**< PTT lead and tail for the playback engine */
 

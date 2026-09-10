@@ -313,11 +313,15 @@ void test_feed_long_key_down_is_sent_in_full(void);
 void test_play_first_over_of_the_capture_plays_at_the_encoded_instants(void);
 void test_play_a_late_tick_does_not_move_the_edges(void);
 void test_play_a_late_byte_does_not_move_the_deadline_it_follows(void);
+void test_play_an_over_delivered_as_it_is_keyed_plays_like_a_buffered_one(void);
+void test_play_an_element_longer_than_the_buffer_is_not_an_underrun(void);
 void test_play_two_event_frames_play_at_their_encoded_distances(void);
 void test_play_a_split_wait_makes_one_edge_after_the_sum(void);
 void test_play_a_key_down_longer_than_one_byte_is_not_an_end_of_over(void);
-void test_play_underrun_lifts_the_key_at_once_and_reports_it(void);
-void test_play_after_an_underrun_the_next_byte_restarts_with_the_same_buffer(void);
+void test_play_the_grace_lifts_the_key_when_nothing_arrives_under_it(void);
+void test_play_the_grace_is_the_one_the_caller_configured(void);
+void test_play_a_byte_past_its_deadline_makes_its_edge_on_arrival(void);
+void test_play_after_the_grace_fault_the_next_byte_restarts_with_the_same_buffer(void);
 void test_play_end_of_over_does_not_wait_out_the_marker(void);
 void test_play_key_ups_split_by_a_key_down_are_not_an_end_of_over(void);
 void test_play_ptt_lead_raises_the_ptt_before_the_first_key_down(void);
@@ -328,6 +332,12 @@ void test_play_force_release_when_idle_finishes_the_over_at_once(void);
 void test_play_start_over_fixes_the_buffer_and_clears_the_queue(void);
 void test_play_survives_null_and_reports_nothing(void);
 void test_play_never_comes_to_rest_with_the_key_down(void);
+
+/* The receive FIFO both ends share (cwnet_rxfifo.h) */
+void test_rxfifo_fills_wraps_and_keeps_order(void);
+void test_rxfifo_peek_does_not_consume(void);
+void test_rxfifo_buffered_ms_sums_across_the_wrap(void);
+void test_rxfifo_end_of_over_seen_across_the_wrap(void);
 
 /* CWNet server core (station side: CONNECT, key, PING, rig strings) */
 void test_server_connect_echo_matches_the_capture(void);
@@ -346,6 +356,7 @@ void test_server_any_other_rig_string_gets_a_negative_code(void);
 void test_server_a_rig_string_without_a_nul_closes_the_client(void);
 void test_server_ignores_ci_v_and_spectrum_and_closes_on_a_parse_error(void);
 void test_server_plays_the_first_over_of_the_capture_and_announces_both_ends(void);
+void test_server_a_byte_past_its_deadline_is_reported_with_the_running_totals(void);
 void test_server_morse_from_a_client_without_the_key_is_dropped_in_silence(void);
 void test_server_announces_the_holder_to_every_client(void);
 void test_server_a_link_over_the_ceiling_does_not_get_the_key(void);
@@ -736,11 +747,15 @@ int main(void) {
     RUN_TEST(test_play_first_over_of_the_capture_plays_at_the_encoded_instants);
     RUN_TEST(test_play_a_late_tick_does_not_move_the_edges);
     RUN_TEST(test_play_a_late_byte_does_not_move_the_deadline_it_follows);
+    RUN_TEST(test_play_an_over_delivered_as_it_is_keyed_plays_like_a_buffered_one);
+    RUN_TEST(test_play_an_element_longer_than_the_buffer_is_not_an_underrun);
     RUN_TEST(test_play_two_event_frames_play_at_their_encoded_distances);
     RUN_TEST(test_play_a_split_wait_makes_one_edge_after_the_sum);
     RUN_TEST(test_play_a_key_down_longer_than_one_byte_is_not_an_end_of_over);
-    RUN_TEST(test_play_underrun_lifts_the_key_at_once_and_reports_it);
-    RUN_TEST(test_play_after_an_underrun_the_next_byte_restarts_with_the_same_buffer);
+    RUN_TEST(test_play_the_grace_lifts_the_key_when_nothing_arrives_under_it);
+    RUN_TEST(test_play_the_grace_is_the_one_the_caller_configured);
+    RUN_TEST(test_play_a_byte_past_its_deadline_makes_its_edge_on_arrival);
+    RUN_TEST(test_play_after_the_grace_fault_the_next_byte_restarts_with_the_same_buffer);
     RUN_TEST(test_play_end_of_over_does_not_wait_out_the_marker);
     RUN_TEST(test_play_key_ups_split_by_a_key_down_are_not_an_end_of_over);
     RUN_TEST(test_play_ptt_lead_raises_the_ptt_before_the_first_key_down);
@@ -751,6 +766,10 @@ int main(void) {
     RUN_TEST(test_play_start_over_fixes_the_buffer_and_clears_the_queue);
     RUN_TEST(test_play_survives_null_and_reports_nothing);
     RUN_TEST(test_play_never_comes_to_rest_with_the_key_down);
+    RUN_TEST(test_rxfifo_fills_wraps_and_keeps_order);
+    RUN_TEST(test_rxfifo_peek_does_not_consume);
+    RUN_TEST(test_rxfifo_buffered_ms_sums_across_the_wrap);
+    RUN_TEST(test_rxfifo_end_of_over_seen_across_the_wrap);
 
     /* CWNet server core: the station takes a client in and arbitrates the key */
     printf("\n=== CWNet Server Tests ===\n");
@@ -770,6 +789,7 @@ int main(void) {
     RUN_TEST(test_server_a_rig_string_without_a_nul_closes_the_client);
     RUN_TEST(test_server_ignores_ci_v_and_spectrum_and_closes_on_a_parse_error);
     RUN_TEST(test_server_plays_the_first_over_of_the_capture_and_announces_both_ends);
+    RUN_TEST(test_server_a_byte_past_its_deadline_is_reported_with_the_running_totals);
     RUN_TEST(test_server_morse_from_a_client_without_the_key_is_dropped_in_silence);
     RUN_TEST(test_server_announces_the_holder_to_every_client);
     RUN_TEST(test_server_a_link_over_the_ceiling_does_not_get_the_key);

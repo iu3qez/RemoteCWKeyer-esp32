@@ -45,15 +45,34 @@
  * over is finished once the PTT has dropped. What counts is the state each
  * byte leaves on the key, not the bit it carries: a chunk of a long
  * key-down carries the up bit and is no part of the mark. Whatever the
- * bytes say, the key never stays down across that mark.
+ * bytes say, the key never stays down across that mark. A marker that
+ * arrives while the engine is holding a state is reported at the instant
+ * it arrives: waiting out a wait that ends an over would keep the key
+ * busy for up to a second after the operator let go of it.
  *
- * Underrun
- * --------
- * If the FIFO is empty at the instant an edge leaves the key down, the key
- * goes up at once and an underrun is reported: the length of that element
- * is unknown, and a dash of unknown length is worse than silence. The key
- * is never left in the pending state. The bytes that follow restart as a
- * new over with the same B.
+ * An empty FIFO, jitter, and the grace
+ * ------------------------------------
+ * A client that keys live sends one byte per edge, at the edge. Every byte
+ * therefore reaches us about B ms before its own deadline, and during any
+ * element longer than B the FIFO is empty by construction: the byte that
+ * ends the element is under a finger that has not lifted yet. An empty
+ * FIFO at a deadline is thus the normal state of a live over, not an
+ * error, and the state applied simply holds until the next byte arrives
+ * (R8).
+ *
+ * A byte that arrives after its own deadline cannot shorten an element
+ * that is already on the air: it is applied on arrival, the element in
+ * progress comes out longer by the delay, and the delay is counted and
+ * reported as CWNET_PLAY_EV_LATE_BYTE. A byte carrying the state already
+ * applied makes no edge.
+ *
+ * What the holding must not do is leave a carrier up forever. If the key
+ * is down and nothing at all arrives within the grace (cfg.key_grace_ms,
+ * 500 ms by default) of the last edge, the key goes up at once and
+ * CWNET_PLAY_EV_GRACE_EXPIRED says why; the PTT drops at the tail and the bytes
+ * that follow restart as a new over with the same B. The grace runs only
+ * while the key is down with nothing scheduled: an element whose next byte
+ * is already queued, however long, is timing we know and we play it out.
  *
  * PTT
  * ---
@@ -70,14 +89,20 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/** The reference's CW_KEYING_FIFO_SIZE, as in cwnet_client.h */
-#define CWNET_PLAY_FIFO_SIZE 128
+#include "cwnet_rxfifo.h"
+
+/** The reference's CW_KEYING_FIFO_SIZE. The ring itself is cwnet_rxfifo.h,
+ *  shared with the box's client. */
+#define CWNET_PLAY_FIFO_SIZE CWNET_RXFIFO_SIZE
 
 /** Events one cwnet_play_tick() call can report before the caller must tick again */
 #define CWNET_PLAY_MAX_EVENTS 16
 
 /** Default PTT tail, the box's own value, in milliseconds */
 #define CWNET_PLAY_DEFAULT_PTT_TAIL_MS 100u
+
+/** Default grace: how long the key may stay down with nothing arriving */
+#define CWNET_PLAY_DEFAULT_KEY_GRACE_MS 500u
 
 /**
  * @brief What the engine did, at the instant it was meant to happen
@@ -88,8 +113,9 @@ typedef enum {
     CWNET_PLAY_EV_PTT_ON,         /**< PTT raised, lead ahead of the first key-down */
     CWNET_PLAY_EV_PTT_OFF,        /**< PTT dropped, a tail after the last key-up */
     CWNET_PLAY_EV_END_OF_OVER,    /**< Two consecutive key-up bytes were played */
-    CWNET_PLAY_EV_UNDERRUN,       /**< FIFO empty under a key-down: forced up, fault */
+    CWNET_PLAY_EV_GRACE_EXPIRED,       /**< Grace expired under a key-down: forced up, fault */
     CWNET_PLAY_EV_OVER_FINISHED,  /**< Over played out and PTT down: the key can be released */
+    CWNET_PLAY_EV_LATE_BYTE,      /**< A byte arrived past its deadline; its edge is here */
 } cwnet_play_event_type_t;
 
 /**
@@ -120,22 +146,18 @@ typedef struct {
 typedef struct {
     uint32_t ptt_lead_ms;  /**< PTT ahead of the first key-down, clamped to B (default 0) */
     uint32_t ptt_tail_ms;  /**< PTT after the last key-up (default 100, the box's) */
+    /** How long the key may stay down with nothing arriving, before the key
+     *  goes up and a fault is reported. Zero means the 500 ms default: a
+     *  caller that leaves the field at zero gets the grace, not a station
+     *  that faults on every element longer than B. */
+    uint32_t key_grace_ms;
 } cwnet_play_cfg_t;
-
-/**
- * @brief Received keying bytes with their instant of reception
- */
-typedef struct {
-    uint8_t cmd[CWNET_PLAY_FIFO_SIZE];
-    int64_t received_at_ms[CWNET_PLAY_FIFO_SIZE];
-    uint16_t tail;
-    uint16_t count;
-} cwnet_play_fifo_t;
 
 /** Where the engine is in an over */
 typedef enum {
     CWNET_PLAY_IDLE = 0,   /**< Armed with B, waiting for the first byte to anchor on */
     CWNET_PLAY_RUNNING,    /**< A keying deadline is scheduled */
+    CWNET_PLAY_WAITING,    /**< State applied, FIFO empty: it holds until the next byte */
     CWNET_PLAY_CLOSING,    /**< End of over played, waiting for the PTT to drop */
 } cwnet_play_state_t;
 
@@ -144,7 +166,11 @@ typedef enum {
  */
 typedef struct {
     cwnet_play_cfg_t cfg;
-    cwnet_play_fifo_t fifo;
+    /* The bytes live in the shared ring; their instants of reception stay
+     * here, on this end's 64-bit monotonic clock, indexed by the slot the
+     * ring hands back (cwnet_rxfifo.h). */
+    cwnet_rxfifo_t fifo;
+    int64_t received_at_ms[CWNET_PLAY_FIFO_SIZE];
     uint32_t dropped;             /**< Bytes that found the FIFO full */
 
     uint32_t buffer_ms;           /**< B, fixed for the over */
@@ -152,6 +178,11 @@ typedef struct {
     cwnet_play_state_t state;
 
     int64_t deadline_ms;          /**< Next keying deadline (CWNET_PLAY_RUNNING) */
+    int64_t last_edge_ms;         /**< Instant the state now applied began: the timeline base */
+    bool grace_pending;           /**< The key is down with nothing queued under it */
+    int64_t grace_at_ms;          /**< When that stops being tolerable */
+    uint32_t late_bytes;          /**< Bytes applied past their own deadline, since init */
+    int64_t late_total_ms;        /**< Milliseconds those bytes were late, in total */
     bool pending_key_down;        /**< State to apply at that deadline */
     bool key_down;                /**< State on the output now */
     bool prev_byte_key_down;      /**< State the last byte consumed leaves on the key */
@@ -192,6 +223,10 @@ void cwnet_play_start_over(cwnet_play_t *play, uint32_t buffer_ms);
  * The byte whose deadline is running is held outside the queue, so an armed
  * over takes CWNET_PLAY_FIFO_SIZE bytes beyond the one being played.
  *
+ * The instant matters: it anchors the over, and it is what decides whether
+ * a byte is late. Nothing is played here — the events of a byte queued on
+ * a waiting engine come out of the next cwnet_play_tick().
+ *
  * @return false when the FIFO is full; the byte is dropped and counted.
  */
 bool cwnet_play_push(cwnet_play_t *play, uint8_t cmd, int64_t now_ms);
@@ -199,7 +234,14 @@ bool cwnet_play_push(cwnet_play_t *play, uint8_t cmd, int64_t now_ms);
 /**
  * @brief Instant of the next thing the engine has to do
  *
- * The daemon sleeps until then, or until data arrives.
+ * The nearest of the keying deadline, the PTT's own transitions and the
+ * end of the grace under a key-down. The daemon sleeps until then, or
+ * until data arrives: get this wrong and the key does not come up when it
+ * has to.
+ *
+ * A byte queued on an engine that is holding a state makes this instant
+ * due at once, possibly in the past: the caller ticks, it does not sleep
+ * on a negative timeout.
  *
  * @return false when nothing is scheduled.
  */
@@ -236,3 +278,9 @@ bool cwnet_play_over_open(const cwnet_play_t *play);
 
 /** @brief Bytes dropped because the FIFO was full, since init */
 uint32_t cwnet_play_dropped(const cwnet_play_t *play);
+
+/** @brief Bytes applied after their own deadline, since init */
+uint32_t cwnet_play_late_bytes(const cwnet_play_t *play);
+
+/** @brief Milliseconds those late bytes added to the elements, in total */
+int64_t cwnet_play_late_ms(const cwnet_play_t *play);
