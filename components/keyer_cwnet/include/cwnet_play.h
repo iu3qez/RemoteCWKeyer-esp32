@@ -69,7 +69,7 @@
  * What the holding must not do is leave a carrier up forever. If the key
  * is down and nothing at all arrives within the grace (cfg.key_grace_ms,
  * 500 ms by default) of the last edge, the key goes up at once and
- * CWNET_PLAY_EV_UNDERRUN says why; the PTT drops at the tail and the bytes
+ * CWNET_PLAY_EV_GRACE_EXPIRED says why; the PTT drops at the tail and the bytes
  * that follow restart as a new over with the same B. The grace runs only
  * while the key is down with nothing scheduled: an element whose next byte
  * is already queued, however long, is timing we know and we play it out.
@@ -89,8 +89,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/** The reference's CW_KEYING_FIFO_SIZE, as in cwnet_client.h */
-#define CWNET_PLAY_FIFO_SIZE 128
+#include "cwnet_rxfifo.h"
+
+/** The reference's CW_KEYING_FIFO_SIZE. The ring itself is cwnet_rxfifo.h,
+ *  shared with the box's client. */
+#define CWNET_PLAY_FIFO_SIZE CWNET_RXFIFO_SIZE
 
 /** Events one cwnet_play_tick() call can report before the caller must tick again */
 #define CWNET_PLAY_MAX_EVENTS 16
@@ -110,7 +113,7 @@ typedef enum {
     CWNET_PLAY_EV_PTT_ON,         /**< PTT raised, lead ahead of the first key-down */
     CWNET_PLAY_EV_PTT_OFF,        /**< PTT dropped, a tail after the last key-up */
     CWNET_PLAY_EV_END_OF_OVER,    /**< Two consecutive key-up bytes were played */
-    CWNET_PLAY_EV_UNDERRUN,       /**< Grace expired under a key-down: forced up, fault */
+    CWNET_PLAY_EV_GRACE_EXPIRED,       /**< Grace expired under a key-down: forced up, fault */
     CWNET_PLAY_EV_OVER_FINISHED,  /**< Over played out and PTT down: the key can be released */
     CWNET_PLAY_EV_LATE_BYTE,      /**< A byte arrived past its deadline; its edge is here */
 } cwnet_play_event_type_t;
@@ -150,16 +153,6 @@ typedef struct {
     uint32_t key_grace_ms;
 } cwnet_play_cfg_t;
 
-/**
- * @brief Received keying bytes with their instant of reception
- */
-typedef struct {
-    uint8_t cmd[CWNET_PLAY_FIFO_SIZE];
-    int64_t received_at_ms[CWNET_PLAY_FIFO_SIZE];
-    uint16_t tail;
-    uint16_t count;
-} cwnet_play_fifo_t;
-
 /** Where the engine is in an over */
 typedef enum {
     CWNET_PLAY_IDLE = 0,   /**< Armed with B, waiting for the first byte to anchor on */
@@ -173,7 +166,11 @@ typedef enum {
  */
 typedef struct {
     cwnet_play_cfg_t cfg;
-    cwnet_play_fifo_t fifo;
+    /* The bytes live in the shared ring; their instants of reception stay
+     * here, on this end's 64-bit monotonic clock, indexed by the slot the
+     * ring hands back (cwnet_rxfifo.h). */
+    cwnet_rxfifo_t fifo;
+    int64_t received_at_ms[CWNET_PLAY_FIFO_SIZE];
     uint32_t dropped;             /**< Bytes that found the FIFO full */
 
     uint32_t buffer_ms;           /**< B, fixed for the over */

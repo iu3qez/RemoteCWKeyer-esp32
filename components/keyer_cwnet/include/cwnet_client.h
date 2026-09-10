@@ -62,6 +62,7 @@
 #include <stdbool.h>
 #include "cwnet_frame.h"
 #include "cwnet_ping.h"
+#include "cwnet_rxfifo.h"
 
 /*===========================================================================*/
 /* Constants                                                                 */
@@ -149,8 +150,9 @@ typedef enum {
 /* Received keying                                                           */
 /*===========================================================================*/
 
-/** The reference's CW_KEYING_FIFO_SIZE */
-#define CWNET_RX_FIFO_SIZE 128
+/** The reference's CW_KEYING_FIFO_SIZE. The ring itself is cwnet_rxfifo.h,
+ *  shared with the station daemon's playback engine. */
+#define CWNET_RX_FIFO_SIZE CWNET_RXFIFO_SIZE
 
 /**
  * @brief One received keying event, decoded from a MORSE byte
@@ -160,21 +162,6 @@ typedef struct {
     int32_t wait_ms;          /**< Decoded 7-bit wait before applying it */
     int32_t received_at_ms;   /**< Local clock (get_time_ms_cb) when the byte arrived */
 } cwnet_rx_event_t;
-
-/**
- * @brief FIFO of received keying bytes, decoded on the way out
- *
- * Kept as raw bytes like the reference's MorseRxFifo, so the buffered time
- * and the end-of-over check are computed on the bytes exactly as
- * CwStream_GetNumMillisecondsBufferedInFifo() and
- * CwStream_CheckForAnyEndOfTransmissionInFifo() do.
- */
-typedef struct {
-    uint8_t cmd[CWNET_RX_FIFO_SIZE];
-    int32_t received_at_ms[CWNET_RX_FIFO_SIZE];
-    uint16_t tail;            /**< Oldest entry */
-    uint16_t count;           /**< Entries held */
-} cwnet_rx_fifo_t;
 
 /*===========================================================================*/
 /* Client State                                                              */
@@ -303,8 +290,11 @@ typedef struct {
     char key_holder_name[CWNET_KEY_HOLDER_NAME_LEN]; /**< The announced callsign, "" until one arrives */
     uint32_t key_announcements;  /**< TX_INFO frames taken this session */
 
-    /* Keying received in MORSE frames, oldest first */
-    cwnet_rx_fifo_t rx;
+    /* Keying received in MORSE frames, oldest first. The bytes live in the
+     * shared ring; their arrival instants stay here, on this end's clock,
+     * indexed by the slot the ring hands back (cwnet_rxfifo.h). */
+    cwnet_rxfifo_t rx;
+    int32_t rx_received_at_ms[CWNET_RX_FIFO_SIZE];
     uint32_t rx_dropped;      /**< Bytes that found the FIFO full */
 
     /* MORSE TX stopwatch: the reference's sw_MorseTxFifo, fFillingTxFifo and

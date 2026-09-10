@@ -221,7 +221,7 @@ def main():
     ap.add_argument("--cwnetd", default=DEFAULT_CWNETD, help="path dell'eseguibile cwnetd")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=17390)
-    ap.add_argument("--play-floor", type=int, default=50, help="B, ms (default 50, come cwnetd)")
+    ap.add_argument("--play-floor", type=int, default=100, help="B, ms (default 100, come cwnetd)")
     ap.add_argument("--ptt-tail", type=int, default=100, help="coda del PTT, ms (default 100, come cwnetd)")
     ap.add_argument("--handover", action="store_true",
                     help="misura il tempo di scambio (B + coda) invece del jitter")

@@ -71,7 +71,7 @@ static const char *ev_name(cwnet_play_event_type_t t) {
         case CWNET_PLAY_EV_PTT_ON:        return "PTT_ON";
         case CWNET_PLAY_EV_PTT_OFF:       return "PTT_OFF";
         case CWNET_PLAY_EV_END_OF_OVER:   return "END_OF_OVER";
-        case CWNET_PLAY_EV_UNDERRUN:      return "UNDERRUN";
+        case CWNET_PLAY_EV_GRACE_EXPIRED:      return "UNDERRUN";
         case CWNET_PLAY_EV_OVER_FINISHED: return "OVER_FINISHED";
         case CWNET_PLAY_EV_LATE_BYTE:     return "LATE_BYTE";
         default:                          return "?";
@@ -374,7 +374,7 @@ void test_play_an_over_delivered_as_it_is_keyed_plays_like_a_buffered_one(void) 
     /* The two things AE9 is for: no byte was late, nothing faulted */
     TEST_ASSERT_EQUAL_UINT32(0u, cwnet_play_late_bytes(&play));
     TEST_ASSERT_EQUAL_INT64(0, cwnet_play_late_ms(&play));
-    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_UNDERRUN));
+    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_GRACE_EXPIRED));
     TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_LATE_BYTE));
 }
 
@@ -410,7 +410,7 @@ void test_play_an_element_longer_than_the_buffer_is_not_an_underrun(void) {
     };
     assert_log(&log, want, sizeof want / sizeof want[0]);
     TEST_ASSERT_EQUAL_UINT32(0u, cwnet_play_late_bytes(&play));
-    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_UNDERRUN));
+    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_GRACE_EXPIRED));
 }
 
 /*===========================================================================*/
@@ -591,7 +591,7 @@ void test_play_the_grace_lifts_the_key_when_nothing_arrives_under_it(void) {
     int64_t next = 0;
     TEST_ASSERT_TRUE(cwnet_play_next_deadline(&play, &next));
     TEST_ASSERT_EQUAL_INT64(T0 + 550, next);
-    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_UNDERRUN));
+    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_GRACE_EXPIRED));
 
     run_until(&play, &log, T0 + 1000);
 
@@ -599,7 +599,7 @@ void test_play_the_grace_lifts_the_key_when_nothing_arrives_under_it(void) {
         { CWNET_PLAY_EV_PTT_ON,   T0 + 50 },
         { CWNET_PLAY_EV_KEY_DOWN, T0 + 50 },
         { CWNET_PLAY_EV_KEY_UP,   T0 + 550 },
-        { CWNET_PLAY_EV_UNDERRUN, T0 + 550 },
+        { CWNET_PLAY_EV_GRACE_EXPIRED, T0 + 550 },
         { CWNET_PLAY_EV_PTT_OFF,  T0 + 650 },
     };
     assert_log(&log, want, sizeof want / sizeof want[0]);
@@ -626,7 +626,7 @@ void test_play_the_grace_is_the_one_the_caller_configured(void) {
         { CWNET_PLAY_EV_PTT_ON,   T0 + 50 },
         { CWNET_PLAY_EV_KEY_DOWN, T0 + 50 },
         { CWNET_PLAY_EV_KEY_UP,   T0 + 250 },
-        { CWNET_PLAY_EV_UNDERRUN, T0 + 250 },
+        { CWNET_PLAY_EV_GRACE_EXPIRED, T0 + 250 },
         { CWNET_PLAY_EV_PTT_OFF,  T0 + 350 },
     };
     assert_log(&log, want, sizeof want / sizeof want[0]);
@@ -667,7 +667,7 @@ void test_play_a_byte_past_its_deadline_makes_its_edge_on_arrival(void) {
     /* One byte late, by the 30 ms between its deadline and its arrival */
     TEST_ASSERT_EQUAL_UINT32(1u, cwnet_play_late_bytes(&play));
     TEST_ASSERT_EQUAL_INT64(30, cwnet_play_late_ms(&play));
-    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_UNDERRUN));
+    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_GRACE_EXPIRED));
 }
 
 /*
@@ -1023,4 +1023,137 @@ void test_play_never_comes_to_rest_with_the_key_down(void) {
             tick_and_check_invariant(&play, t);
         }
     }
+}
+
+/*===========================================================================*/
+/* The shared ring itself (cwnet_rxfifo.h)                                   */
+/*===========================================================================*/
+
+/*
+ * Until now this arithmetic was only exercised sideways, through the engine
+ * and through the client, and it existed twice. Now there is one copy, so
+ * the wrap is worth pinning where it lives: an off-by-one here would move
+ * both ends of the wire at once.
+ */
+
+/** Wind the ring's tail forward to `slot`, leaving it empty */
+static void rxfifo_seek_tail(cwnet_rxfifo_t *f, unsigned slot) {
+    cwnet_rxfifo_reset(f);
+    for (unsigned i = 0; i < slot; i++) {
+        uint8_t b = 0;
+        TEST_ASSERT_NOT_EQUAL(CWNET_RXFIFO_NO_SLOT, cwnet_rxfifo_push(f, 0x00));
+        TEST_ASSERT_NOT_EQUAL(CWNET_RXFIFO_NO_SLOT, cwnet_rxfifo_pop(f, &b));
+    }
+    TEST_ASSERT_EQUAL_size_t(0u, cwnet_rxfifo_count(f));
+}
+
+void test_rxfifo_fills_wraps_and_keeps_order(void) {
+    cwnet_rxfifo_t f;
+    cwnet_rxfifo_reset(&f);
+
+    /* Fill it: the reference's 128 bytes, each landing in its own slot */
+    for (int i = 0; i < CWNET_RXFIFO_SIZE; i++) {
+        TEST_ASSERT_EQUAL_INT(i, cwnet_rxfifo_push(&f, (uint8_t)i));
+    }
+    TEST_ASSERT_TRUE(cwnet_rxfifo_full(&f));
+    TEST_ASSERT_EQUAL_size_t((size_t)CWNET_RXFIFO_SIZE, cwnet_rxfifo_count(&f));
+
+    /* One more finds it full: no slot, nothing overwritten, count unmoved */
+    TEST_ASSERT_EQUAL_INT(CWNET_RXFIFO_NO_SLOT, cwnet_rxfifo_push(&f, 0xAA));
+    TEST_ASSERT_EQUAL_size_t((size_t)CWNET_RXFIFO_SIZE, cwnet_rxfifo_count(&f));
+
+    /* Take 100 back out, oldest first, from the slots they went into */
+    for (int i = 0; i < 100; i++) {
+        uint8_t b = 0;
+        TEST_ASSERT_EQUAL_INT(i, cwnet_rxfifo_pop(&f, &b));
+        TEST_ASSERT_EQUAL_UINT8((uint8_t)i, b);
+    }
+    TEST_ASSERT_EQUAL_size_t(28u, cwnet_rxfifo_count(&f));
+
+    /* 100 more: the head wraps past 127 and reuses slots 0..99 */
+    for (int i = 0; i < 100; i++) {
+        TEST_ASSERT_EQUAL_INT(i, cwnet_rxfifo_push(&f, (uint8_t)(200 + i)));
+    }
+    TEST_ASSERT_TRUE(cwnet_rxfifo_full(&f));
+
+    /* Out in order: the 28 that were left, then the 100 that came after */
+    for (int i = 100; i < CWNET_RXFIFO_SIZE; i++) {
+        uint8_t b = 0;
+        TEST_ASSERT_EQUAL_INT(i, cwnet_rxfifo_pop(&f, &b));
+        TEST_ASSERT_EQUAL_UINT8((uint8_t)i, b);
+    }
+    for (int i = 0; i < 100; i++) {
+        uint8_t b = 0;
+        TEST_ASSERT_EQUAL_INT(i, cwnet_rxfifo_pop(&f, &b));
+        TEST_ASSERT_EQUAL_UINT8((uint8_t)(200 + i), b);
+    }
+
+    /* Empty: no slot, and nothing written through the out parameter */
+    uint8_t untouched = 0x5A;
+    TEST_ASSERT_EQUAL_INT(CWNET_RXFIFO_NO_SLOT, cwnet_rxfifo_pop(&f, &untouched));
+    TEST_ASSERT_EQUAL_UINT8(0x5A, untouched);
+    TEST_ASSERT_EQUAL_INT(CWNET_RXFIFO_NO_SLOT, cwnet_rxfifo_peek_slot(&f));
+    TEST_ASSERT_EQUAL_size_t(0u, cwnet_rxfifo_count(&f));
+}
+
+void test_rxfifo_peek_does_not_consume(void) {
+    cwnet_rxfifo_t f;
+    rxfifo_seek_tail(&f, 127u);
+
+    TEST_ASSERT_EQUAL_INT(127, cwnet_rxfifo_push(&f, 0x81));
+    TEST_ASSERT_EQUAL_INT(0, cwnet_rxfifo_push(&f, 0x02));
+
+    /* Twice, because a peek that consumed would answer differently */
+    TEST_ASSERT_EQUAL_INT(127, cwnet_rxfifo_peek_slot(&f));
+    TEST_ASSERT_EQUAL_INT(127, cwnet_rxfifo_peek_slot(&f));
+    TEST_ASSERT_EQUAL_size_t(2u, cwnet_rxfifo_count(&f));
+
+    uint8_t b = 0;
+    TEST_ASSERT_EQUAL_INT(127, cwnet_rxfifo_pop(&f, &b));
+    TEST_ASSERT_EQUAL_UINT8(0x81, b);
+    TEST_ASSERT_EQUAL_INT(0, cwnet_rxfifo_peek_slot(&f));
+}
+
+void test_rxfifo_buffered_ms_sums_across_the_wrap(void) {
+    cwnet_rxfifo_t f;
+    rxfifo_seek_tail(&f, 126u);
+
+    /* Waits 1, 2 and 3 ms in the linear range, straddling slot 127 -> 0 */
+    TEST_ASSERT_EQUAL_INT(126, cwnet_rxfifo_push(&f, 0x81));
+    TEST_ASSERT_EQUAL_INT(127, cwnet_rxfifo_push(&f, 0x02));
+    TEST_ASSERT_EQUAL_INT(0, cwnet_rxfifo_push(&f, 0x83));
+    TEST_ASSERT_EQUAL_INT32(6, cwnet_rxfifo_buffered_ms(&f));
+
+    /* The key bit is no part of the sum, and what is popped stops counting */
+    uint8_t b = 0;
+    (void)cwnet_rxfifo_pop(&f, &b);
+    TEST_ASSERT_EQUAL_INT32(5, cwnet_rxfifo_buffered_ms(&f));
+
+    cwnet_rxfifo_reset(&f);
+    TEST_ASSERT_EQUAL_INT32(0, cwnet_rxfifo_buffered_ms(&f));
+    TEST_ASSERT_EQUAL_size_t(0u, cwnet_rxfifo_count(&f));
+}
+
+void test_rxfifo_end_of_over_seen_across_the_wrap(void) {
+    cwnet_rxfifo_t f;
+
+    /* Two key-ups in a row, the pair straddling slot 127 -> 0 */
+    rxfifo_seek_tail(&f, 126u);
+    (void)cwnet_rxfifo_push(&f, 0x81);   /* down */
+    (void)cwnet_rxfifo_push(&f, 0x02);   /* up   */
+    TEST_ASSERT_FALSE(cwnet_rxfifo_has_end_of_over(&f));
+    (void)cwnet_rxfifo_push(&f, 0x03);   /* up: the mark */
+    TEST_ASSERT_TRUE(cwnet_rxfifo_has_end_of_over(&f));
+
+    /* A key-down between them is not the mark, wrap or no wrap */
+    rxfifo_seek_tail(&f, 126u);
+    (void)cwnet_rxfifo_push(&f, 0x02);   /* up   */
+    (void)cwnet_rxfifo_push(&f, 0x83);   /* down */
+    (void)cwnet_rxfifo_push(&f, 0x04);   /* up   */
+    TEST_ASSERT_FALSE(cwnet_rxfifo_has_end_of_over(&f));
+
+    /* A single byte cannot be a pair, whatever it carries */
+    rxfifo_seek_tail(&f, 0u);
+    (void)cwnet_rxfifo_push(&f, 0x00);
+    TEST_ASSERT_FALSE(cwnet_rxfifo_has_end_of_over(&f));
 }

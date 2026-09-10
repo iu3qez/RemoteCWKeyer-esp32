@@ -333,6 +333,12 @@ void test_play_start_over_fixes_the_buffer_and_clears_the_queue(void);
 void test_play_survives_null_and_reports_nothing(void);
 void test_play_never_comes_to_rest_with_the_key_down(void);
 
+/* The receive FIFO both ends share (cwnet_rxfifo.h) */
+void test_rxfifo_fills_wraps_and_keeps_order(void);
+void test_rxfifo_peek_does_not_consume(void);
+void test_rxfifo_buffered_ms_sums_across_the_wrap(void);
+void test_rxfifo_end_of_over_seen_across_the_wrap(void);
+
 /* CWNet server core (station side: CONNECT, key, PING, rig strings) */
 void test_server_connect_echo_matches_the_capture(void);
 void test_server_connect_of_the_wrong_length_closes_the_client(void);
@@ -350,6 +356,7 @@ void test_server_any_other_rig_string_gets_a_negative_code(void);
 void test_server_a_rig_string_without_a_nul_closes_the_client(void);
 void test_server_ignores_ci_v_and_spectrum_and_closes_on_a_parse_error(void);
 void test_server_plays_the_first_over_of_the_capture_and_announces_both_ends(void);
+void test_server_a_byte_past_its_deadline_is_reported_with_the_running_totals(void);
 void test_server_morse_from_a_client_without_the_key_is_dropped_in_silence(void);
 void test_server_announces_the_holder_to_every_client(void);
 void test_server_a_link_over_the_ceiling_does_not_get_the_key(void);
@@ -759,6 +766,10 @@ int main(void) {
     RUN_TEST(test_play_start_over_fixes_the_buffer_and_clears_the_queue);
     RUN_TEST(test_play_survives_null_and_reports_nothing);
     RUN_TEST(test_play_never_comes_to_rest_with_the_key_down);
+    RUN_TEST(test_rxfifo_fills_wraps_and_keeps_order);
+    RUN_TEST(test_rxfifo_peek_does_not_consume);
+    RUN_TEST(test_rxfifo_buffered_ms_sums_across_the_wrap);
+    RUN_TEST(test_rxfifo_end_of_over_seen_across_the_wrap);
 
     /* CWNet server core: the station takes a client in and arbitrates the key */
     printf("\n=== CWNet Server Tests ===\n");
@@ -778,6 +789,7 @@ int main(void) {
     RUN_TEST(test_server_a_rig_string_without_a_nul_closes_the_client);
     RUN_TEST(test_server_ignores_ci_v_and_spectrum_and_closes_on_a_parse_error);
     RUN_TEST(test_server_plays_the_first_over_of_the_capture_and_announces_both_ends);
+    RUN_TEST(test_server_a_byte_past_its_deadline_is_reported_with_the_running_totals);
     RUN_TEST(test_server_morse_from_a_client_without_the_key_is_dropped_in_silence);
     RUN_TEST(test_server_announces_the_holder_to_every_client);
     RUN_TEST(test_server_a_link_over_the_ceiling_does_not_get_the_key);

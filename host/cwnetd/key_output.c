@@ -16,7 +16,8 @@
  * "key 1 123456" / "ptt 0 123556", the shape U6 asks for: state then the
  * scheduled instant in monotonic milliseconds. Two fields and a name, so a
  * shell pipeline can diff the deltas against the encoded waits without a
- * parser (Success Criteria).
+ * parser (Success Criteria). Where the line lands is the daemon's --edges
+ * descriptor, which never drops one.
  */
 static void virtual_line(key_output_t *out, const char *what, bool on, int64_t at_ms) {
     char line[64];

@@ -679,7 +679,7 @@ void test_server_plays_the_first_over_of_the_capture_and_announces_both_ends(voi
     server_setup();
     int idx = ready_client("Moritz", "Moritz", 1000);
 
-    /* No PING has been answered: B falls to the floor, 50 ms (R7) */
+    /* No PING has been answered: B falls to the floor (R7) */
     cwnet_server_on_data(&srv, idx, ref_first_over, sizeof(ref_first_over), 2000, &res);
 
     /* AE1/R3: the announcement is the capture's, byte for byte */
@@ -726,6 +726,50 @@ void test_server_plays_the_first_over_of_the_capture_and_announces_both_ends(voi
                                 frame, sizeof(frame), &frame_len));
     TEST_ASSERT_EQUAL_size_t(sizeof(ref_tx_info_nobody), frame_len);
     TEST_ASSERT_EQUAL_UINT8_ARRAY(ref_tx_info_nobody, frame, sizeof(ref_tx_info_nobody));
+}
+
+/**
+ * R8: a byte that arrives after its own deadline is applied on arrival, the
+ * element comes out longer by the delay, and the delay is counted. The core
+ * counts it; without an event the daemon has no way to say so, and the
+ * operator only learns the link is slipping when the grace turns it into a
+ * fault.
+ */
+void test_server_a_byte_past_its_deadline_is_reported_with_the_running_totals(void) {
+    server_setup();
+    int idx = ready_client("Moritz", "Moritz", 1000);
+
+    /* Key down, wait 0: with no PING answered B is the floor, so the edge
+     * is scheduled for 2000 + B and that byte is never late (its anchor is
+     * its own arrival). */
+    const int64_t b_ms = (int64_t)CWNET_SERVER_DEFAULT_BUFFER_FLOOR_MS;
+    uint8_t down[] = { 0x50, 0x01, 0x80 };
+    cwnet_server_on_data(&srv, idx, down, sizeof(down), 2000, &res);
+
+    cwnet_server_poll(&srv, 2000 + b_ms, &res);
+    TEST_ASSERT_EQUAL_size_t(1u, event_count(CWNET_SERVER_EV_KEY_DOWN));
+    TEST_ASSERT_EQUAL_size_t(0u, event_count(CWNET_SERVER_EV_LATE_BYTE));
+
+    /* 0x14: key up, seven-bit wait 20 ms, measured from the edge just
+     * played. Its deadline is therefore 2000 + B + 20; it turns up 30 ms
+     * after that. */
+    const int64_t deadline = 2000 + b_ms + 20;
+    uint8_t up[] = { 0x50, 0x01, 0x14 };
+    cwnet_server_on_data(&srv, idx, up, sizeof(up), deadline + 30, &res);
+
+    const cwnet_server_event_t *late = event_first(CWNET_SERVER_EV_LATE_BYTE);
+    TEST_ASSERT_NOT_NULL(late);
+    TEST_ASSERT_EQUAL_INT(idx, late->client_idx);
+    TEST_ASSERT_EQUAL_INT32(1, late->value);      /* one byte late so far */
+    TEST_ASSERT_EQUAL_INT32(30, late->peak_ms);   /* by 30 ms in total */
+    TEST_ASSERT_EQUAL_UINT32(1u, cwnet_play_late_bytes(&srv.play));
+    TEST_ASSERT_EQUAL_INT64(30, cwnet_play_late_ms(&srv.play));
+
+    /* The element was stretched, not cut: the edge comes out on arrival, in
+     * the same result, not back at the deadline it missed. */
+    TEST_ASSERT_EQUAL_size_t(1u, event_count(CWNET_SERVER_EV_KEY_UP));
+    TEST_ASSERT_EQUAL_INT64(deadline + 30, event_first(CWNET_SERVER_EV_KEY_UP)->at_ms);
+    TEST_ASSERT_EQUAL_INT64(deadline + 30, late->at_ms);
 }
 
 void test_server_morse_from_a_client_without_the_key_is_dropped_in_silence(void) {

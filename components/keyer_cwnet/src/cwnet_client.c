@@ -385,14 +385,12 @@ static void handle_tx_info(cwnet_client_t *client, const uint8_t *payload, size_
 static void handle_morse(cwnet_client_t *client, const uint8_t *payload, size_t len) {
     int32_t now_ms = get_local_time(client);
     for (size_t i = 0; i < len; i++) {
-        if (client->rx.count >= CWNET_RX_FIFO_SIZE) {
+        int slot = cwnet_rxfifo_push(&client->rx, payload[i]);
+        if (slot == CWNET_RXFIFO_NO_SLOT) {
             client->rx_dropped++;
             continue;
         }
-        uint16_t head = (uint16_t)((client->rx.tail + client->rx.count) % CWNET_RX_FIFO_SIZE);
-        client->rx.cmd[head] = payload[i];
-        client->rx.received_at_ms[head] = now_ms;
-        client->rx.count++;
+        client->rx_received_at_ms[slot] = now_ms;
     }
 }
 
@@ -591,7 +589,7 @@ void cwnet_client_on_connected(cwnet_client_t *client) {
 
     /* Nothing received yet, and no latency known: the reference keeps both
      * across a reconnect, which is stale data with a fresh server. */
-    memset(&client->rx, 0, sizeof(client->rx));
+    cwnet_rxfifo_reset(&client->rx);
     client->rx_dropped = 0;
     client->latency_ms = -1;
     client->latency_peak_ms = -1;
@@ -802,48 +800,33 @@ int32_t cwnet_client_get_latency_peak_ms(const cwnet_client_t *client) {
 /*===========================================================================*/
 
 bool cwnet_client_rx_pop(cwnet_client_t *client, cwnet_rx_event_t *out) {
-    if (client == NULL || out == NULL || client->rx.count == 0) {
+    if (client == NULL || out == NULL) {
         return false;
     }
-    uint8_t b = client->rx.cmd[client->rx.tail];
+    uint8_t b = 0;
+    int slot = cwnet_rxfifo_pop(&client->rx, &b);
+    if (slot == CWNET_RXFIFO_NO_SLOT) {
+        return false;
+    }
     out->key_down = (b & 0x80u) != 0;
     out->wait_ms = cwstream_decode_timestamp(b);
-    out->received_at_ms = client->rx.received_at_ms[client->rx.tail];
-    client->rx.tail = (uint16_t)((client->rx.tail + 1) % CWNET_RX_FIFO_SIZE);
-    client->rx.count--;
+    out->received_at_ms = client->rx_received_at_ms[slot];
     return true;
 }
 
 size_t cwnet_client_rx_count(const cwnet_client_t *client) {
-    return client == NULL ? 0 : client->rx.count;
+    return client == NULL ? 0 : cwnet_rxfifo_count(&client->rx);
 }
 
 int32_t cwnet_client_rx_buffered_ms(const cwnet_client_t *client) {
-    if (client == NULL) {
-        return 0;
-    }
-    int32_t total = 0;
-    for (uint16_t i = 0; i < client->rx.count; i++) {
-        uint16_t idx = (uint16_t)((client->rx.tail + i) % CWNET_RX_FIFO_SIZE);
-        total += cwstream_decode_timestamp(client->rx.cmd[idx]);
-    }
-    return total;
+    return client == NULL ? 0 : cwnet_rxfifo_buffered_ms(&client->rx);
 }
 
 bool cwnet_client_rx_has_end_of_over(const cwnet_client_t *client) {
-    if (client == NULL) {
-        return false;
-    }
     /* CwStreamEnc.c: two consecutive key-up commands, regardless of the
-     * seven-bit time, indicate END-OF-TRANSMISSION */
-    for (uint16_t i = 1; i < client->rx.count; i++) {
-        uint16_t prev = (uint16_t)((client->rx.tail + i - 1) % CWNET_RX_FIFO_SIZE);
-        uint16_t cur = (uint16_t)((client->rx.tail + i) % CWNET_RX_FIFO_SIZE);
-        if ((client->rx.cmd[prev] & 0x80u) == 0 && (client->rx.cmd[cur] & 0x80u) == 0) {
-            return true;
-        }
-    }
-    return false;
+     * seven-bit time, indicate END-OF-TRANSMISSION. The scan is in
+     * cwnet_rxfifo.h, one copy for both ends of the wire. */
+    return client != NULL && cwnet_rxfifo_has_end_of_over(&client->rx);
 }
 
 uint32_t cwnet_client_rx_dropped(const cwnet_client_t *client) {

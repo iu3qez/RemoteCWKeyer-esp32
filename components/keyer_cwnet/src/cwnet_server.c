@@ -241,9 +241,18 @@ static void map_play_events(cwnet_server_t *srv, const cwnet_play_result_t *pr,
             case CWNET_PLAY_EV_PTT_OFF:
                 emit(out, CWNET_SERVER_EV_PTT_OFF, srv->key_holder, 0, 0, ev->at_ms);
                 break;
-            case CWNET_PLAY_EV_UNDERRUN:
+            case CWNET_PLAY_EV_GRACE_EXPIRED:
                 emit(out, CWNET_SERVER_EV_FAULT, srv->key_holder,
-                     (int32_t)CWNET_SERVER_FAULT_UNDERRUN, 0, ev->at_ms);
+                     (int32_t)CWNET_SERVER_FAULT_GRACE_EXPIRED, 0, ev->at_ms);
+                break;
+            case CWNET_PLAY_EV_LATE_BYTE:
+                /* The engine counts; the caller is the only one that can
+                 * say it out loud (KTD10). The numbers are the running
+                 * totals, so two lines apart tell how fast the link is
+                 * slipping, not just that it is. */
+                emit(out, CWNET_SERVER_EV_LATE_BYTE, srv->key_holder,
+                     (int32_t)cwnet_play_late_bytes(&srv->play),
+                     (int32_t)cwnet_play_late_ms(&srv->play), ev->at_ms);
                 break;
             case CWNET_PLAY_EV_OVER_FINISHED:
                 /* The marker was played and the PTT is down: the key is free

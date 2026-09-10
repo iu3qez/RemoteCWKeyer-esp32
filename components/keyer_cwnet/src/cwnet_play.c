@@ -41,14 +41,18 @@ static void emit(cwnet_play_result_t *out, cwnet_play_event_type_t type, int64_t
 /* FIFO                                                                      */
 /*===========================================================================*/
 
+/**
+ * @brief Take the oldest byte and the instant it reached us
+ *
+ * The ring arithmetic is cwnet_rxfifo.h, shared with the box's client; what
+ * belongs to this end alone is the 64-bit instant kept beside it (KTD2).
+ */
 static bool fifo_pop(cwnet_play_t *play, uint8_t *cmd, int64_t *received_at_ms) {
-    if (play->fifo.count == 0) {
+    int slot = cwnet_rxfifo_pop(&play->fifo, cmd);
+    if (slot == CWNET_RXFIFO_NO_SLOT) {
         return false;
     }
-    *cmd = play->fifo.cmd[play->fifo.tail];
-    *received_at_ms = play->fifo.received_at_ms[play->fifo.tail];
-    play->fifo.tail = (uint16_t)((play->fifo.tail + 1u) % CWNET_PLAY_FIFO_SIZE);
-    play->fifo.count--;
+    *received_at_ms = play->received_at_ms[slot];
     return true;
 }
 
@@ -160,7 +164,7 @@ static void arm_from_byte(cwnet_play_t *play, uint8_t cmd, int64_t base_ms,
  * runs on the encoded waits alone.
  */
 static void arm_if_idle(cwnet_play_t *play, cwnet_play_result_t *out) {
-    if (play->state != CWNET_PLAY_IDLE || play->fifo.count == 0) {
+    if (play->state != CWNET_PLAY_IDLE || cwnet_rxfifo_count(&play->fifo) == 0u) {
         return;
     }
     uint8_t cmd = 0;
@@ -201,7 +205,7 @@ static void grace_fault(cwnet_play_t *play, int64_t at_ms, cwnet_play_result_t *
         play->key_down = false;
         emit(out, CWNET_PLAY_EV_KEY_UP, at_ms);
         ptt_off_no_later_than(play, at_ms + (int64_t)play->cfg.ptt_tail_ms);
-        emit(out, CWNET_PLAY_EV_UNDERRUN, at_ms);
+        emit(out, CWNET_PLAY_EV_GRACE_EXPIRED, at_ms);
     }
     /* The bytes that follow restart as a new over with the same B (R8) */
     play->state = CWNET_PLAY_IDLE;
@@ -310,7 +314,11 @@ typedef enum {
  * engine was still running does not resume in the past.
  */
 static int64_t resume_at(const cwnet_play_t *play) {
-    int64_t at = play->fifo.received_at_ms[play->fifo.tail];
+    int slot = cwnet_rxfifo_peek_slot(&play->fifo);
+    if (slot == CWNET_RXFIFO_NO_SLOT) {
+        return play->last_edge_ms;   /* only reached with a byte queued */
+    }
+    int64_t at = play->received_at_ms[slot];
     return (at < play->last_edge_ms) ? play->last_edge_ms : at;
 }
 
@@ -322,7 +330,7 @@ static action_t next_action(const cwnet_play_t *play, int64_t *at_ms) {
         best = ACT_PTT_ON;
         best_at = play->ptt_on_at_ms;
     }
-    if (play->state == CWNET_PLAY_WAITING && play->fifo.count > 0u) {
+    if (play->state == CWNET_PLAY_WAITING && cwnet_rxfifo_count(&play->fifo) > 0u) {
         int64_t at = resume_at(play);
         if (best == ACT_NONE || at < best_at) {
             best = ACT_RESUME;
@@ -386,8 +394,7 @@ void cwnet_play_start_over(cwnet_play_t *play, uint32_t buffer_ms) {
     }
     play->buffer_ms = buffer_ms;
     play->lead_ms = (play->cfg.ptt_lead_ms > buffer_ms) ? buffer_ms : play->cfg.ptt_lead_ms;
-    play->fifo.tail = 0;
-    play->fifo.count = 0;
+    cwnet_rxfifo_reset(&play->fifo);
     play->state = CWNET_PLAY_IDLE;
     /* A PTT raised in anticipation of an over we are throwing away must not
      * survive it; a PTT already up is the caller's to release. */
@@ -405,14 +412,12 @@ bool cwnet_play_push(cwnet_play_t *play, uint8_t cmd, int64_t now_ms) {
     if (play == NULL) {
         return false;
     }
-    if (play->fifo.count >= CWNET_PLAY_FIFO_SIZE) {
+    int slot = cwnet_rxfifo_push(&play->fifo, cmd);
+    if (slot == CWNET_RXFIFO_NO_SLOT) {
         play->dropped++;
         return false;
     }
-    uint16_t head = (uint16_t)((play->fifo.tail + play->fifo.count) % CWNET_PLAY_FIFO_SIZE);
-    play->fifo.cmd[head] = cmd;
-    play->fifo.received_at_ms[head] = now_ms;
-    play->fifo.count++;
+    play->received_at_ms[slot] = now_ms;
     /* Anchoring the over is pure scheduling — the first byte of an over is
      * measured from its own arrival, so it can never be late and can emit
      * nothing. Everything that does emit waits for a tick, which is where
@@ -490,8 +495,7 @@ void cwnet_play_force_release(cwnet_play_t *play, int64_t now_ms, cwnet_play_res
         return;
     }
 
-    play->fifo.tail = 0;
-    play->fifo.count = 0;
+    cwnet_rxfifo_reset(&play->fifo);
     play->have_prev_byte = false;
     play->grace_pending = false;
     play->state = CWNET_PLAY_CLOSING;

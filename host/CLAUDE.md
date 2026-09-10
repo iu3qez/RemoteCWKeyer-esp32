@@ -22,7 +22,9 @@ Key abstractions:
   core to the platform layer and to `key_output`, status lines on non-blocking stdout.
 - `cwnetd/key_output.h` / `key_output.c` — the seam behind which key and PTT edges
   leave the daemon (R11): a struct of function pointers with one backend today,
-  `virtual`, which prints `key <0|1> <at_ms>` / `ptt <0|1> <at_ms>` lines.
+  `virtual`, which prints `key <0|1> <at_ms>` / `ptt <0|1> <at_ms>` lines. They go to
+  the `--edges` descriptor (`stderr` or a file), never to stdout, and are never
+  dropped — see *Due uscite* in `cwnetd/README.md` for what that costs.
 - `tests/loopback_test.c` — exercises `platform/` and nothing else: a real loopback
   connection, a short write resumed, a remote close seen through the poll, the clock's
   monotonicity and unit. The server core is proven in `test_host/`, against the
@@ -41,7 +43,8 @@ What is NOT here, and why:
 - **No GUI.** How the operator sees daemon state is Decision #65, labelled `blocking`
   for the GUI only. State goes to stdout as lines so that option stays open; do not add
   a TUI, a served page, or a native window here until #65 is decided.
-- **No physical key/PTT backend.** `key_output` has one backend, `virtual`, on stdout.
+- **No physical key/PTT backend.** `key_output` has one backend, `virtual`, writing
+  lines to the `--edges` descriptor.
   A serial-line or GPIO backend behind the same two function pointers needs its own
   Decision (KTD9) — not filed yet — because the rest-state and key-down-ceiling
   guarantees on a real transmitter have to be decided before code claims them.
