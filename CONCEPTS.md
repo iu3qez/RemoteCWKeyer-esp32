@@ -31,6 +31,9 @@ La codifica non lineare del tempo di attesa fra due transizioni del tasto: risol
 ### Over
 Un turno di trasmissione continuo. La sua fine è segnalata da un secondo comando di key-up dopo che è trascorsa una soglia di silenzio; il silenzio *fra* un over e il successivo non viaggia sul filo, quindi il determinismo del keying si può pretendere dentro un over, non fra over diversi.
 
+### Titolare della chiave
+Il client la cui manipolazione il server riproduce sul rig: uno solo alla volta. La chiave si prende con il primo byte MORSE quando è libera e il server lo annuncia a tutti con un TX_INFO (indice del client e nominativo; «-- nobody --» quando è libera). Dal lato client lo stato è libera, mia o altrui; dal lato server è una policy di stazione nostra quando la chiave torna libera.
+
 ## Latenza
 
 ### PING

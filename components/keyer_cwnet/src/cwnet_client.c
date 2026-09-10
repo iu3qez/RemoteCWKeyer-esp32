@@ -59,13 +59,6 @@ static int32_t get_local_time(cwnet_client_t *client) {
 /*===========================================================================*/
 
 /**
- * @brief Build command byte from category and command
- */
-static inline uint8_t make_cmd_byte(cwnet_frame_category_t cat, cwnet_cmd_t cmd) {
-    return (uint8_t)((cat << 6) | (cmd & 0x3F));
-}
-
-/**
  * @brief Build and send CONNECT frame
  *
  * CONNECT frame format (94 bytes total):
@@ -76,35 +69,38 @@ static inline uint8_t make_cmd_byte(cwnet_frame_category_t cat, cwnet_cmd_t cmd)
  *   - payload[88-91]: permissions (4 bytes, uint32 LE)
  */
 static cwnet_client_err_t send_connect(cwnet_client_t *client) {
-    /* Frame: cmd(1) + len(1) + payload(92) = 94 bytes */
-    uint8_t frame[2 + CWNET_CONNECT_PAYLOAD_LEN];
-    memset(frame, 0, sizeof(frame));
-
-    /* Command byte: CONNECT with short payload */
-    frame[0] = make_cmd_byte(CWNET_FRAME_CAT_SHORT_PAYLOAD, CWNET_CMD_CONNECT);
-    frame[1] = CWNET_CONNECT_PAYLOAD_LEN;  /* 92 */
+    uint8_t payload[CWNET_CONNECT_PAYLOAD_LEN];
+    memset(payload, 0, sizeof(payload));
 
     /* Username field (44 bytes, null-terminated, zero-padded) */
     _Static_assert(sizeof(((cwnet_client_t *)0)->username) <= CWNET_CONNECT_USERNAME_LEN,
                    "username buffer must fit in connect frame field");
     size_t username_len = strlen(client->username);
-    memcpy(&frame[2], client->username, username_len);
+    memcpy(&payload[0], client->username, username_len);
 
     /* Callsign field (44 bytes). The server keeps it as the name it announces
      * with the key (CwNet.c:1295) and strips TRANSMIT if it is empty. */
     _Static_assert(sizeof(((cwnet_client_t *)0)->callsign) <= CWNET_CONNECT_CALLSIGN_LEN,
                    "callsign buffer must fit in connect frame field");
-    memcpy(&frame[2 + CWNET_CONNECT_USERNAME_LEN], client->callsign, strlen(client->callsign));
+    memcpy(&payload[CWNET_CONNECT_USERNAME_LEN], client->callsign, strlen(client->callsign));
 
     /* Permissions field (4 bytes) - leave as zero */
+
+    /* Frame: cmd(1) + len(1) + payload(92) = 94 bytes */
+    uint8_t frame[2 + CWNET_CONNECT_PAYLOAD_LEN];
+    size_t frame_len = 0;
+    if (!cwnet_frame_build((uint8_t)CWNET_CMD_CONNECT, payload, sizeof(payload),
+                            frame, sizeof(frame), &frame_len)) {
+        return CWNET_CLIENT_ERR_PROTOCOL;
+    }
 
     int64_t now_us = esp_timer_get_time();
     RT_DEBUG(&g_bg_log_stream, now_us,
              "CONNECT: cmd=0x%02X user=\"%s\"",
              frame[0], client->username);
 
-    int sent = send_frame(client, frame, sizeof(frame));
-    if (sent < 0 || (size_t)sent != sizeof(frame)) {
+    int sent = send_frame(client, frame, frame_len);
+    if (sent < 0 || (size_t)sent != frame_len) {
         RT_ERROR(&g_bg_log_stream, now_us, "CONNECT send failed: %d", sent);
         return CWNET_CLIENT_ERR_SEND_FAILED;
     }
@@ -130,12 +126,14 @@ static cwnet_client_err_t send_ping_response(cwnet_client_t *client,
 
     /* Frame: cmd(1) + len(1) + payload(16) - short block */
     uint8_t frame[2 + CWNET_PING_PAYLOAD_SIZE];
-    frame[0] = make_cmd_byte(CWNET_FRAME_CAT_SHORT_PAYLOAD, CWNET_CMD_PING);
-    frame[1] = CWNET_PING_PAYLOAD_SIZE;
-    memcpy(&frame[2], payload, CWNET_PING_PAYLOAD_SIZE);
+    size_t frame_len = 0;
+    if (!cwnet_frame_build((uint8_t)CWNET_CMD_PING, payload, sizeof(payload),
+                            frame, sizeof(frame), &frame_len)) {
+        return CWNET_CLIENT_ERR_PROTOCOL;
+    }
 
-    int sent = send_frame(client, frame, sizeof(frame));
-    if (sent < 0 || (size_t)sent != sizeof(frame)) {
+    int sent = send_frame(client, frame, frame_len);
+    if (sent < 0 || (size_t)sent != frame_len) {
         int64_t now_us = esp_timer_get_time();
         RT_ERROR(&g_bg_log_stream, now_us, "PING RSP1 send failed: %d", sent);
         return CWNET_CLIENT_ERR_SEND_FAILED;
@@ -169,7 +167,7 @@ static cwnet_client_err_t send_morse(cwnet_client_t *client,
                                      bool key_down,
                                      int32_t wait_ms,
                                      int32_t *encoded_ms) {
-    uint8_t frame[2 + CWNET_MORSE_MAX_EVENTS];
+    uint8_t events[CWNET_MORSE_MAX_EVENTS];
     size_t n = 0;
     int32_t remaining = wait_ms > 0 ? wait_ms : 0;
     int32_t total = 0;
@@ -181,16 +179,19 @@ static cwnet_client_err_t send_morse(cwnet_client_t *client,
         if (key_down) {
             b |= 0x80u;
         }
-        frame[2 + n] = b;
+        events[n] = b;
         n++;
         total += cwstream_decode_timestamp(b);
         remaining -= chunk;
     } while (remaining > 0 && n < CWNET_MORSE_MAX_EVENTS);
 
-    frame[0] = make_cmd_byte(CWNET_FRAME_CAT_SHORT_PAYLOAD, CWNET_CMD_MORSE);
-    frame[1] = (uint8_t)n;
+    uint8_t frame[2 + CWNET_MORSE_MAX_EVENTS];
+    size_t frame_len = 0;
+    if (!cwnet_frame_build((uint8_t)CWNET_CMD_MORSE, events, n,
+                            frame, sizeof(frame), &frame_len)) {
+        return CWNET_CLIENT_ERR_PROTOCOL;
+    }
 
-    size_t frame_len = 2 + n;
     int sent = send_frame(client, frame, frame_len);
     if (sent < 0 || (size_t)sent != frame_len) {
         return CWNET_CLIENT_ERR_SEND_FAILED;
@@ -259,20 +260,13 @@ static void handle_ping(cwnet_client_t *client,
             break;
 
         case CWNET_PING_RESPONSE_2:
-            /* Update latency measurement */
+            /* Update latency measurement. cwnet_ping_peak_hold_update()
+             * gates the sample to 0..2000 ms (CwNet.c:1437) before either
+             * the instant latency or the peak-hold see it. */
             {
                 int32_t latency = cwnet_ping_calc_latency(&ping);
-                if (latency >= 0) {
+                if (cwnet_ping_peak_hold_update(&client->latency_peak_ms, latency)) {
                     client->latency_ms = latency;
-                    /* CwNet.c:1442-1447: jump to a new peak, otherwise drop
-                     * by a tenth of the gap. Integer division: a gap under
-                     * 10 ms no longer descends, and that is what the
-                     * reference shows. */
-                    if (client->latency_peak_ms < 0 || latency >= client->latency_peak_ms) {
-                        client->latency_peak_ms = latency;
-                    } else {
-                        client->latency_peak_ms -= (client->latency_peak_ms - latency) / 10;
-                    }
                     RT_DEBUG(&g_bg_log_stream, now_us, "RTT=%" PRId32 "ms pk=%" PRId32 "ms",
                              latency, client->latency_peak_ms);
                 }
@@ -292,16 +286,18 @@ static void handle_ping(cwnet_client_t *client,
  * CwNet.c:1000-1007: the payload is the C string with its terminator.
  */
 static cwnet_client_err_t send_rig_string(cwnet_client_t *client, const char *text) {
-    size_t len = strlen(text) + 1;
+    size_t len = strlen(text) + 1;  /* trailing NUL included, CwNet.c:1000-1007 */
     uint8_t frame[2 + 32];
     if (len > sizeof(frame) - 2) {
         return CWNET_CLIENT_ERR_INVALID_ARG;
     }
-    frame[0] = make_cmd_byte(CWNET_FRAME_CAT_SHORT_PAYLOAD, CWNET_CMD_RIG_STRING);
-    frame[1] = (uint8_t)len;
-    memcpy(&frame[2], text, len);
-    int sent = send_frame(client, frame, 2 + len);
-    if (sent < 0 || (size_t)sent != 2 + len) {
+    size_t frame_len = 0;
+    if (!cwnet_frame_build((uint8_t)CWNET_CMD_RIG_STRING, (const uint8_t *)text, len,
+                            frame, sizeof(frame), &frame_len)) {
+        return CWNET_CLIENT_ERR_PROTOCOL;
+    }
+    int sent = send_frame(client, frame, frame_len);
+    if (sent < 0 || (size_t)sent != frame_len) {
         return CWNET_CLIENT_ERR_SEND_FAILED;
     }
     return CWNET_CLIENT_OK;
@@ -660,6 +656,16 @@ void cwnet_client_on_data(cwnet_client_t *client,
                 /* Parse error - skip one byte to try to resync */
                 cwnet_frame_parser_reset(&client->parser);
                 offset++;  /* Skip one byte and try again */
+                break;
+
+            case CWNET_PARSE_SKIPPED:
+                /* Fragmented frame declared more than the parser's internal
+                 * buffer (R14): fully consumed and discarded already, so
+                 * framing stays in sync without resyncing byte-by-byte. */
+                RT_WARN(&g_bg_log_stream, now_us,
+                        "FRAME: skipped, too large fragmented (cmd=0x%02X)",
+                        result.command);
+                offset += result.bytes_consumed;
                 break;
         }
     }

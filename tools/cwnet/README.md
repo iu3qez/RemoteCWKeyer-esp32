@@ -11,8 +11,10 @@ compilano con clang/gcc. In particolare `pcap_to_stream.py` sostituisce
 
 | File | Cosa fa |
 |---|---|
-| `cwnet_echo.py` | Server CWNet minimo per il loop di determinismo (R7, #14): eco del CONNECT con i permessi, PING come richiedente ogni 2 s, `RPRT 0` alle stringhe 0x06, `TX_INFO` con la chiave presa al primo byte MORSE e rilasciata dopo 1 s, ed eco byte per byte di ogni frame MORSE al mittente. Il server DL4YHF non rimanda mai MORSE (H6). Registra i due versi come il tap. |
+| `cwnet_echo.py` | Server CWNet minimo per il loop di determinismo (R7, #14): eco del CONNECT con i permessi, PING come richiedente ogni 2 s, `RPRT 0` alle stringhe 0x06, `TX_INFO` con la chiave presa al primo byte MORSE e rilasciata dopo 1 s, ed eco byte per byte di ogni frame MORSE al mittente. Il `TX_INFO` annuncia il **nominativo** del CONNECT (`NoCall #n` se vuoto), non lo username: sono due campi distinti del CONNECT (92 byte: 44 username, 44 nominativo, 4 permessi) e solo il secondo e' quello che un vero server CWNet mostra agli altri client. Il server DL4YHF non rimanda mai MORSE (H6). Registra i due versi come il tap. |
 | `cwnet_tap.py` | Relay TCP trasparente: il client CWNet punta al tap, il tap inoltra al server e registra i due versi come byte grezzi. Cattura il loopback quando Wireshark/Npcap non lo intercetta. |
+| `cwnet_send.py` | Client CWNet di prova per il daemon vero, `cwnetd` (host/cwnetd): CONNECT, risposta ai PING, invio dei byte grezzi di una fixture (`--fixture first_over`, ..., `--fixture long` per la misura del jitter) o di un file, stampa di TX_INFO/RPRT/PING in chiaro. E' il "loop senza scatola" di U6/U7 — vedi [host/cwnetd/README.md](../../host/cwnetd/README.md). |
+| `cwnet_jitter.py` | Misura lo scarto (jitter) fra le righe `key`/`ptt` dell'uscita virtuale di `cwnetd` e le attese che portano scritte, e il tempo di scambio dopo la TX (B + coda). Guida `cwnetd` e `cwnet_send.py` da solo; metodo e numeri misurati: [host/cwnetd/README.md](../../host/cwnetd/README.md#misura-del-jitter-e-del-tempo-di-scambio). |
 | `pcap_to_stream.py` | Estrae i flussi TCP da un pcap/pcapng e li scrive come byte grezzi, una direzione per file (solo stdlib, gestisce Ethernet/loopback/SLL/raw). |
 | `cwnet_dump.c` | Decodifica un flusso grezzo: parser di frame **nostro** + codec del keying **di DL4YHF**. Diagnostico, non asserisce. |
 | `diff_main.c` | Confronto esaustivo del nostro `cwnet_timestamp.c` contro `CwStreamEnc.c` di DL4YHF, tutto il dominio di ingresso. |
@@ -65,7 +67,21 @@ python3 cwnet_tap.py --listen 0.0.0.0:7355 --server <ip-server>:7355 --out sess
 # oppure estrai da un pcap:
 python3 pcap_to_stream.py cattura.pcapng --port 7355 --out sess
 ./cwnet_dump sess_1_*.bin
+
+# loop senza scatola: cwnet_send.py fa da client di prova contro il daemon vero
+host/build/cwnetd --listen 127.0.0.1 --port 17355 &
+python3 cwnet_send.py --host 127.0.0.1 --port 17355 --fixture first_over --verbose
+
+# misura del jitter e del tempo di scambio (guida cwnetd e cwnet_send.py da solo)
+python3 cwnet_jitter.py --cwnetd ../../host/build/cwnetd
+python3 cwnet_jitter.py --cwnetd ../../host/build/cwnetd --handover
 ```
+
+Il daemon vero (`cwnetd`) e il suo README — avvio, flag, come si legge una
+riga di stato, e la procedura del banco con la scatola (R18) — sono in
+[host/cwnetd/](../../host/cwnetd/README.md): quel README e' il posto dove
+cercare "come faccio girare il loop con la scatola vera", questo e' dove
+cercare gli strumenti con cui costruire e leggere le catture.
 
 ## Fixture
 

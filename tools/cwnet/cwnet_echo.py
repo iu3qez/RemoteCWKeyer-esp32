@@ -22,10 +22,9 @@ simulare una latenza.
 """
 import argparse, asyncio, sys, time
 
-CMD_CONNECT, CMD_DISCONNECT, CMD_PING, CMD_PRINT, CMD_TX_INFO, CMD_RIG, CMD_MORSE = 1, 2, 3, 4, 5, 6, 0x10
-NAMES = {1: "CONNECT", 2: "DISCONNECT", 3: "PING", 4: "PRINT", 5: "TX_INFO", 6: "RIG", 0x10: "MORSE",
-         0x14: "CI_V", 0x15: "SPECTRUM", 0x16: "FREQ_REPORT"}
-NOBODY = b"-- nobody --\0"
+from cwnet_wire import (CMD_CONNECT, CMD_DISCONNECT, CMD_MORSE, CMD_PING,
+                        CMD_PRINT, CMD_RIG, CMD_TX_INFO, NAMES, FrameParser,
+                        decode7, frame, le32)
 
 
 def hostport(s):
@@ -37,56 +36,7 @@ def now_ms():
     return int(time.monotonic() * 1000) & 0x7FFFFFFF
 
 
-def le32(v):
-    return (v & 0xFFFFFFFF).to_bytes(4, "little")
-
-
-def frame(code, payload=b""):
-    """Un frame CWNet: comando con la categoria nei bit 7-6, lunghezza, payload."""
-    if not payload:
-        return bytes([code & 0x3F])
-    if len(payload) <= 255:
-        return bytes([0x40 | (code & 0x3F), len(payload)]) + payload
-    return bytes([0x80 | (code & 0x3F), len(payload) & 0xFF, len(payload) >> 8]) + payload
-
-
-def decode7(b):
-    """Attesa in ms dai 7 bit bassi, come CwStreamEnc_7BitTimestampToMilliseconds."""
-    v = b & 0x7F
-    if v <= 0x1F:
-        return v
-    if v <= 0x3F:
-        return 32 + 4 * (v - 0x20)
-    return 157 + 16 * (v - 0x40)
-
-
-class FrameParser:
-    """Parser a flusso: restituisce (comando, payload) man mano che i frame sono completi."""
-
-    def __init__(self):
-        self.buf = bytearray()
-
-    def feed(self, data):
-        self.buf += data
-        out = []
-        while self.buf:
-            cmd = self.buf[0]
-            cat, code = cmd >> 6, cmd & 0x3F
-            if cat == 0:
-                out.append((code, b""))
-                del self.buf[:1]
-                continue
-            if cat == 3:
-                raise ValueError(f"categoria riservata nel comando 0x{cmd:02X}")
-            hdr = 2 if cat == 1 else 3
-            if len(self.buf) < hdr:
-                break
-            n = self.buf[1] if cat == 1 else self.buf[1] | (self.buf[2] << 8)
-            if len(self.buf) < hdr + n:
-                break
-            out.append((code, bytes(self.buf[hdr:hdr + n])))
-            del self.buf[:hdr + n]
-        return out
+NOBODY = b"-- nobody --\0"
 
 
 class Hub:
@@ -103,7 +53,7 @@ class Hub:
         if self.holder is None or self.holder not in self.clients:
             return frame(CMD_TX_INFO, b"\xff" + NOBODY)
         c = self.clients[self.holder]
-        return frame(CMD_TX_INFO, bytes([self.holder]) + c.username.encode() + b"\0")
+        return frame(CMD_TX_INFO, bytes([self.holder]) + c.callsign.encode() + b"\0")
 
     async def announce(self):
         f = self.tx_info()
@@ -130,6 +80,7 @@ class Client:
     def __init__(self, hub, index, reader, writer, cfg):
         self.hub, self.index, self.reader, self.writer, self.cfg = hub, index, reader, writer, cfg
         self.username = "?"
+        self.callsign = "?"
         self.parser = FrameParser()
         self.ping_task = None
         self.ping_id = 0
@@ -165,7 +116,9 @@ class Client:
     async def on_frame(self, code, payload):
         if code == CMD_CONNECT and len(payload) == 92:
             self.username = payload[:44].split(b"\0", 1)[0].decode("ascii", "replace")
-            self.log(f"CONNECT user={self.username!r}, permessi 0x{self.cfg.permissions:02X}")
+            call = payload[44:88].split(b"\0", 1)[0].decode("ascii", "replace")
+            self.callsign = call if call else f"NoCall #{self.index}"
+            self.log(f"CONNECT user={self.username!r} call={self.callsign!r}, permessi 0x{self.cfg.permissions:02X}")
             await self.send(frame(CMD_CONNECT, payload[:88] + le32(self.cfg.permissions)), note="CONNECT echo")
             greeting = f"Welcome {self.username}. This is the echo server: what you key comes back.".encode() + b"\0"
             await self.send(frame(CMD_PRINT, greeting), note="PRINT")

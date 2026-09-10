@@ -150,13 +150,42 @@ cwnet_parse_result_t cwnet_frame_parse(cwnet_frame_parser_t *parser,
                         /* All payload in current buffer - return pointer directly */
                         result.payload = &data[pos];
                     } else {
-                        /* Payload was fragmented - copy remainder to internal buffer */
+                        /* Payload was fragmented and completes now - copy the
+                         * remainder to the internal buffer. Always fits: a
+                         * payload too large to buffer is diverted to SKIP
+                         * below the first time fragmentation is seen, before
+                         * any byte of it is buffered, so payload_received
+                         * only ever becomes nonzero here when the whole
+                         * thing fits CWNET_FRAME_PARSER_BUF_SIZE. This branch
+                         * is therefore unreachable today, verified by review;
+                         * it stays as a fail-closed guard rather than being
+                         * "simplified" away, because this parser runs on
+                         * firmware already flashed and a future change to the
+                         * buffering logic above must not silently reopen it
+                         * into an overflow. If it is ever false, the correct
+                         * response is CWNET_PARSE_SKIPPED with no payload
+                         * (the framing stays in sync, R14's SKIPPED state
+                         * exists exactly for this): never a payload whose
+                         * declared length is longer than what was actually
+                         * copied, which a caller trusting payload_len would
+                         * read out of bounds, and never CWNET_PARSE_ERROR,
+                         * which would resync the client's parser inside the
+                         * payload instead of at the next frame boundary. */
                         size_t copy_len = needed;
                         if (parser->payload_received + copy_len <= CWNET_FRAME_PARSER_BUF_SIZE) {
                             memcpy(&parser->payload_buf[parser->payload_received],
                                    &data[pos], copy_len);
+                            result.payload = parser->payload_buf;
+                        } else {
+                            pos += needed;
+                            result.status = CWNET_PARSE_SKIPPED;
+                            result.command = cwnet_frame_get_command(parser->command);
+                            result.payload_len = 0;
+                            result.payload = NULL;
+                            result.bytes_consumed = pos;
+                            cwnet_frame_parser_reset(parser);
+                            return result;
                         }
-                        result.payload = parser->payload_buf;
                     }
 
                     pos += needed;
@@ -166,8 +195,17 @@ cwnet_parse_result_t cwnet_frame_parse(cwnet_frame_parser_t *parser,
                     result.bytes_consumed = pos;
                     cwnet_frame_parser_reset(parser);
                     return result;
+                } else if (parser->payload_len > CWNET_FRAME_PARSER_BUF_SIZE) {
+                    /* This call does not carry the rest of the payload, and
+                     * its declared length would never fit the buffer even
+                     * fully assembled (R14): consume what is here and switch
+                     * to SKIP for the remainder, instead of overflowing
+                     * payload_buf or losing frame sync with an ERROR. */
+                    parser->payload_received = (uint16_t)(parser->payload_received + remaining);
+                    pos += remaining;
+                    parser->state = CWNET_PARSER_STATE_SKIP;
                 } else {
-                    /* Partial payload - buffer it */
+                    /* Partial payload that still fits - buffer it */
                     size_t copy_len = remaining;
                     if (parser->payload_received + copy_len <= CWNET_FRAME_PARSER_BUF_SIZE) {
                         memcpy(&parser->payload_buf[parser->payload_received],
@@ -179,9 +217,85 @@ cwnet_parse_result_t cwnet_frame_parse(cwnet_frame_parser_t *parser,
                 }
                 break;
             }
+
+            case CWNET_PARSER_STATE_SKIP: {
+                /* Discard a fragmented payload too large to buffer (R14).
+                 * Consume exactly its declared length -- never more, never
+                 * less -- so framing never drifts into what would have been
+                 * the payload. Never touches payload_buf. */
+                size_t remaining = len - pos;
+                size_t needed = (size_t)(parser->payload_len - parser->payload_received);
+                size_t consume = remaining < needed ? remaining : needed;
+
+                pos += consume;
+                parser->payload_received = (uint16_t)(parser->payload_received + consume);
+
+                if (parser->payload_received >= parser->payload_len) {
+                    result.status = CWNET_PARSE_SKIPPED;
+                    result.command = cwnet_frame_get_command(parser->command);
+                    result.payload_len = 0;
+                    result.payload = NULL;
+                    result.bytes_consumed = pos;
+                    cwnet_frame_parser_reset(parser);
+                    return result;
+                }
+                /* Stay in SKIP state, return NEED_MORE */
+                break;
+            }
         }
     }
 
     result.bytes_consumed = pos;
     return result;
+}
+
+bool cwnet_frame_build(uint8_t cmd,
+                        const uint8_t *payload, size_t payload_len,
+                        uint8_t *out_buf, size_t out_buf_size,
+                        size_t *out_len) {
+    if (out_buf == NULL || out_len == NULL) {
+        return false;
+    }
+    if (payload_len > 0 && payload == NULL) {
+        return false;
+    }
+    if (payload_len > 0xFFFFu) {
+        /* Does not fit a 16-bit length field */
+        return false;
+    }
+
+    cwnet_frame_category_t cat;
+    size_t header_len;
+    if (payload_len == 0) {
+        cat = CWNET_FRAME_CAT_NO_PAYLOAD;
+        header_len = 1;
+    } else if (payload_len <= 0xFFu) {
+        cat = CWNET_FRAME_CAT_SHORT_PAYLOAD;
+        header_len = 2;
+    } else {
+        cat = CWNET_FRAME_CAT_LONG_PAYLOAD;
+        header_len = 3;
+    }
+
+    size_t total_len = header_len + payload_len;
+    if (out_buf_size < total_len) {
+        /* Reject without writing */
+        return false;
+    }
+
+    out_buf[0] = (uint8_t)(((unsigned)cat << 6) | (cmd & CWNET_CMD_MASK_COMMAND));
+
+    if (cat == CWNET_FRAME_CAT_SHORT_PAYLOAD) {
+        out_buf[1] = (uint8_t)payload_len;
+    } else if (cat == CWNET_FRAME_CAT_LONG_PAYLOAD) {
+        out_buf[1] = (uint8_t)(payload_len & 0xFFu);
+        out_buf[2] = (uint8_t)((payload_len >> 8) & 0xFFu);
+    }
+
+    if (payload_len > 0) {
+        memcpy(&out_buf[header_len], payload, payload_len);
+    }
+
+    *out_len = total_len;
+    return true;
 }

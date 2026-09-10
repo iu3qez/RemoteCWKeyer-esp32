@@ -37,6 +37,9 @@ components/keyer_console/include/log_tags.h
 .devcontainer/Dockerfile.old
 .cargo/config.toml.old
 scripts/__pycache__/
+# Any Python bytecode: tools/cwnet/ became importable with cwnet_jitter.py
+__pycache__/
+*.pyc
 sdkconfig.defaults.generated
 build/
 old/

@@ -183,6 +183,15 @@ void test_parser_reset_clears_state(void);
 void test_parser_init_state(void);
 void test_parser_null_safety(void);
 void test_stream_parse_long_block_partial_length(void);
+void test_parse_fragmented_oversized_long_frame_is_skipped_not_error(void);
+void test_parse_fragmented_256_exact_still_buffers_and_copies(void);
+void test_parse_long_frame_65535_single_read_no_copy(void);
+void test_frame_build_empty_payload_writes_only_command_byte(void);
+void test_frame_build_short_payload_92_bytes(void);
+void test_frame_build_long_payload_300_bytes_little_endian_length(void);
+void test_frame_build_buffer_too_small_rejects_without_writing(void);
+void test_frame_build_matches_ref_tx_info_moritz(void);
+void test_frame_build_matches_ref_tx_info_nobody(void);
 
 /* CWNet PING/Timer tests */
 void test_timer_sync_init(void);
@@ -208,6 +217,20 @@ void test_ping_calc_latency_wrong_type(void);
 void test_ping_calc_latency_null(void);
 void test_ping_full_sequence(void);
 void test_ping_latency_measurement(void);
+void test_ping_build_request_layout(void);
+void test_ping_build_request_buffer_too_small(void);
+void test_ping_build_request_null_buffer(void);
+void test_ping_build_response2_from_response1(void);
+void test_ping_build_response2_wrong_type(void);
+void test_ping_build_response2_buffer_too_small(void);
+void test_ping_build_response2_null(void);
+void test_ping_peak_hold_jumps_to_new_peak(void);
+void test_ping_peak_hold_decays_by_tenth_of_gap(void);
+void test_ping_peak_hold_null(void);
+void test_ping_peak_hold_gate_rejects_over_2000ms(void);
+void test_ping_peak_hold_gate_boundary(void);
+void test_ping_peak_hold_gate_rejects_negative_rtt_from_wrap(void);
+void test_ping_peak_hold_accepts_zero(void);
 
 /* CWNet Client tests */
 void test_client_init_basic(void);
@@ -241,6 +264,7 @@ void test_client_rx_event_carries_reception_time(void);
 void test_client_rx_fifo_full_drops_and_counts(void);
 void test_client_rx_ignores_ci_v_and_spectrum(void);
 void test_client_latency_peak_holds_and_decays_like_the_reference(void);
+void test_client_ping_peak_hold_gate_rejects_out_of_range_rtt(void);
 void test_client_round_trip_returns_the_edges_sent(void);
 void test_client_tx_first_over_with_ptt_matches_reference_capture_whole(void);
 void test_client_tx_ptt_holds_across_gaps_shorter_than_the_tail(void);
@@ -284,6 +308,61 @@ void test_feed_drain_granularity_does_not_change_the_bytes(void);
 void test_feed_send_failure_closes_the_over_and_retries(void);
 void test_feed_disconnect_mid_over_then_reconnect(void);
 void test_feed_long_key_down_is_sent_in_full(void);
+
+/* CWNet playback engine (station side: bytes -> key edges and PTT) */
+void test_play_first_over_of_the_capture_plays_at_the_encoded_instants(void);
+void test_play_a_late_tick_does_not_move_the_edges(void);
+void test_play_a_late_byte_does_not_move_the_deadline_it_follows(void);
+void test_play_two_event_frames_play_at_their_encoded_distances(void);
+void test_play_a_split_wait_makes_one_edge_after_the_sum(void);
+void test_play_a_key_down_longer_than_one_byte_is_not_an_end_of_over(void);
+void test_play_underrun_lifts_the_key_at_once_and_reports_it(void);
+void test_play_after_an_underrun_the_next_byte_restarts_with_the_same_buffer(void);
+void test_play_end_of_over_does_not_wait_out_the_marker(void);
+void test_play_key_ups_split_by_a_key_down_are_not_an_end_of_over(void);
+void test_play_ptt_lead_raises_the_ptt_before_the_first_key_down(void);
+void test_play_ptt_lead_is_clamped_to_the_buffer(void);
+void test_play_a_full_fifo_drops_the_byte_and_counts_it(void);
+void test_play_force_release_lifts_the_key_and_drops_the_ptt_at_the_tail(void);
+void test_play_force_release_when_idle_finishes_the_over_at_once(void);
+void test_play_start_over_fixes_the_buffer_and_clears_the_queue(void);
+void test_play_survives_null_and_reports_nothing(void);
+void test_play_never_comes_to_rest_with_the_key_down(void);
+
+/* CWNet server core (station side: CONNECT, key, PING, rig strings) */
+void test_server_connect_echo_matches_the_capture(void);
+void test_server_connect_of_the_wrong_length_closes_the_client(void);
+void test_server_connect_arriving_one_byte_at_a_time_still_logs_in(void);
+void test_server_an_empty_callsign_is_announced_as_nocall(void);
+void test_server_connect_fields_without_a_nul_are_read_no_further(void);
+void test_server_a_connection_past_the_limit_is_accepted_and_closed(void);
+void test_server_a_client_that_never_logs_in_is_closed(void);
+void test_server_three_unanswered_pings_close_the_client(void);
+void test_server_ping_request_and_response2_carry_the_reference_layout(void);
+void test_server_a_response_that_matches_no_pending_request_is_ignored(void);
+void test_server_answers_a_ping_request_from_the_client(void);
+void test_server_set_ptt_is_acknowledged_and_never_applied(void);
+void test_server_any_other_rig_string_gets_a_negative_code(void);
+void test_server_a_rig_string_without_a_nul_closes_the_client(void);
+void test_server_ignores_ci_v_and_spectrum_and_closes_on_a_parse_error(void);
+void test_server_plays_the_first_over_of_the_capture_and_announces_both_ends(void);
+void test_server_morse_from_a_client_without_the_key_is_dropped_in_silence(void);
+void test_server_announces_the_holder_to_every_client(void);
+void test_server_a_link_over_the_ceiling_does_not_get_the_key(void);
+void test_server_a_link_under_the_ceiling_sets_the_buffer_to_its_peak(void);
+void test_server_the_holder_disconnecting_frees_the_key_for_the_others(void);
+void test_server_a_holder_lost_inside_the_buffer_is_still_named_in_the_fault(void);
+void test_server_silence_from_the_holder_releases_the_key_with_a_fault(void);
+void test_server_an_over_past_its_ceiling_is_cut_off(void);
+void test_server_a_huge_morse_frame_fills_the_engine_and_counts_the_rest(void);
+void test_server_a_failed_send_closes_that_client(void);
+void test_server_survives_null_and_unknown_indices(void);
+void test_server_a_send_dying_mid_announcement_leaves_no_stale_tx_info(void);
+void test_server_a_link_that_never_answers_inside_the_window_is_not_fit(void);
+void test_server_a_link_that_has_never_been_pinged_still_gets_the_key(void);
+void test_server_an_unfit_link_is_reported_once_not_once_per_frame(void);
+void test_server_next_deadline_is_the_nearest_of_the_over_and_the_pings(void);
+void test_server_next_deadline_takes_an_expiring_handshake_before_the_rest(void);
 
 void setUp(void) {
     /* Called before each test */
@@ -496,6 +575,16 @@ int main(void) {
     RUN_TEST(test_stream_parse_two_disconnects);
     RUN_TEST(test_stream_parse_disconnect_then_ping);
     RUN_TEST(test_stream_parse_long_block_partial_length);
+    RUN_TEST(test_parse_fragmented_oversized_long_frame_is_skipped_not_error);
+    RUN_TEST(test_parse_fragmented_256_exact_still_buffers_and_copies);
+    RUN_TEST(test_parse_long_frame_65535_single_read_no_copy);
+    /* Frame builders */
+    RUN_TEST(test_frame_build_empty_payload_writes_only_command_byte);
+    RUN_TEST(test_frame_build_short_payload_92_bytes);
+    RUN_TEST(test_frame_build_long_payload_300_bytes_little_endian_length);
+    RUN_TEST(test_frame_build_buffer_too_small_rejects_without_writing);
+    RUN_TEST(test_frame_build_matches_ref_tx_info_moritz);
+    RUN_TEST(test_frame_build_matches_ref_tx_info_nobody);
     /* Error handling */
     RUN_TEST(test_parse_reserved_category);
     RUN_TEST(test_parse_incomplete_returns_need_more);
@@ -537,6 +626,22 @@ int main(void) {
     /* Integration */
     RUN_TEST(test_ping_full_sequence);
     RUN_TEST(test_ping_latency_measurement);
+    /* Initiator side: the daemon builds these (U2) */
+    RUN_TEST(test_ping_build_request_layout);
+    RUN_TEST(test_ping_build_request_buffer_too_small);
+    RUN_TEST(test_ping_build_request_null_buffer);
+    RUN_TEST(test_ping_build_response2_from_response1);
+    RUN_TEST(test_ping_build_response2_wrong_type);
+    RUN_TEST(test_ping_build_response2_buffer_too_small);
+    RUN_TEST(test_ping_build_response2_null);
+    /* Peak-hold, shared by client and server, behind the 0..2000 ms gate */
+    RUN_TEST(test_ping_peak_hold_jumps_to_new_peak);
+    RUN_TEST(test_ping_peak_hold_decays_by_tenth_of_gap);
+    RUN_TEST(test_ping_peak_hold_null);
+    RUN_TEST(test_ping_peak_hold_gate_rejects_over_2000ms);
+    RUN_TEST(test_ping_peak_hold_gate_boundary);
+    RUN_TEST(test_ping_peak_hold_gate_rejects_negative_rtt_from_wrap);
+    RUN_TEST(test_ping_peak_hold_accepts_zero);
 
     /* CWNet Client tests */
     printf("\n=== CWNet Client Tests ===\n");
@@ -577,6 +682,7 @@ int main(void) {
     RUN_TEST(test_client_rx_fifo_full_drops_and_counts);
     RUN_TEST(test_client_rx_ignores_ci_v_and_spectrum);
     RUN_TEST(test_client_latency_peak_holds_and_decays_like_the_reference);
+    RUN_TEST(test_client_ping_peak_hold_gate_rejects_out_of_range_rtt);
     RUN_TEST(test_client_round_trip_returns_the_edges_sent);
     RUN_TEST(test_client_tx_first_over_with_ptt_matches_reference_capture_whole);
     RUN_TEST(test_client_tx_ptt_holds_across_gaps_shorter_than_the_tail);
@@ -624,6 +730,63 @@ int main(void) {
     RUN_TEST(test_feed_send_failure_closes_the_over_and_retries);
     RUN_TEST(test_feed_disconnect_mid_over_then_reconnect);
     RUN_TEST(test_feed_long_key_down_is_sent_in_full);
+
+    /* CWNet playback: the station plays the key holder's bytes and the PTT */
+    printf("\n=== CWNet Playback Tests ===\n");
+    RUN_TEST(test_play_first_over_of_the_capture_plays_at_the_encoded_instants);
+    RUN_TEST(test_play_a_late_tick_does_not_move_the_edges);
+    RUN_TEST(test_play_a_late_byte_does_not_move_the_deadline_it_follows);
+    RUN_TEST(test_play_two_event_frames_play_at_their_encoded_distances);
+    RUN_TEST(test_play_a_split_wait_makes_one_edge_after_the_sum);
+    RUN_TEST(test_play_a_key_down_longer_than_one_byte_is_not_an_end_of_over);
+    RUN_TEST(test_play_underrun_lifts_the_key_at_once_and_reports_it);
+    RUN_TEST(test_play_after_an_underrun_the_next_byte_restarts_with_the_same_buffer);
+    RUN_TEST(test_play_end_of_over_does_not_wait_out_the_marker);
+    RUN_TEST(test_play_key_ups_split_by_a_key_down_are_not_an_end_of_over);
+    RUN_TEST(test_play_ptt_lead_raises_the_ptt_before_the_first_key_down);
+    RUN_TEST(test_play_ptt_lead_is_clamped_to_the_buffer);
+    RUN_TEST(test_play_a_full_fifo_drops_the_byte_and_counts_it);
+    RUN_TEST(test_play_force_release_lifts_the_key_and_drops_the_ptt_at_the_tail);
+    RUN_TEST(test_play_force_release_when_idle_finishes_the_over_at_once);
+    RUN_TEST(test_play_start_over_fixes_the_buffer_and_clears_the_queue);
+    RUN_TEST(test_play_survives_null_and_reports_nothing);
+    RUN_TEST(test_play_never_comes_to_rest_with_the_key_down);
+
+    /* CWNet server core: the station takes a client in and arbitrates the key */
+    printf("\n=== CWNet Server Tests ===\n");
+    RUN_TEST(test_server_connect_echo_matches_the_capture);
+    RUN_TEST(test_server_connect_of_the_wrong_length_closes_the_client);
+    RUN_TEST(test_server_connect_arriving_one_byte_at_a_time_still_logs_in);
+    RUN_TEST(test_server_an_empty_callsign_is_announced_as_nocall);
+    RUN_TEST(test_server_connect_fields_without_a_nul_are_read_no_further);
+    RUN_TEST(test_server_a_connection_past_the_limit_is_accepted_and_closed);
+    RUN_TEST(test_server_a_client_that_never_logs_in_is_closed);
+    RUN_TEST(test_server_three_unanswered_pings_close_the_client);
+    RUN_TEST(test_server_ping_request_and_response2_carry_the_reference_layout);
+    RUN_TEST(test_server_a_response_that_matches_no_pending_request_is_ignored);
+    RUN_TEST(test_server_answers_a_ping_request_from_the_client);
+    RUN_TEST(test_server_set_ptt_is_acknowledged_and_never_applied);
+    RUN_TEST(test_server_any_other_rig_string_gets_a_negative_code);
+    RUN_TEST(test_server_a_rig_string_without_a_nul_closes_the_client);
+    RUN_TEST(test_server_ignores_ci_v_and_spectrum_and_closes_on_a_parse_error);
+    RUN_TEST(test_server_plays_the_first_over_of_the_capture_and_announces_both_ends);
+    RUN_TEST(test_server_morse_from_a_client_without_the_key_is_dropped_in_silence);
+    RUN_TEST(test_server_announces_the_holder_to_every_client);
+    RUN_TEST(test_server_a_link_over_the_ceiling_does_not_get_the_key);
+    RUN_TEST(test_server_a_link_under_the_ceiling_sets_the_buffer_to_its_peak);
+    RUN_TEST(test_server_the_holder_disconnecting_frees_the_key_for_the_others);
+    RUN_TEST(test_server_a_holder_lost_inside_the_buffer_is_still_named_in_the_fault);
+    RUN_TEST(test_server_silence_from_the_holder_releases_the_key_with_a_fault);
+    RUN_TEST(test_server_an_over_past_its_ceiling_is_cut_off);
+    RUN_TEST(test_server_a_huge_morse_frame_fills_the_engine_and_counts_the_rest);
+    RUN_TEST(test_server_a_failed_send_closes_that_client);
+    RUN_TEST(test_server_survives_null_and_unknown_indices);
+    RUN_TEST(test_server_a_send_dying_mid_announcement_leaves_no_stale_tx_info);
+    RUN_TEST(test_server_a_link_that_never_answers_inside_the_window_is_not_fit);
+    RUN_TEST(test_server_a_link_that_has_never_been_pinged_still_gets_the_key);
+    RUN_TEST(test_server_an_unfit_link_is_reported_once_not_once_per_frame);
+    RUN_TEST(test_server_next_deadline_is_the_nearest_of_the_over_and_the_pings);
+    RUN_TEST(test_server_next_deadline_takes_an_expiring_handshake_before_the_rest);
 
     return UNITY_END();
 }

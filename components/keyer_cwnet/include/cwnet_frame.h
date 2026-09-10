@@ -34,7 +34,11 @@ typedef enum {
 typedef enum {
     CWNET_PARSE_OK = 0,         /**< Frame parsed successfully */
     CWNET_PARSE_NEED_MORE,      /**< Need more data to complete frame */
-    CWNET_PARSE_ERROR           /**< Parse error (invalid frame) */
+    CWNET_PARSE_ERROR,          /**< Parse error (invalid frame) */
+    CWNET_PARSE_SKIPPED         /**< Frame fully consumed but not buffered: its
+                                  *   declared length exceeded the internal
+                                  *   buffer and it arrived fragmented. Framing
+                                  *   stays in sync; payload is NULL, len 0. */
 } cwnet_parse_status_t;
 
 /**
@@ -44,7 +48,8 @@ typedef enum {
     CWNET_PARSER_STATE_COMMAND = 0,     /**< Waiting for command byte */
     CWNET_PARSER_STATE_LENGTH_1,        /**< Waiting for first length byte */
     CWNET_PARSER_STATE_LENGTH_2,        /**< Waiting for second length byte (long block) */
-    CWNET_PARSER_STATE_PAYLOAD          /**< Accumulating payload */
+    CWNET_PARSER_STATE_PAYLOAD,         /**< Accumulating payload into the internal buffer */
+    CWNET_PARSER_STATE_SKIP             /**< Discarding a fragmented payload too large to buffer */
 } cwnet_parser_state_t;
 
 /**
@@ -124,3 +129,26 @@ void cwnet_frame_parser_reset(cwnet_frame_parser_t *parser);
 cwnet_parse_result_t cwnet_frame_parse(cwnet_frame_parser_t *parser,
                                         const uint8_t *data,
                                         size_t len);
+
+/**
+ * @brief Build a frame into the caller's buffer
+ *
+ * Chooses the category from payload_len: 0 -> no payload (command byte
+ * only), 1-255 -> short block (1-byte length), 256-65535 -> long block
+ * (2-byte little-endian length). Writes nothing and returns false if
+ * out_buf cannot hold the whole frame, or if payload_len does not fit in
+ * a 16-bit length field.
+ *
+ * @param cmd          Command type, bits 5-0 (masked internally)
+ * @param payload      Payload bytes (may be NULL only if payload_len == 0)
+ * @param payload_len  Payload length in bytes
+ * @param out_buf      Caller's output buffer
+ * @param out_buf_size Size of out_buf
+ * @param out_len      Set to the number of bytes written, on success only
+ * @return true on success; false (nothing written) if out_buf is too
+ *         small, payload_len is out of range, or out_buf/out_len is NULL
+ */
+bool cwnet_frame_build(uint8_t cmd,
+                        const uint8_t *payload, size_t payload_len,
+                        uint8_t *out_buf, size_t out_buf_size,
+                        size_t *out_len);

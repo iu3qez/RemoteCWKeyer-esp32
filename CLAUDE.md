@@ -286,4 +286,5 @@ Keying events flow only through `keying_stream_t`; Core 0 = hard-RT, Core 1 = ba
 - `components/keyer_config/`  — GENERATED config (DO NOT EDIT; from parameters.yaml)  → components/keyer_config/CLAUDE.md
 - `main/`  — Entry point; rt_task (Core 0) + bg_task (Core 1)  → main/CLAUDE.md
 - `test_host/`  — Unity host tests (stream-based, no hardware)  → test_host/CLAUDE.md
+- `host/`  — POSIX platform layer + `cwnetd` station daemon (host-only, no GUI, no physical key/PTT backend)  → host/CLAUDE.md
 <!-- END treecode:map (auto) -->

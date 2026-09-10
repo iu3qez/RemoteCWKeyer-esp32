@@ -14,6 +14,8 @@
 
 #include "unity.h"
 #include "cwnet_frame.h"
+#include "cwnet_client.h"
+#include "cwnet_fixtures.h"
 #include <string.h>
 
 /*===========================================================================*/
@@ -446,4 +448,195 @@ void test_stream_parse_long_block_partial_length(void) {
     cwnet_parse_result_t r3 = cwnet_frame_parse(&parser, payload, 320);
     TEST_ASSERT_EQUAL(CWNET_PARSE_OK, r3.status);
     TEST_ASSERT_EQUAL(320, r3.payload_len);
+}
+
+/*===========================================================================*/
+/* R14: a fragmented frame declaring more than the internal buffer          */
+/*===========================================================================*/
+
+void test_parse_fragmented_oversized_long_frame_is_skipped_not_error(void) {
+    /* AE7: a long-block frame declares 300 bytes (over CWNET_FRAME_PARSER_BUF_SIZE
+     * = 256), delivered in two fragments, immediately followed by a PING. The
+     * first fragment is 3-byte header + 100 payload bytes; the second is the
+     * remaining 200 payload bytes with the PING's 18 bytes appended -- the
+     * shape a socket read actually hands the parser mid-stream. */
+    uint8_t header[3] = {0x91, 0x2C, 0x01};  /* long block, len=300 (0x012C LE) */
+
+    uint8_t frag1[3 + 100];
+    memcpy(frag1, header, sizeof(header));
+    memset(frag1 + 3, 0x11, 100);
+
+    uint8_t frag2[200 + 18];
+    memset(frag2, 0x22, 200);
+    frag2[200] = 0x43;  /* PING */
+    frag2[201] = 0x10;  /* len = 16 */
+    memset(&frag2[202], 0xEE, 16);
+
+    cwnet_frame_parser_t parser;
+    cwnet_frame_parser_init(&parser);
+
+    cwnet_parse_result_t r1 = cwnet_frame_parse(&parser, frag1, sizeof(frag1));
+    TEST_ASSERT_EQUAL(CWNET_PARSE_NEED_MORE, r1.status);
+    TEST_ASSERT_EQUAL(sizeof(frag1), r1.bytes_consumed);
+
+    cwnet_parse_result_t r2 = cwnet_frame_parse(&parser, frag2, sizeof(frag2));
+    TEST_ASSERT_EQUAL(CWNET_PARSE_SKIPPED, r2.status);
+    TEST_ASSERT_NULL(r2.payload);
+    TEST_ASSERT_EQUAL(0, r2.payload_len);
+    /* Consumed exactly the 200 bytes that complete the declared 300-byte
+     * payload -- not the PING that follows in the same fragment. */
+    TEST_ASSERT_EQUAL(200, r2.bytes_consumed);
+
+    /* Framing survived: the PING right after it parses intact. */
+    cwnet_frame_parser_reset(&parser);
+    cwnet_parse_result_t r3 = cwnet_frame_parse(&parser, frag2 + r2.bytes_consumed,
+                                                 sizeof(frag2) - r2.bytes_consumed);
+    TEST_ASSERT_EQUAL(CWNET_PARSE_OK, r3.status);
+    TEST_ASSERT_EQUAL_HEX8(0x03, r3.command);
+    TEST_ASSERT_EQUAL(16, r3.payload_len);
+    TEST_ASSERT_EQUAL(18, r3.bytes_consumed);
+}
+
+void test_parse_fragmented_256_exact_still_buffers_and_copies(void) {
+    /* 256 == CWNET_FRAME_PARSER_BUF_SIZE exactly: still fits, still valid. */
+    uint8_t header[3] = {0x91, 0x00, 0x01};  /* long block, len=256 (0x0100 LE) */
+    uint8_t payload[256];
+    for (size_t i = 0; i < sizeof(payload); i++) {
+        payload[i] = (uint8_t)i;
+    }
+
+    uint8_t frag1[3 + 100];
+    memcpy(frag1, header, sizeof(header));
+    memcpy(frag1 + 3, payload, 100);
+    uint8_t frag2[156];
+    memcpy(frag2, payload + 100, sizeof(frag2));
+
+    cwnet_frame_parser_t parser;
+    cwnet_frame_parser_init(&parser);
+
+    cwnet_parse_result_t r1 = cwnet_frame_parse(&parser, frag1, sizeof(frag1));
+    TEST_ASSERT_EQUAL(CWNET_PARSE_NEED_MORE, r1.status);
+
+    cwnet_parse_result_t r2 = cwnet_frame_parse(&parser, frag2, sizeof(frag2));
+    TEST_ASSERT_EQUAL(CWNET_PARSE_OK, r2.status);
+    TEST_ASSERT_EQUAL(256, r2.payload_len);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(payload, r2.payload, sizeof(payload));
+}
+
+static uint8_t s_long_single_read_frame[3 + 65535];
+
+void test_parse_long_frame_65535_single_read_no_copy(void) {
+    /* Delivered whole in one read: valid regardless of size, pointer straight
+     * into the caller's buffer, no copy into the internal buffer at all. */
+    s_long_single_read_frame[0] = 0x91;
+    s_long_single_read_frame[1] = 0xFF;
+    s_long_single_read_frame[2] = 0xFF;  /* 0xFFFF = 65535 LE */
+    memset(s_long_single_read_frame + 3, 0x99, 65535);
+
+    cwnet_frame_parser_t parser;
+    cwnet_frame_parser_init(&parser);
+
+    cwnet_parse_result_t r = cwnet_frame_parse(&parser, s_long_single_read_frame,
+                                                sizeof(s_long_single_read_frame));
+    TEST_ASSERT_EQUAL(CWNET_PARSE_OK, r.status);
+    TEST_ASSERT_EQUAL(65535, r.payload_len);
+    TEST_ASSERT_EQUAL_PTR(&s_long_single_read_frame[3], r.payload);
+}
+
+/*===========================================================================*/
+/* Frame builder                                                             */
+/*===========================================================================*/
+
+void test_frame_build_empty_payload_writes_only_command_byte(void) {
+    uint8_t buf[4];
+    size_t out_len = 0;
+
+    bool ok = cwnet_frame_build(0x02 /* DISCONNECT */, NULL, 0, buf, sizeof(buf), &out_len);
+
+    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_EQUAL(1, out_len);
+    TEST_ASSERT_EQUAL_HEX8(0x02, buf[0]);
+}
+
+void test_frame_build_short_payload_92_bytes(void) {
+    /* Matches send_connect()'s CONNECT frame: cmd=0x41, len=0x5C (92) */
+    uint8_t payload[92];
+    memset(payload, 0, sizeof(payload));
+    uint8_t buf[2 + 92];
+    size_t out_len = 0;
+
+    bool ok = cwnet_frame_build((uint8_t)CWNET_CMD_CONNECT, payload, sizeof(payload),
+                                 buf, sizeof(buf), &out_len);
+
+    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_EQUAL(94, out_len);
+    TEST_ASSERT_EQUAL_HEX8(0x41, buf[0]);
+    TEST_ASSERT_EQUAL_HEX8(0x5C, buf[1]);
+}
+
+void test_frame_build_long_payload_300_bytes_little_endian_length(void) {
+    uint8_t payload[300];
+    memset(payload, 0x77, sizeof(payload));
+    uint8_t buf[3 + 300];
+    size_t out_len = 0;
+
+    bool ok = cwnet_frame_build(0x11 /* long-block command */, payload, sizeof(payload),
+                                 buf, sizeof(buf), &out_len);
+
+    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_EQUAL(303, out_len);
+    TEST_ASSERT_EQUAL_HEX8(0x91, buf[0]);  /* cat=10 (long) | cmd=0x11 */
+    TEST_ASSERT_EQUAL_HEX8(0x2C, buf[1]);  /* 300 & 0xFF */
+    TEST_ASSERT_EQUAL_HEX8(0x01, buf[2]);  /* 300 >> 8 */
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(payload, &buf[3], sizeof(payload));
+}
+
+void test_frame_build_buffer_too_small_rejects_without_writing(void) {
+    uint8_t payload[10];
+    memset(payload, 0xAB, sizeof(payload));
+    uint8_t buf[5];
+    memset(buf, 0x00, sizeof(buf));
+    uint8_t sentinel[5];
+    memcpy(sentinel, buf, sizeof(buf));
+    size_t out_len = 0xDEAD;
+
+    bool ok = cwnet_frame_build(0x01, payload, sizeof(payload), buf, sizeof(buf), &out_len);
+
+    TEST_ASSERT_FALSE(ok);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(sentinel, buf, sizeof(buf));
+}
+
+/*
+ * DoD: "test_cwnet_frame_parser.c pinna i costruttori sulle intestazioni
+ * delle fixture." The builder must reproduce the reference's TX_INFO bytes
+ * (R3) exactly, byte for byte.
+ */
+void test_frame_build_matches_ref_tx_info_moritz(void) {
+    uint8_t payload[8];
+    payload[0] = 0x01;  /* remote client index 1 */
+    memcpy(&payload[1], "Moritz", 7);  /* 6 chars + NUL */
+
+    uint8_t buf[sizeof(ref_tx_info_moritz)];
+    size_t out_len = 0;
+    bool ok = cwnet_frame_build((uint8_t)CWNET_CMD_TX_INFO, payload, sizeof(payload),
+                                 buf, sizeof(buf), &out_len);
+
+    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_EQUAL(sizeof(ref_tx_info_moritz), out_len);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(ref_tx_info_moritz, buf, sizeof(ref_tx_info_moritz));
+}
+
+void test_frame_build_matches_ref_tx_info_nobody(void) {
+    uint8_t payload[14];
+    payload[0] = 0xFF;  /* the key is free */
+    memcpy(&payload[1], "-- nobody --", 13);  /* 12 chars + NUL */
+
+    uint8_t buf[sizeof(ref_tx_info_nobody)];
+    size_t out_len = 0;
+    bool ok = cwnet_frame_build((uint8_t)CWNET_CMD_TX_INFO, payload, sizeof(payload),
+                                 buf, sizeof(buf), &out_len);
+
+    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_EQUAL(sizeof(ref_tx_info_nobody), out_len);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(ref_tx_info_nobody, buf, sizeof(ref_tx_info_nobody));
 }
