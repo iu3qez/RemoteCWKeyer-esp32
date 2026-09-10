@@ -55,7 +55,7 @@ Il lato stazione non ha un server nostro. Esiste solo `tools/cwnet/cwnet_echo.py
 - F2. **Un over.** Il primo byte MORSE di A1 prende la chiave se è libera; TX_INFO a tutti. I byte entrano nella FIFO del titolare con l'ora di ricezione. La riproduzione parte al primo byte, ritardata del buffer B, e riproduce le attese codificate. Il PTT sale al primo key-down riprodotto e scende alla coda dopo l'ultimo key-up riprodotto. Il marker di fine over riprodotto e il PTT sceso rilasciano la chiave; TX_INFO «nobody» a tutti. Covered by R6, R7, R9.
 - F3. **Due client.** Il MORSE di chi non ha la chiave è scartato in silenzio, nessun annuncio. Quando il titolare rilascia, il prossimo byte di chiunque prende la chiave. Covered by R6.
 - F4. **Caduta a metà over.** Il TCP del titolare si chiude, o non arriva più niente: la chiave si rilascia con tasto su forzato e PTT giù dopo la coda; TX_INFO «nobody». Covered by R6, R16.
-- F5. **Jitter.** La FIFO si svuota prima del prossimo fronte: tasto su subito, riga di fault, il PTT scende alla coda. I byte successivi ripartono come un over nuovo con lo stesso B. Covered by R8.
+- F5. **Jitter.** Un byte arriva in ritardo sulla propria scadenza: l'elemento in corso si allunga, il ritardo si conta. Se il tasto è giù e non arriva niente per il tempo di grazia: tasto su, riga di fault, PTT giù alla coda; i byte successivi ripartono come un over nuovo con lo stesso B. Covered by R8.
 
 ### Requirements
 
@@ -70,16 +70,16 @@ Il lato stazione non ha un server nostro. Esiste solo `tools/cwnet/cwnet_echo.py
 **Chiave, riproduzione, PTT**
 
 - R6. Il primo byte MORSE mentre la chiave è libera la prende; il MORSE degli altri client è scartato in silenzio. La chiave resta al titolare per tutto l'over e si rilascia quando il marker di fine over è stato riprodotto e il PTT è sceso. Reti di sicurezza, ciascuna con rilascio, tasto su forzato e PTT giù alla coda: chiusura del TCP del titolare; nessun byte per un tempo di inattività (default 5 s); un over più lungo di un tetto (default 120 s).
-- R7. La riproduzione parte al primo byte di un over, ritardata di B; B è il peak-hold del titolare sopra un pavimento (default 50 ms), fissato al momento in cui prende la chiave e invariato per l'over. Il tetto di idoneità è 1000 ms: un client il cui peak-hold lo supera quando manda il primo byte MORSE non prende la chiave e non viene riprodotto; riceve un PRINT che dice il link non idoneo e il valore misurato, e stdout scrive una riga. Ogni fronte esce dopo l'attesa codificata nel byte, senza accumulo di errore; un'attesa spezzata su più byte con lo stesso stato esce come attese consecutive.
-- R8. Se al momento di un fronte la FIFO è vuota, il tasto va su subito e viene scritta una riga di fault; il tasto non resta mai nello stato pendente. I byte successivi ripartono come un over nuovo con lo stesso B.
+- R7. La riproduzione parte al primo byte di un over, ritardata di B; B è il peak-hold del titolare sopra un pavimento (default 100 ms), fissato al momento in cui prende la chiave e invariato per l'over. Il tetto di idoneità è 1000 ms: un client il cui peak-hold lo supera quando manda il primo byte MORSE non prende la chiave e non viene riprodotto; riceve un PRINT che dice il link non idoneo e il valore misurato, e stdout scrive una riga. Ogni fronte esce dopo l'attesa codificata nel byte, senza accumulo di errore; un'attesa spezzata su più byte con lo stesso stato esce come attese consecutive.
+- R8. Ogni byte arriva B ms prima della propria scadenza, quindi una FIFO vuota alla scadenza di un fronte è lo stato normale: lo stato applicato resta. Un byte che arriva dopo la propria scadenza si applica subito, l'elemento in corso si allunga del ritardo e il ritardo viene contato. Se il tasto è giù e nessun byte arriva entro un tempo di grazia dall'ultimo fronte (default 500 ms), il tasto va su subito e viene scritta una riga di fault; i byte successivi ripartono come un over nuovo con lo stesso B. Un byte con lo stesso stato di quello applicato non produce un fronte.
 - R9. Il PTT sale con il primo key-down riprodotto, anticipato di un lead configurabile (default 0 ms, mai oltre B), e scende una coda dopo l'ultimo key-up riprodotto (default 100 ms, il valore della scatola). Ogni rilascio della chiave lo abbassa al più tardi alla coda.
 - R10. Le stringhe `set_ptt` del client non muovono il PTT.
 
 **Uscite e stato**
 
-- R11. Tasto e PTT passano da un'interfaccia di uscita con un backend virtuale che scrive ogni fronte come riga con l'istante in ms. Il trasporto fisico è fuori da questo piano (Scope Boundaries).
+- R11. Tasto e PTT passano da un'interfaccia di uscita con un backend virtuale che scrive ogni fronte come riga con l'istante in ms su un descrittore proprio (file o stderr) che non scarta mai, separato dalle righe di stato. Il trasporto fisico è fuori da questo piano (Scope Boundaries).
 - R12. Lo stato esce su stdout a righe: connessione e disconnessione con nominativo e indirizzo, cambio del titolare, latenza e peak-hold per client, PTT, fault, B scelto a ogni over. Le stringhe che vengono dal client escono con i byte di controllo e le sequenze di escape rimossi; una stdout che non drena non ferma il loop.
-- R13. La configurazione è da riga di comando con default uguali al riferimento o alla scatola: indirizzo di ascolto (default tutte le interfacce IPv4, il confine di fiducia è la LAN o la VPN; IPv6 fuori scopo) e porta, client massimi, pavimento di B e tetto di idoneità del link, coda e lead del PTT, inattività e tetto dell'over, timeout di handshake, backend di uscita.
+- R13. La configurazione è da riga di comando con default uguali al riferimento o alla scatola: indirizzo di ascolto (default tutte le interfacce IPv4, il confine di fiducia è la LAN o la VPN; IPv6 fuori scopo) e porta, client massimi, pavimento di B e tetto di idoneità del link, coda e lead del PTT, inattività e tetto dell'over, tempo di grazia dell'underrun, timeout di handshake, tetto ai byte non inviati per client (default 16 KiB), backend di uscita e descrittore dei fronti.
 
 **Robustezza**
 
@@ -99,8 +99,9 @@ Il lato stazione non ha un server nostro. Esiste solo `tools/cwnet/cwnet_echo.py
 - AE3. Covers R6, F3. **Given** due client READY, il primo con la chiave. **When** il secondo manda un byte MORSE. **Then** nessun fronte in uscita per quel byte e nessun TX_INFO.
 - AE4. Covers R4. **Given** un client READY all'istante t0. **When** passano 2 s. **Then** esce una REQUEST `[0, idx, 0, 0, t0, 0, 0]`; alla RESPONSE_1 `[1, idx, 0, 0, t0, t1, 0]` esce `[2, idx, 0, 0, t0, t1, t2]` e la latenza è `t2 - t0`.
 - AE5. Covers R6, F4. **Given** il titolare a metà over con il tasto giù riprodotto. **When** il suo TCP si chiude. **Then** il tasto va su, il PTT scende dopo la coda, `ref_tx_info_nobody` esce a tutti gli altri.
-- AE6. Covers R8, F5. **Given** una FIFO con un solo key-down. **When** scade l'attesa e nessun byte è arrivato. **Then** il tasto va su e una riga di fault viene emessa; il PTT scende alla coda.
+- AE6. Covers R8, F5. **Given** un key-down riprodotto e la FIFO vuota. **When** passano 500 ms senza byte. **Then** il tasto va su e una riga di fault viene emessa; il PTT scende alla coda. **Given** lo stesso key-down. **When** il key-up arriva 30 ms dopo la propria scadenza. **Then** il tasto va su all'arrivo, senza fault, e il ritardo di 30 ms è contato.
 - AE8. Covers R7, R12. **Given** un client READY con peak-hold a 1200 ms e la chiave libera. **When** manda il primo byte MORSE. **Then** nessun fronte in uscita, la chiave resta libera e nessun TX_INFO esce; il client riceve un PRINT con «link non idoneo» e il valore; stdout ne scrive una riga.
+- AE9. Covers R7, R8. **Given** un client READY, B = 100 ms, orologio simulato. **When** ogni byte di `ref_first_over` entra nella FIFO al proprio istante di ricezione, cioè il suo fronte più una latenza di andata simulata di 30 ms, non tutti insieme. **Then** i fronti escono agli stessi intervalli di AE2, nessun byte in ritardo, nessun fault.
 - AE7. Covers R14. **Given** un frame lungo con lunghezza dichiarata 300 consegnato in due frammenti, seguito da un PING. **When** il parser li riceve. **Then** il primo esce con stato «saltato», payload nullo e lunghezza zero; il PING esce intatto; sotto ASan nessuna lettura fuori dal buffer.
 
 ### Success Criteria
@@ -124,7 +125,6 @@ Il lato stazione non ha un server nostro. Esiste solo `tools/cwnet/cwnet_echo.py
 - **Uscita fisica verso il rig** (linee di controllo di una seriale USB o altro): Decision da aprire, `blocking` per il solo backend fisico. La ricerca (Sources) dice che il timer di latenza FTDI e la schedulazione USB dominano il jitter. Due criteri entrano nella Decision, qualunque sia il trasporto: lo stato di riposo del trasporto è tasto su e PTT giù anche se il daemon muore (SIGKILL, crash), e un tetto al key-down continuo vive fuori dal processo del daemon.
 - **File di configurazione dichiarativo** accanto alle flag, quando i parametri crescono.
 - **Unit systemd e launchd**: il daemon gira in foreground e non forka; le unit arrivano con il deploy di stazione.
-- **Il bug del parser dei frame** (R14) è un difetto già sulla scatola: issue Work a parte, chiusa dalla U1.
 - `tools/cwnet/cwnet_echo.py` annuncia lo username in TX_INFO, il riferimento annuncia il nominativo: correzione leggera in U7.
 
 ### Dependencies / Assumptions
@@ -148,15 +148,15 @@ Il lato stazione non ha un server nostro. Esiste solo `tools/cwnet/cwnet_echo.py
 
 ### Key Technical Decisions
 
-- KTD1. **Core del server come macchina a stati pura in `keyer_cwnet`.** `cwnet_server.[ch]` non tocca socket né orologio: riceve byte per client con `on_data`, tempo con una callback, e manda con una callback per client; gli eventi (titolare, latenza, fault) escono in una struttura di risultato, non in log. *(session-settled: user-approved — scelto sopra un daemon monolitico: è l'unico modo di far parlare il core con la cattura nella suite host, e replica il disegno di `cwnet_client_t`.)* Governa R1-R6, R15, R16.
-- KTD2. **Il codec si estende, non si copia.** Costruttori di frame in `cwnet_frame.[ch]`; REQUEST, RESPONSE_2, gate dell'RTT e peak-hold in `cwnet_ping.[ch]`, usati anche dal client. Il gate è un cambiamento di comportamento sulla scatola, oggi filtra solo i negativi: si pinna con un test del client. `cwnet_server.c` e `cwnet_play.c` restano fuori dalle SRCS del componente ESP-IDF: sono host-only e non devono portare `esp_timer` né `RT_*`. Ogni tocco a `keyer_cwnet/` porta un test host che pinna il riferimento (Definition of done). Governa R3, R4, R14.
-- KTD3. **Riproduzione come nel codice del riferimento, non nel suo commento.** Parte al primo byte ritardato di B; B fissato all'over. Sull'underrun il tasto va su: «corrupted CW timing is worse than silence» (ARCHITECTURE.md 8.1). Motore in un modulo suo, `cwnet_play.[ch]`, con orologio iniettato. Governa R7, R8.
+- KTD1. **Core del server come macchina a stati pura in `keyer_cwnet`.** `cwnet_server.[ch]` possiede il motore di riproduzione (U4), lo fa avanzare nel proprio `poll` ed espone la prossima scadenza; il daemon parla con il solo server. Non tocca socket né orologio: riceve byte per client con `on_data`, tempo con una callback, e manda con una callback per client; gli eventi (titolare, latenza, fault) escono in una struttura di risultato, non in log. *(session-settled: user-approved — scelto sopra un daemon monolitico: è l'unico modo di far parlare il core con la cattura nella suite host, e replica il disegno di `cwnet_client_t`.)* Governa R1-R6, R15, R16.
+- KTD2. **Il codec si estende, non si copia.** Costruttori di frame in `cwnet_frame.[ch]`; REQUEST, RESPONSE_2, gate dell'RTT e peak-hold in `cwnet_ping.[ch]`, usati anche dal client. Il gate è un cambiamento di comportamento sulla scatola, oggi filtra solo i negativi: si pinna con un test del client. La FIFO dei byte MORSE ricevuti, il pop e il predicato di fine over escono da `cwnet_client.c` e vivono in `cwnet_play.[ch]`; il client li chiama, i suoi test restano invariati. `cwnet_server.c` e `cwnet_play.c` restano fuori dalle SRCS del componente ESP-IDF: sono host-only e non devono portare `esp_timer` né `RT_*`. Ogni tocco a `keyer_cwnet/` porta un test host che pinna il riferimento (Definition of done). Governa R3, R4, R14.
+- KTD3. **Riproduzione come nel codice del riferimento, non nel suo commento.** Parte al primo byte ritardato di B; B fissato all'over. Lo stato applicato resta finché non arriva il byte successivo, perché la FIFO è vuota per costruzione durante un elemento più lungo di B; un byte in ritardo allunga l'elemento e viene contato. Il tasto su forzato scatta solo con tasto giù e silenzio per il tempo di grazia: «corrupted CW timing is worse than silence» (ARCHITECTURE.md 8.1) vale per il tasto lasciato giù, non per un elemento allungato di qualche ms. Motore in un modulo suo, `cwnet_play.[ch]`, con orologio iniettato. Governa R7, R8.
 - KTD4. **Chiave tenuta per l'over, con reti di sicurezza.** Rilascio a fine over riprodotto e PTT giù; inattività, tetto e chiusura TCP forzano il rilascio. Il cronometro di 1 s del riferimento, che oscilla l'annuncio, non viene copiato. Governa R6.
 - KTD5. **PTT dalla manipolazione riprodotta.** Coda uguale a quella della scatola, lead opzionale possibile perché il fronte è noto B ms prima; `set_ptt` solo riscontrato. *(session-settled: user-approved — scelto sopra l'applicazione all'arrivo del riferimento: disallineata dalla riproduzione, e un client che muore lascia la stazione in TX.)* Governa R9, R10.
 - KTD6. **Permessi fissi 0x07 nell'eco.** Nessuna lista utenti; nominativo vuoto annunciato come `NoCall #n`. Istanzia la Key Decision «tutti possono». Governa R2, R3, R5.
 - KTD7. **Un thread, scadenze assolute.** `poll()` sui socket con timeout alla prossima scadenza di riproduzione; `CLOCK_MONOTONIC`; `TCP_NODELAY`; `SIGPIPE` ignorato; foreground, nessun fork; stdout non bloccante con scarto delle righe quando il lettore non drena; scadenze in ms a 64 bit, i 31 bit restano sul filo. Ricerca esterna load-bearing (Sources). Governa R1, R7, R12.
 - KTD8. **Directory `host/` per i programmi host, layer di piattaforma condiviso.** `host/platform/` (socket, orologio) scritto per essere riusato dal client host di [#68](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/68), con il seam winsock nei nomi delle funzioni; `host/cwnetd/` il daemon; `host/CMakeLists.txt` il build. *(session-settled: user-approved — scelto sopra `tools/cwnet/`: il banco è strumento, il daemon è prodotto.)* Governa R1, R17.
-- KTD9. **Uscita tasto e PTT dietro un'interfaccia.** Una struttura di funzioni con backend virtuale su stdout; il backend fisico arriva con la sua Decision. Governa R11.
+- KTD9. **Uscita tasto e PTT dietro un'interfaccia.** Una struttura di funzioni con backend virtuale su un descrittore proprio, mai scartato, così la misura del jitter non perde fronti; il backend fisico arriva con la sua Decision. Governa R11.
 - KTD10. **Il core non logga.** Nessun `RT_*` né `log_stream` nel core del server e nel motore di riproduzione: gli eventi tornano al chiamante, il daemon li stampa. Il daemon non linka `cwnet_client.c`. Governa R12.
 - KTD11. **Il parser si indurisce sul posto, senza perdere il framing.** `cwnet_frame.c` consuma il frame frammentato oltre il buffer e lo restituisce «saltato»; l'errore resta riservato alla categoria 11. Un errore farebbe perdere il framing al client della scatola, che risincronizza saltando un byte e leggerebbe il payload come frame. Niente fork del codec per il daemon. Governa R14, R15.
 - KTD12. **Configurazione da flag.** Default del riferimento e della scatola; il file arriva quando serve. Governa R13.
@@ -182,12 +182,12 @@ flowchart TB
   end
   D --> PL
   D --> S
-  D --> Y
+  S --> Y
   Y --> O
   S --> F
   S --> P
   Y --> T
-  S -. eventi .-> D
+  S -. eventi, prossima scadenza .-> D
 ```
 
 Un over, dal primo byte al rilascio:
@@ -231,9 +231,11 @@ Pseudo-schema del motore di riproduzione, direzionale:
 ```text
 al primo byte di un over: deadline = ricezione + B; stato_pendente = bit7
 a ogni deadline raggiunta:
-  applica stato_pendente all'uscita; aggiorna PTT
-  se FIFO vuota: se stato applicato è key-down -> tasto su, fault (R8); fine
+  applica stato_pendente all'uscita (nessun fronte se lo stato non cambia); aggiorna PTT
+  se FIFO vuota: lo stato resta; ultimo_fronte = deadline; attendi il byte successivo
   prossimo byte -> deadline += attesa_decodificata; stato_pendente = bit7
+all'arrivo di un byte con deadline già passata: applicalo subito, conta il ritardo (R8)
+se tasto giù e now - ultimo_fronte > grazia: tasto su, fault, over chiuso (R8)
 fine over = due key-up consecutivi riprodotti
 ```
 
@@ -266,13 +268,13 @@ tools/cwnet/
 
 ### Assumptions
 
-- Il pavimento di B a 50 ms segue il riferimento. Il tetto di idoneità a 1000 ms è una Key Decision del maintainer, non un anti-avvelenamento: per quello bastano il gate 0..2000 ms sull'RTT e il peak-hold. Entrambi sono flag.
+- Il pavimento di B, default 100 ms, è nostro: il riferimento parte da 250 ms configurati (`CwNet.c:164`) e usa 50 ms solo come minimo per i test in locale; 100 ms copre il jitter di un router domestico (5..47 ms nella misura del riferimento) senza pesare sullo scambio dopo la TX. Il tetto di idoneità a 1000 ms è una Key Decision del maintainer, non un anti-avvelenamento: per quello bastano il gate 0..2000 ms sull'RTT e il peak-hold. Entrambi sono flag.
 - Tre PING senza risposta (6 s) chiudono il client: il riferimento non ha timeout; senza, un TCP semiaperto tiene la chiave finché non scatta l'inattività.
 - I codici negativi per le stringhe 0x06 diverse da `set_ptt` si scelgono all'implementazione dalla tabella dei codici del riferimento (`HamlibResultCodes.h` non è nell'archivio; i valori usati in `CwNet.c` lo sono).
 
 ### Sequencing
 
-Fase A (codec, tutta nella suite host): U1, U2 in parallelo; U3 e U4 dopo, in parallelo fra loro. Fase B (programma host): U5 in parallelo alla fase A; U6 dopo U3, U4, U5; U7 e U8 dopo U6.
+Fase A (codec, tutta nella suite host): U1, U2 e U4 in parallelo; U3 dopo tutti e tre. Fase B (programma host): U5 in parallelo alla fase A; U6 dopo U3 e U5; U7 e U8 dopo U6.
 
 ### System-Wide Impact
 
@@ -350,7 +352,7 @@ Fase A (codec, tutta nella suite host): U1, U2 in parallelo; U3 e U4 dopo, in pa
 - **Approach.**
   1. Tabella statica di client con indice da 1, stato (accettato, confermato), nominativo, parser di frame, cronometro del PING, peak-hold.
   2. Callback iniettate: manda a un client, ora in ms; una struttura di risultato per pass con gli eventi (titolare cambiato, latenza, client chiuso, fault).
-  3. `on_connected`, `on_data`, `on_disconnected` per client e un `poll(now)` che fa i PING, i timeout e il rilascio.
+  3. `on_connected`, `on_data`, `on_disconnected` per client e un `poll(now)` che fa i PING, i timeout, fa avanzare il motore di riproduzione e il rilascio; `next_deadline()` restituisce il primo fra PING, timeout e prossimo fronte, per il timeout della `poll()` del daemon.
   4. La chiave: presa al primo byte MORSE se libera e se il peak-hold del client non supera il tetto di idoneità (R7); i byte del titolare vanno al motore di riproduzione (U4) con l'ora; gli altri si scartano; il rilascio arriva dal motore (over finito e PTT giù) o dalle reti di sicurezza.
   5. TX_INFO a tutti i client confermati a ogni cambio, con i byte di R3.
   6. Byte del peer mai trattati come stringhe C: i campi del CONNECT si copiano per 44 byte e si terminano, la stringa 0x06 deve avere il NUL dentro `payload_len` o il client si chiude; il PING passa da `cwnet_ping_parse`, che rifiuta le lunghezze sbagliate.
@@ -383,23 +385,26 @@ Fase A (codec, tutta nella suite host): U1, U2 in parallelo; U3 e U4 dopo, in pa
 - **Goal.** `cwnet_play` trasforma i byte MORSE del titolare in fronti di tasto e PTT agli istanti giusti, con buffer B, e segnala fine over, underrun e rilascio.
 - **Requirements.** R7, R8, R9, R10 (KTD3, KTD5, KTD10).
 - **Dependencies.** Nessuna sul codice (usa `cwnet_timestamp`); U3 lo consuma.
-- **Files.** `components/keyer_cwnet/include/cwnet_play.h`, `components/keyer_cwnet/src/cwnet_play.c`, `test_host/test_cwnet_play.c`, `test_host/CMakeLists.txt`, `test_host/test_main.c`; `components/keyer_cwnet/CMakeLists.txt` resta senza il file nuovo (KTD2).
+- **Files.** `components/keyer_cwnet/include/cwnet_play.h`, `components/keyer_cwnet/src/cwnet_play.c`, `test_host/test_cwnet_play.c`, `test_host/CMakeLists.txt`, `test_host/test_main.c`; `components/keyer_cwnet/include/cwnet_client.h` e `src/cwnet_client.c` per usare la FIFO estratta (test in `test_host/test_cwnet_client.c` invariati); `components/keyer_cwnet/CMakeLists.txt` resta senza il file nuovo (KTD2).
 - **Approach.**
-  1. FIFO di 128 byte con ora di ricezione, come la `rx` del client; overflow scartato e contato.
-  2. `start_over(B)` fissa il buffer; `push(byte, now)`; `next_deadline()` restituisce l'istante del prossimo fronte; `tick(now)` applica i fronti dovuti e restituisce gli eventi: fronte tasto, PTT su/giù, fine over, underrun, over finito.
+  1. La FIFO di 128 byte con ora di ricezione, `rx_pop`, i ms bufferizzati e il predicato di fine over escono da `cwnet_client.c` e diventano il cuore del motore; il client le chiama attraverso il modulo nuovo (KTD2). Overflow scartato e contato.
+  2. `start_over(B)` fissa il buffer; `push(byte, now)`; `next_deadline()` restituisce l'istante del prossimo fronte; `tick(now)` applica i fronti dovuti e restituisce gli eventi: fronte tasto, PTT su/giù, fine over, ritardo di un byte, fault di grazia, over finito.
   3. Schema del High-Level Technical Design: la scadenza avanza delle attese codificate, mai del tempo misurato; istanti e scadenze in ms a 64 bit, senza wrap.
   4. PTT: su al primo key-down meno il lead; giù dopo la coda dall'ultimo key-up; `force_release()` per le reti di sicurezza di U3 con tasto su e PTT giù alla coda.
 - **Patterns to follow.** `cwnet_client.c`, `rx_pop` e `rx_has_end_of_over`; `KeyerThread.c:2887-2960` per il ritardo iniziale e l'avanzamento; `components/keyer_audio/src/ptt.c` per la coda.
 - **Execution note.** Test-first con orologio simulato: ogni scenario è una lista di byte in ingresso con i loro istanti e una lista di fronti attesi.
 - **Test scenarios.**
   - Covers AE2. `ref_first_over` (solo i frame MORSE via `ref_morse_frames`) con B = 50: fronti a +50, +98, +146, +290; PTT su a +50 e giù a +390; fine over al byte `0x60`.
+  - Covers AE9. Gli stessi byte consegnati uno alla volta al proprio istante di ricezione (fronte più 30 ms), B = 100: stessi intervalli, contatore dei ritardi a zero, nessun fault. È il test che distingue la regola di R8 da «FIFO vuota = underrun».
   - Attesa spezzata (`0xFF 0xEA` dal caso C di `keyer_sim.c`): un solo fronte dopo la somma delle attese.
-  - Covers AE6. Un key-down poi FIFO vuota alla scadenza: tasto su, evento underrun, PTT giù alla coda.
-  - Byte in arrivo dopo l'underrun: nuovo over con lo stesso B.
+  - Covers AE6. Un key-down riprodotto, FIFO vuota, 500 ms di silenzio: tasto su, evento di fault, PTT giù alla coda; un byte che arriva dopo apre un over nuovo con lo stesso B.
+  - Covers AE6. Key-up che arriva 30 ms dopo la propria scadenza: fronte all'arrivo, ritardo contato, nessun fault.
+  - Elemento di 144 ms con B = 50 e byte che arrivano al proprio istante: nessun fronte spurio, nessun fault (la FIFO è vuota alla scadenza del key-down e questo è normale).
   - Lead 20 ms con B = 50: PTT su a +30, tasto a +50; lead oltre B viene limitato a B.
   - FIFO piena: byte scartato e contato, nessun fronte spurio.
   - `force_release` con tasto giù: tasto su subito, PTT giù dopo la coda, over chiuso.
   - Frame a due eventi `ref_two_event_frames` a 20 ms di dot: fronti a +22 e +40 dal primo.
+  - I test del client sulla FIFO RX passano invariati dopo l'estrazione (`test_client_rx_decodes_every_event_of_a_morse_frame`, `test_client_rx_fifo_full_drops_and_counts`).
 - **Verification.** Suite host verde nelle due varianti; gli istanti attesi sono derivati a mano dalle attese codificate, non dal codice.
 
 ### U5. Layer di piattaforma POSIX
@@ -429,10 +434,10 @@ Fase A (codec, tutta nella suite host): U1, U2 in parallelo; U3 e U4 dopo, in pa
 - **Files.** `host/cwnetd/main.c`, `host/cwnetd/key_output.h`, `host/cwnetd/key_output.c`, `host/CMakeLists.txt`, `tools/cwnet/cwnet_send.py`.
 - **Approach.**
   1. Flag di R13 con i default; `--help` li stampa.
-  2. Loop: `sock_poll` con timeout alla prossima fra scadenza di riproduzione, PING e timeout; accept, `on_data`, `on_disconnected`; `server.poll(now)` e `play.tick(now)`; eventi su stdout come righe `chiave <k> <ms>` e `stato ...`.
-  3. Interfaccia di uscita con `set_key(bool, now)` e `set_ptt(bool, now)`; backend virtuale che stampa `key 1 123456` e `ptt 0 123556`.
+  2. Loop: `sock_poll` con timeout alla `next_deadline()` del server; accept, `on_data`, `on_disconnected`; `server.poll(now)`, che fa avanzare anche il motore; eventi su stdout come righe di stato.
+  3. Interfaccia di uscita con `set_key(bool, now)` e `set_ptt(bool, now)`; backend virtuale che scrive `key 1 123456` e `ptt 0 123556` sul descrittore scelto da flag (default stderr), bloccante e mai scartato.
   4. SIGINT e SIGTERM chiudono i client e rilasciano l'uscita; stdout non bloccante, una riga che non entra si scarta e si conta.
-  6. Tetto ai byte non inviati per client: superato, il client si chiude senza fermare il loop. Le stringhe del client passano da una sanificazione che toglie byte di controllo ed escape prima di stdout.
+  6. Tetto ai byte non inviati per client, flag con default 16 KiB (R13): superato, il client si chiude senza fermare il loop. Le stringhe del client passano da una sanificazione che toglie byte di controllo ed escape prima di stdout.
   5. `cwnet_send.py`: client di prova con stdlib che manda CONNECT, risponde ai PING e invia i byte di una fixture o di un file, stampando TX_INFO e RPRT ricevuti.
 - **Patterns to follow.** `tools/cwnet/cwnet_echo.py` per il client di prova e le flag; `cwnet_socket.c` per la macchina a stati del socket.
 - **Test scenarios.**
@@ -496,5 +501,4 @@ Fase A (codec, tutta nella suite host): U1, U2 in parallelo; U3 e U4 dopo, in pa
 - Blocking issues aperte su questo lavoro: nessuna. La Decision sull'uscita fisica blocca solo il backend fisico, fuori da questo piano.
 - Per unità: la Verification della unità è vera; i test elencati esistono con i nomi che dicono cosa pinnano.
 - [#64](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/64): la parte host della condizione è vera nell'albero; la parte di banco resta aperta sulla issue finché il maintainer non la esegue.
-- La issue Work sul parser (R14) è chiusa con `file:line` da U1.
 - Pulizia: nessun codice di tentativi abbandonati nel diff; `cwnet_echo.py` annuncia il nominativo.
