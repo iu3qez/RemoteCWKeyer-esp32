@@ -52,6 +52,18 @@ static bool fifo_pop(cwnet_play_t *play, uint8_t *cmd, int64_t *received_at_ms) 
     return true;
 }
 
+/**
+ * @brief The configured grace, or the default when the caller left it at zero
+ *
+ * Zero is not "no grace": a caller that never heard of the field would
+ * otherwise fault on every element longer than B, which is the bug this
+ * rule exists to fix.
+ */
+static uint32_t grace_ms(const cwnet_play_t *play) {
+    return (play->cfg.key_grace_ms != 0u) ? play->cfg.key_grace_ms
+                                          : CWNET_PLAY_DEFAULT_KEY_GRACE_MS;
+}
+
 /*===========================================================================*/
 /* PTT                                                                       */
 /*===========================================================================*/
@@ -105,9 +117,17 @@ static bool is_split_chunk(uint8_t cmd, bool key_down_now) {
 /**
  * @brief Take one byte and put its deadline on the timeline
  *
- * @param base_ms Instant the byte's wait is measured from
+ * @param base_ms        Instant the byte's wait is measured from
+ * @param received_at_ms Instant the byte reached us
+ *
+ * The deadline is base + the decoded wait, so quantisation and scheduling
+ * slack never accumulate. The one thing that can move it is the byte
+ * arriving after it: an element already on the air cannot be shortened
+ * backwards, so the edge is applied on arrival, the element comes out
+ * longer by the delay, and the delay is counted and reported (R8).
  */
-static void arm_from_byte(cwnet_play_t *play, uint8_t cmd, int64_t base_ms) {
+static void arm_from_byte(cwnet_play_t *play, uint8_t cmd, int64_t base_ms,
+                          int64_t received_at_ms, cwnet_play_result_t *out) {
     int64_t wait_ms = (int64_t)cwstream_decode_timestamp(cmd);
 
     play->pending_key_down = is_split_chunk(cmd, play->key_down)
@@ -120,7 +140,16 @@ static void arm_from_byte(cwnet_play_t *play, uint8_t cmd, int64_t base_ms) {
     play->prev_byte_key_down = play->pending_key_down;
     play->have_prev_byte = true;
     play->deadline_ms = base_ms + wait_ms;
+
+    if (received_at_ms > play->deadline_ms) {
+        play->late_bytes++;
+        play->late_total_ms += received_at_ms - play->deadline_ms;
+        play->deadline_ms = received_at_ms;
+        emit(out, CWNET_PLAY_EV_LATE_BYTE, received_at_ms);
+    }
+
     play->state = CWNET_PLAY_RUNNING;
+    play->grace_pending = false;   /* a byte arrived: the silence is over */
     schedule_ptt_on(play, play->deadline_ms);
 }
 
@@ -130,7 +159,7 @@ static void arm_from_byte(cwnet_play_t *play, uint8_t cmd, int64_t base_ms) {
  * B delays the start of the over and nothing else; from there the timeline
  * runs on the encoded waits alone.
  */
-static void arm_if_idle(cwnet_play_t *play) {
+static void arm_if_idle(cwnet_play_t *play, cwnet_play_result_t *out) {
     if (play->state != CWNET_PLAY_IDLE || play->fifo.count == 0) {
         return;
     }
@@ -138,13 +167,36 @@ static void arm_if_idle(cwnet_play_t *play) {
     int64_t received_at_ms = 0;
     (void)fifo_pop(play, &cmd, &received_at_ms);
     play->have_prev_byte = false;
-    arm_from_byte(play, cmd, received_at_ms + (int64_t)play->buffer_ms);
+    /* The anchor is the reception itself plus B, so this byte is never late */
+    arm_from_byte(play, cmd, received_at_ms + (int64_t)play->buffer_ms, received_at_ms, out);
 }
 
 /**
- * @brief Give up the over: key up if it was down, and say why
+ * @brief Hold the state applied and wait for the byte that ends it
+ *
+ * An empty FIFO is what a live over looks like from here: the client sends
+ * a byte per edge, at the edge, so every byte lands about B ms before its
+ * deadline and any element longer than B empties the queue (R8). The state
+ * holds, and at_ms becomes the base the next byte's wait is measured from.
+ *
+ * The one thing that must not hold forever is a key that is down: the
+ * grace bounds it, and nothing else does.
  */
-static void underrun(cwnet_play_t *play, int64_t at_ms, cwnet_play_result_t *out) {
+static void hold_and_wait(cwnet_play_t *play, int64_t at_ms) {
+    play->state = CWNET_PLAY_WAITING;
+    play->last_edge_ms = at_ms;
+    play->grace_pending = play->key_down;
+    play->grace_at_ms = at_ms + (int64_t)grace_ms(play);
+}
+
+/**
+ * @brief The grace ran out under a key-down: lift it and say why
+ *
+ * Nothing is coming on this link, and a carrier nobody is modulating is
+ * worse than the silence that replaces it (ARCHITECTURE.md 8.1).
+ */
+static void grace_fault(cwnet_play_t *play, int64_t at_ms, cwnet_play_result_t *out) {
+    play->grace_pending = false;
     if (play->key_down) {
         play->key_down = false;
         emit(out, CWNET_PLAY_EV_KEY_UP, at_ms);
@@ -154,6 +206,63 @@ static void underrun(cwnet_play_t *play, int64_t at_ms, cwnet_play_result_t *out
     /* The bytes that follow restart as a new over with the same B (R8) */
     play->state = CWNET_PLAY_IDLE;
     play->have_prev_byte = false;
+}
+
+/**
+ * @brief Take the next byte, or hold what is applied until one comes
+ *
+ * @param base_ms     Instant the next byte's wait is measured from
+ * @param event_at_ms Instant an end of over would be reported at
+ *
+ * The two differ only when the byte is consumed after a wait: the timeline
+ * still runs from the edge that started the element (base), while the end
+ * of over belongs to the instant we learnt of it, not to a base in the
+ * past.
+ */
+static void load_next(cwnet_play_t *play, int64_t base_ms, int64_t event_at_ms,
+                      cwnet_play_result_t *out) {
+    uint8_t cmd = 0;
+    int64_t received_at_ms = 0;
+    if (!fifo_pop(play, &cmd, &received_at_ms)) {
+        hold_and_wait(play, base_ms);
+        return;
+    }
+
+    /* Two key-up bytes in a row are the reference's end of transmission.
+     * The second one is not waited out: its time is silence, and the sooner
+     * the key is free the sooner the other end can come back. */
+    if (play->have_prev_byte && !play->prev_byte_key_down && ((cmd & KEY_BIT) == 0u)) {
+        /* Whatever brought us here, the engine does not come to rest with the
+         * key down: a stuck carrier is the worst outcome this module has
+         * (ARCHITECTURE.md 8.1). Free it before closing, at this instant. */
+        if (play->key_down) {
+            play->key_down = false;
+            emit(out, CWNET_PLAY_EV_KEY_UP, event_at_ms);
+            ptt_off_no_later_than(play, event_at_ms + (int64_t)play->cfg.ptt_tail_ms);
+        }
+        play->pending_key_down = false;
+        play->grace_pending = false;
+        emit(out, CWNET_PLAY_EV_END_OF_OVER, event_at_ms);
+        play->state = CWNET_PLAY_CLOSING;
+        play->have_prev_byte = false;
+        if (!play->ptt_on && !play->ptt_on_pending) {
+            emit(out, CWNET_PLAY_EV_OVER_FINISHED, event_at_ms);
+            play->state = CWNET_PLAY_IDLE;
+        }
+        return;
+    }
+
+    arm_from_byte(play, cmd, base_ms, received_at_ms, out);
+}
+
+/**
+ * @brief A byte reached a waiting engine: put it on the timeline
+ *
+ * Its wait is measured from the edge that started the element still on the
+ * air, not from now: the operator's spacing is what goes out.
+ */
+static void do_resume(cwnet_play_t *play, int64_t at_ms, cwnet_play_result_t *out) {
+    load_next(play, play->last_edge_ms, at_ms, out);
 }
 
 /**
@@ -176,37 +285,7 @@ static void do_deadline(cwnet_play_t *play, int64_t at_ms, cwnet_play_result_t *
         }
     }
 
-    uint8_t cmd = 0;
-    int64_t received_at_ms = 0;
-    if (!fifo_pop(play, &cmd, &received_at_ms)) {
-        underrun(play, at_ms, out);
-        return;
-    }
-
-    /* Two key-up bytes in a row are the reference's end of transmission.
-     * The second one is not waited out: its time is silence, and the sooner
-     * the key is free the sooner the other end can come back. */
-    if (play->have_prev_byte && !play->prev_byte_key_down && ((cmd & KEY_BIT) == 0u)) {
-        /* Whatever brought us here, the engine does not come to rest with the
-         * key down: a stuck carrier is the worst outcome this module has
-         * (ARCHITECTURE.md 8.1). Free it before closing, at this instant. */
-        if (play->key_down) {
-            play->key_down = false;
-            emit(out, CWNET_PLAY_EV_KEY_UP, at_ms);
-            ptt_off_no_later_than(play, at_ms + (int64_t)play->cfg.ptt_tail_ms);
-        }
-        play->pending_key_down = false;
-        emit(out, CWNET_PLAY_EV_END_OF_OVER, at_ms);
-        play->state = CWNET_PLAY_CLOSING;
-        play->have_prev_byte = false;
-        if (!play->ptt_on && !play->ptt_on_pending) {
-            emit(out, CWNET_PLAY_EV_OVER_FINISHED, at_ms);
-            play->state = CWNET_PLAY_IDLE;
-        }
-        return;
-    }
-
-    arm_from_byte(play, cmd, at_ms);
+    load_next(play, at_ms, at_ms, out);
 }
 
 /*===========================================================================*/
@@ -216,9 +295,24 @@ static void do_deadline(cwnet_play_t *play, int64_t at_ms, cwnet_play_result_t *
 typedef enum {
     ACT_NONE = 0,
     ACT_PTT_ON,    /* first, so the PTT never trails the carrier */
+    ACT_RESUME,    /* before the grace: a byte that arrives in time wins */
     ACT_DEADLINE,
+    ACT_GRACE,
     ACT_PTT_OFF,   /* last, so a key-down at the same instant cancels it */
 } action_t;
+
+/**
+ * @brief When a waiting engine can take the byte at the head of the FIFO
+ *
+ * As soon as it is there: it either lands before its own deadline, and the
+ * deadline is what plays it, or it is late and its edge is due on arrival.
+ * Never before the edge it is measured from, so a byte pushed while the
+ * engine was still running does not resume in the past.
+ */
+static int64_t resume_at(const cwnet_play_t *play) {
+    int64_t at = play->fifo.received_at_ms[play->fifo.tail];
+    return (at < play->last_edge_ms) ? play->last_edge_ms : at;
+}
 
 static action_t next_action(const cwnet_play_t *play, int64_t *at_ms) {
     action_t best = ACT_NONE;
@@ -228,10 +322,23 @@ static action_t next_action(const cwnet_play_t *play, int64_t *at_ms) {
         best = ACT_PTT_ON;
         best_at = play->ptt_on_at_ms;
     }
+    if (play->state == CWNET_PLAY_WAITING && play->fifo.count > 0u) {
+        int64_t at = resume_at(play);
+        if (best == ACT_NONE || at < best_at) {
+            best = ACT_RESUME;
+            best_at = at;
+        }
+    }
     if (play->state == CWNET_PLAY_RUNNING) {
         if (best == ACT_NONE || play->deadline_ms < best_at) {
             best = ACT_DEADLINE;
             best_at = play->deadline_ms;
+        }
+    }
+    if (play->grace_pending) {
+        if (best == ACT_NONE || play->grace_at_ms < best_at) {
+            best = ACT_GRACE;
+            best_at = play->grace_at_ms;
         }
     }
     if (play->ptt_off_pending) {
@@ -289,6 +396,9 @@ void cwnet_play_start_over(cwnet_play_t *play, uint32_t buffer_ms) {
     play->prev_byte_key_down = false;
     play->pending_key_down = play->key_down;
     play->deadline_ms = 0;
+    play->last_edge_ms = 0;
+    play->grace_pending = false;
+    play->grace_at_ms = 0;
 }
 
 bool cwnet_play_push(cwnet_play_t *play, uint8_t cmd, int64_t now_ms) {
@@ -303,7 +413,12 @@ bool cwnet_play_push(cwnet_play_t *play, uint8_t cmd, int64_t now_ms) {
     play->fifo.cmd[head] = cmd;
     play->fifo.received_at_ms[head] = now_ms;
     play->fifo.count++;
-    arm_if_idle(play);
+    /* Anchoring the over is pure scheduling — the first byte of an over is
+     * measured from its own arrival, so it can never be late and can emit
+     * nothing. Everything that does emit waits for a tick, which is where
+     * the caller reads its events (KTD10). */
+    cwnet_play_result_t sink = { .count = 0 };
+    arm_if_idle(play, &sink);
     return true;
 }
 
@@ -330,7 +445,7 @@ void cwnet_play_tick(cwnet_play_t *play, int64_t now_ms, cwnet_play_result_t *ou
     }
 
     for (int guard = 0; guard < TICK_GUARD; guard++) {
-        arm_if_idle(play);
+        arm_if_idle(play, out);
 
         int64_t at_ms = 0;
         action_t act = next_action(play, &at_ms);
@@ -347,8 +462,14 @@ void cwnet_play_tick(cwnet_play_t *play, int64_t now_ms, cwnet_play_result_t *ou
                 play->ptt_on = true;
                 emit(out, CWNET_PLAY_EV_PTT_ON, at_ms);
                 break;
+            case ACT_RESUME:
+                do_resume(play, at_ms, out);
+                break;
             case ACT_DEADLINE:
                 do_deadline(play, at_ms, out);
+                break;
+            case ACT_GRACE:
+                grace_fault(play, at_ms, out);
                 break;
             case ACT_PTT_OFF:
                 do_ptt_off(play, at_ms, out);
@@ -372,6 +493,7 @@ void cwnet_play_force_release(cwnet_play_t *play, int64_t now_ms, cwnet_play_res
     play->fifo.tail = 0;
     play->fifo.count = 0;
     play->have_prev_byte = false;
+    play->grace_pending = false;
     play->state = CWNET_PLAY_CLOSING;
 
     if (play->key_down) {
@@ -415,4 +537,12 @@ bool cwnet_play_over_open(const cwnet_play_t *play) {
 
 uint32_t cwnet_play_dropped(const cwnet_play_t *play) {
     return (play == NULL) ? 0u : play->dropped;
+}
+
+uint32_t cwnet_play_late_bytes(const cwnet_play_t *play) {
+    return (play == NULL) ? 0u : play->late_bytes;
+}
+
+int64_t cwnet_play_late_ms(const cwnet_play_t *play) {
+    return (play == NULL) ? 0 : play->late_total_ms;
 }

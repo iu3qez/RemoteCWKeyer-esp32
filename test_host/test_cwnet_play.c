@@ -73,6 +73,7 @@ static const char *ev_name(cwnet_play_event_type_t t) {
         case CWNET_PLAY_EV_END_OF_OVER:   return "END_OF_OVER";
         case CWNET_PLAY_EV_UNDERRUN:      return "UNDERRUN";
         case CWNET_PLAY_EV_OVER_FINISHED: return "OVER_FINISHED";
+        case CWNET_PLAY_EV_LATE_BYTE:     return "LATE_BYTE";
         default:                          return "?";
     }
 }
@@ -138,6 +139,43 @@ static void push_first_over_morse(cwnet_play_t *play, int64_t at_ms) {
     size_t len = 0;
     TEST_ASSERT_TRUE(ref_morse_frames(ref_first_over, sizeof ref_first_over, morse, &len));
     push_morse_payload(play, morse, len, at_ms);
+}
+
+/**
+ * @brief The MORSE payload bytes of ref_first_over, in order
+ *
+ * The same path as push_first_over_morse(), stopping one step earlier: the
+ * scenarios that deliver the over live need the bytes one at a time, each
+ * with an instant of its own.
+ */
+static void first_over_morse_bytes(uint8_t *out, size_t cap, size_t *out_len) {
+    uint8_t morse[sizeof ref_first_over];
+    size_t len = 0;
+    TEST_ASSERT_TRUE(ref_morse_frames(ref_first_over, sizeof ref_first_over, morse, &len));
+
+    cwnet_frame_parser_t parser;
+    cwnet_frame_parser_init(&parser);
+    size_t off = 0;
+    *out_len = 0;
+    while (off < len) {
+        cwnet_parse_result_t r = cwnet_frame_parse(&parser, morse + off, len - off);
+        TEST_ASSERT_EQUAL(CWNET_PARSE_OK, r.status);
+        TEST_ASSERT_EQUAL(CWNET_CMD_MORSE, r.command);
+        for (size_t i = 0; i < r.payload_len; i++) {
+            TEST_ASSERT_LESS_THAN_size_t(cap, *out_len);
+            out[(*out_len)++] = r.payload[i];
+        }
+        off += r.bytes_consumed;
+    }
+}
+
+static void play_setup_grace(cwnet_play_t *play, uint32_t lead_ms, uint32_t buffer_ms,
+                             uint32_t grace_ms) {
+    cwnet_play_cfg_t cfg = {
+        .ptt_lead_ms = lead_ms, .ptt_tail_ms = TAIL_MS, .key_grace_ms = grace_ms
+    };
+    cwnet_play_init(play, &cfg);
+    cwnet_play_start_over(play, buffer_ms);
 }
 
 static void play_setup(cwnet_play_t *play, uint32_t lead_ms, uint32_t buffer_ms) {
@@ -255,6 +293,124 @@ void test_play_a_late_byte_does_not_move_the_deadline_it_follows(void) {
         { CWNET_PLAY_EV_PTT_OFF,  T0 + 294 },
     };
     assert_log(&log, want, sizeof want / sizeof want[0]);
+}
+
+/*===========================================================================*/
+/* AE9: the same over, delivered as it is keyed                              */
+/*===========================================================================*/
+
+/*
+ * The five bytes of ref_first_over again, but arriving the way a live fist
+ * produces them: the client sends a byte AT each edge, so byte i leaves the
+ * key at the instant of its own edge and reaches us a link latency later.
+ * From the hand decode above, the sender's edges are the running sum of the
+ * waits:
+ *
+ *   0x80  ->    0   key down at   0
+ *   0x24  ->   48   key up   at  48
+ *   0xA4  ->   48   key down at  96
+ *   0x3C  ->  144   key up   at 240
+ *   0x60  ->  669   the marker,  at 909
+ *
+ * With a constant 30 ms of one-way latency every byte lands 30 ms after its
+ * own edge, so taking the reception of the first byte as T0 the others land
+ * at T0+48, +96, +240 and +909. B = 100 ms.
+ *
+ *   first byte: T0 + wait(0) + B(100)     = T0 + 100  key down
+ *   += 48                                 = T0 + 148  key up
+ *   += 48                                 = T0 + 196  key down
+ *
+ * At T0+196 the dash starts and the FIFO IS EMPTY: 0x3C is still under the
+ * operator's finger and will not exist until T0+240. That is the normal
+ * state of a live over, not an underrun — every byte arrives B ms before
+ * its own deadline, and an element longer than B empties the FIFO by
+ * construction (R8). The state applied holds:
+ *
+ *   += 144 (0x3C lands at +240, its deadline is +340, so it is not late)
+ *                                         = T0 + 340  key up
+ *   last key-up + tail(100)               = T0 + 440  PTT off
+ *   0x60 lands at +909: second key-up in a row, consumed on arrival
+ *                                         = T0 + 909  end of over, finished
+ *
+ * The edges are 48, 48 and 144 apart, exactly as in AE2: what the operator
+ * sent is what goes on the air. Nothing was late and nothing faulted.
+ */
+void test_play_an_over_delivered_as_it_is_keyed_plays_like_a_buffered_one(void) {
+    uint8_t bytes[16];
+    size_t len = 0;
+    first_over_morse_bytes(bytes, sizeof bytes, &len);
+
+    /* The bytes the hand decode above is written against */
+    static const uint8_t want_bytes[] = { 0x80, 0x24, 0xA4, 0x3C, 0x60 };
+    TEST_ASSERT_EQUAL_size_t(sizeof want_bytes, len);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(want_bytes, bytes, sizeof want_bytes);
+
+    /* Sender's edge instants, the running sum of the decoded waits */
+    static const int64_t edge_at[] = { 0, 48, 96, 240, 909 };
+
+    cwnet_play_t play;
+    play_setup(&play, 0u, 100u);
+
+    evlog_t log = { .n = 0 };
+    for (size_t i = 0; i < len; i++) {
+        /* Everything the engine owes is done before the next byte lands */
+        run_until(&play, &log, T0 + edge_at[i]);
+        TEST_ASSERT_TRUE(cwnet_play_push(&play, bytes[i], T0 + edge_at[i]));
+    }
+    run_until(&play, &log, T0 + 2000);
+
+    const exp_ev_t want[] = {
+        { CWNET_PLAY_EV_PTT_ON,        T0 + 100 },
+        { CWNET_PLAY_EV_KEY_DOWN,      T0 + 100 },
+        { CWNET_PLAY_EV_KEY_UP,        T0 + 148 },
+        { CWNET_PLAY_EV_KEY_DOWN,      T0 + 196 },
+        { CWNET_PLAY_EV_KEY_UP,        T0 + 340 },
+        { CWNET_PLAY_EV_PTT_OFF,       T0 + 440 },
+        { CWNET_PLAY_EV_END_OF_OVER,   T0 + 909 },
+        { CWNET_PLAY_EV_OVER_FINISHED, T0 + 909 },
+    };
+    assert_log(&log, want, sizeof want / sizeof want[0]);
+
+    /* The two things AE9 is for: no byte was late, nothing faulted */
+    TEST_ASSERT_EQUAL_UINT32(0u, cwnet_play_late_bytes(&play));
+    TEST_ASSERT_EQUAL_INT64(0, cwnet_play_late_ms(&play));
+    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_UNDERRUN));
+    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_LATE_BYTE));
+}
+
+/*
+ * The same defect at the buffer the station actually runs: B = 50, the
+ * letter A of the capture keyed live. The dash lasts 144 ms, so the FIFO is
+ * empty for 94 ms in the middle of it, and the edges must still be the ones
+ * of AE2. Read as an underrun instead, the dash comes out with a length of
+ * zero and the station writes a fault for a link that is working.
+ */
+void test_play_an_element_longer_than_the_buffer_is_not_an_underrun(void) {
+    static const uint8_t bytes[]   = { 0x80, 0x24, 0xA4, 0x3C };
+    static const int64_t edge_at[] = {    0,   48,   96,  240 };
+
+    cwnet_play_t play;
+    play_setup(&play, 0u, B_MS);
+
+    evlog_t log = { .n = 0 };
+    for (size_t i = 0; i < sizeof bytes / sizeof bytes[0]; i++) {
+        run_until(&play, &log, T0 + edge_at[i]);
+        TEST_ASSERT_TRUE(cwnet_play_push(&play, bytes[i], T0 + edge_at[i]));
+    }
+    run_until(&play, &log, T0 + 2000);
+
+    /* B(50) + 0, then the dot, the space and the dash: 48, 48, 144 */
+    const exp_ev_t want[] = {
+        { CWNET_PLAY_EV_PTT_ON,   T0 + 50 },
+        { CWNET_PLAY_EV_KEY_DOWN, T0 + 50 },
+        { CWNET_PLAY_EV_KEY_UP,   T0 + 98 },
+        { CWNET_PLAY_EV_KEY_DOWN, T0 + 146 },
+        { CWNET_PLAY_EV_KEY_UP,   T0 + 290 },
+        { CWNET_PLAY_EV_PTT_OFF,  T0 + 390 },
+    };
+    assert_log(&log, want, sizeof want / sizeof want[0]);
+    TEST_ASSERT_EQUAL_UINT32(0u, cwnet_play_late_bytes(&play));
+    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_UNDERRUN));
 }
 
 /*===========================================================================*/
@@ -400,32 +556,51 @@ void test_play_a_key_down_longer_than_one_byte_is_not_an_end_of_over(void) {
 }
 
 /*===========================================================================*/
-/* AE6: the FIFO runs dry under a key-down                                   */
+/* AE6: silence under a key-down, and a byte that comes late                 */
 /*===========================================================================*/
 
 /*
- * One key-down byte and nothing else. At T0 + B the key goes down, the
- * FIFO is empty, and the length of that element is unknown: the key goes
- * up at once and the underrun is reported. The PTT drops a tail later,
- * T0 + 50 + 100 = T0 + 150. The over is not finished: no marker was
- * played, and the bytes that follow restart it.
+ * One key-down byte and nothing else. At T0 + B the key goes down and the
+ * FIFO is empty, which by itself says nothing: the byte that ends this
+ * element is produced by a finger that has not lifted yet. So the key
+ * stays down and the engine waits — but not forever. When the grace runs
+ * out, 500 ms after the edge, nothing on this link is coming and a carrier
+ * nobody is modulating is worse than silence: the key goes up and the
+ * fault is reported (R8, ARCHITECTURE.md 8.1).
+ *
+ *   T0 + B(50)                  key down, FIFO empty, grace armed
+ *   + grace(500)  = T0 + 550    key up, fault
+ *   + tail(100)   = T0 + 650    PTT off
+ *
+ * The over is not finished: no marker was played, and the bytes that
+ * follow restart it.
  */
-void test_play_underrun_lifts_the_key_at_once_and_reports_it(void) {
+void test_play_the_grace_lifts_the_key_when_nothing_arrives_under_it(void) {
     cwnet_play_t play;
-    play_setup(&play, 0u, B_MS);
+    play_setup(&play, 0u, B_MS);   /* grace 0 in the cfg: the 500 ms default */
 
     const uint8_t only_down[] = { 0x80 };
     push_bytes(&play, only_down, sizeof only_down, T0);
 
     evlog_t log = { .n = 0 };
-    run_until(&play, &log, T0 + 500);
+    run_until(&play, &log, T0 + 549);
+
+    /* Halfway through the element the key is down and legitimately so, and
+     * the only thing in the diary is the end of the grace. */
+    TEST_ASSERT_TRUE(cwnet_play_key_down(&play));
+    int64_t next = 0;
+    TEST_ASSERT_TRUE(cwnet_play_next_deadline(&play, &next));
+    TEST_ASSERT_EQUAL_INT64(T0 + 550, next);
+    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_UNDERRUN));
+
+    run_until(&play, &log, T0 + 1000);
 
     const exp_ev_t want[] = {
         { CWNET_PLAY_EV_PTT_ON,   T0 + 50 },
         { CWNET_PLAY_EV_KEY_DOWN, T0 + 50 },
-        { CWNET_PLAY_EV_KEY_UP,   T0 + 50 },
-        { CWNET_PLAY_EV_UNDERRUN, T0 + 50 },
-        { CWNET_PLAY_EV_PTT_OFF,  T0 + 150 },
+        { CWNET_PLAY_EV_KEY_UP,   T0 + 550 },
+        { CWNET_PLAY_EV_UNDERRUN, T0 + 550 },
+        { CWNET_PLAY_EV_PTT_OFF,  T0 + 650 },
     };
     assert_log(&log, want, sizeof want / sizeof want[0]);
 
@@ -434,11 +609,39 @@ void test_play_underrun_lifts_the_key_at_once_and_reports_it(void) {
 }
 
 /*
- * After the underrun the bytes that follow restart as a new over with the
- * SAME B, without the caller arming anything: a byte received at T0+500
- * keys down at T0+550, and its dot still lasts its encoded 48 ms.
+ * The grace is the caller's number, not a constant: with 200 ms the key
+ * comes up at T0 + 50 + 200 and the PTT a tail later.
  */
-void test_play_after_an_underrun_the_next_byte_restarts_with_the_same_buffer(void) {
+void test_play_the_grace_is_the_one_the_caller_configured(void) {
+    cwnet_play_t play;
+    play_setup_grace(&play, 0u, B_MS, 200u);
+
+    const uint8_t only_down[] = { 0x80 };
+    push_bytes(&play, only_down, sizeof only_down, T0);
+
+    evlog_t log = { .n = 0 };
+    run_until(&play, &log, T0 + 1000);
+
+    const exp_ev_t want[] = {
+        { CWNET_PLAY_EV_PTT_ON,   T0 + 50 },
+        { CWNET_PLAY_EV_KEY_DOWN, T0 + 50 },
+        { CWNET_PLAY_EV_KEY_UP,   T0 + 250 },
+        { CWNET_PLAY_EV_UNDERRUN, T0 + 250 },
+        { CWNET_PLAY_EV_PTT_OFF,  T0 + 350 },
+    };
+    assert_log(&log, want, sizeof want / sizeof want[0]);
+}
+
+/*
+ * The other half of AE6. The key-up that ends the dot is due at T0 + 98,
+ * 48 ms after the key-down at T0 + 50, and the link hiccups: it arrives at
+ * T0 + 128, 30 ms past its own deadline. The element cannot be shortened
+ * back into the past, so it is applied on arrival — the dot comes out
+ * 78 ms long instead of 48 — and the 30 ms are counted. This is jitter,
+ * not a fault: nothing is reported, and the grace never expires because a
+ * byte did arrive.
+ */
+void test_play_a_byte_past_its_deadline_makes_its_edge_on_arrival(void) {
     cwnet_play_t play;
     play_setup(&play, 0u, B_MS);
 
@@ -446,18 +649,52 @@ void test_play_after_an_underrun_the_next_byte_restarts_with_the_same_buffer(voi
     push_bytes(&play, only_down, sizeof only_down, T0);
 
     evlog_t log = { .n = 0 };
-    run_until(&play, &log, T0 + 400);
-    log.n = 0;   /* the underrun itself is pinned by the test above */
+    run_until(&play, &log, T0 + 128);
 
-    const uint8_t again[] = { 0x80, 0x24 };
-    push_bytes(&play, again, sizeof again, T0 + 500);
+    const uint8_t late_up[] = { 0x24 };
+    push_bytes(&play, late_up, sizeof late_up, T0 + 128);
     run_until(&play, &log, T0 + 1000);
 
     const exp_ev_t want[] = {
-        { CWNET_PLAY_EV_PTT_ON,   T0 + 550 },
-        { CWNET_PLAY_EV_KEY_DOWN, T0 + 550 },
-        { CWNET_PLAY_EV_KEY_UP,   T0 + 598 },
-        { CWNET_PLAY_EV_PTT_OFF,  T0 + 698 },
+        { CWNET_PLAY_EV_PTT_ON,    T0 + 50 },
+        { CWNET_PLAY_EV_KEY_DOWN,  T0 + 50 },
+        { CWNET_PLAY_EV_LATE_BYTE, T0 + 128 },
+        { CWNET_PLAY_EV_KEY_UP,    T0 + 128 },
+        { CWNET_PLAY_EV_PTT_OFF,   T0 + 228 },
+    };
+    assert_log(&log, want, sizeof want / sizeof want[0]);
+
+    /* One byte late, by the 30 ms between its deadline and its arrival */
+    TEST_ASSERT_EQUAL_UINT32(1u, cwnet_play_late_bytes(&play));
+    TEST_ASSERT_EQUAL_INT64(30, cwnet_play_late_ms(&play));
+    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_UNDERRUN));
+}
+
+/*
+ * After the grace fault the bytes that follow restart as a new over with
+ * the SAME B, without the caller arming anything: a byte received at
+ * T0+1000 keys down at T0+1050, and its dot still lasts its encoded 48 ms.
+ */
+void test_play_after_the_grace_fault_the_next_byte_restarts_with_the_same_buffer(void) {
+    cwnet_play_t play;
+    play_setup(&play, 0u, B_MS);
+
+    const uint8_t only_down[] = { 0x80 };
+    push_bytes(&play, only_down, sizeof only_down, T0);
+
+    evlog_t log = { .n = 0 };
+    run_until(&play, &log, T0 + 900);
+    log.n = 0;   /* the fault itself is pinned by the test above */
+
+    const uint8_t again[] = { 0x80, 0x24 };
+    push_bytes(&play, again, sizeof again, T0 + 1000);
+    run_until(&play, &log, T0 + 2000);
+
+    const exp_ev_t want[] = {
+        { CWNET_PLAY_EV_PTT_ON,   T0 + 1050 },
+        { CWNET_PLAY_EV_KEY_DOWN, T0 + 1050 },
+        { CWNET_PLAY_EV_KEY_UP,   T0 + 1098 },
+        { CWNET_PLAY_EV_PTT_OFF,  T0 + 1198 },
     };
     assert_log(&log, want, sizeof want / sizeof want[0]);
 }
@@ -726,10 +963,14 @@ void test_play_survives_null_and_reports_nothing(void) {
 /**
  * @brief Tick once, then check the one state that must never exist
  *
- * A key that is down with nothing scheduled is a carrier nobody will ever
- * lower: no byte sequence may leave the engine there (ARCHITECTURE.md 8.1,
- * corrupted timing is worse than silence, and a stuck carrier is worse
- * than both).
+ * A key that is down with an empty FIFO is legitimate now: the byte that
+ * ends the element has not been keyed yet (R8). What is never legitimate
+ * is a key that is down with NOTHING in the diary — no keying deadline and
+ * no end of grace — because that is a carrier nobody will ever lower
+ * (ARCHITECTURE.md 8.1, corrupted timing is worse than silence, and a
+ * stuck carrier is worse than both). The grace is what makes the first
+ * state bounded, so "at rest" means cwnet_play_next_deadline() says there
+ * is nothing left to do.
  */
 static void tick_and_check_invariant(cwnet_play_t *play, int64_t now_ms) {
     cwnet_play_result_t r;
@@ -748,9 +989,9 @@ static void tick_and_check_invariant(cwnet_play_t *play, int64_t now_ms) {
 /*
  * The sequences this file pins, plus the reference's own slow end of over
  * (keyer_sim.c case F, 80 31 7F 44), each ticked at every millisecond of
- * its span. The engine is allowed to key down, to underrun, to close and
- * to stall for want of bytes; it is never allowed to stop with the key
- * down and no deadline in the diary.
+ * its span. The engine is allowed to key down, to hold a state with an
+ * empty FIFO, to fault when the grace runs out, and to close; it is never
+ * allowed to stop with the key down and no deadline in the diary.
  */
 void test_play_never_comes_to_rest_with_the_key_down(void) {
     static const uint8_t long_down[]   = { 0x80, 0x7F, 0x6A };              /* 1994 ms down */
@@ -758,6 +999,9 @@ void test_play_never_comes_to_rest_with_the_key_down(void) {
     static const uint8_t end_of_over[] = { 0x80, 0x24, 0x24 };
     static const uint8_t starved[]     = { 0x80 };
     static const uint8_t slow_eoo[]    = { 0x80, 0x31, 0x7F, 0x44 };
+    /* A key-down whose next byte keeps it down and then stops: the engine
+     * waits twice, and the second wait must still end in the grace. */
+    static const uint8_t held_then_gone[] = { 0x80, 0xFF };
 
     const struct {
         const uint8_t *bytes;
@@ -768,6 +1012,7 @@ void test_play_never_comes_to_rest_with_the_key_down(void) {
         { end_of_over, sizeof end_of_over },
         { starved,     sizeof starved },
         { slow_eoo,    sizeof slow_eoo },
+        { held_then_gone, sizeof held_then_gone },
     };
 
     for (size_t c = 0; c < sizeof cases / sizeof cases[0]; c++) {
