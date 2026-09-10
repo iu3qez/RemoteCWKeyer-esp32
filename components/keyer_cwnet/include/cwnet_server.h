@@ -153,18 +153,24 @@ typedef enum {
 /** What went wrong badly enough to write a line about */
 typedef enum {
     /**
-     * The grace ran out with the key down: the key was forced up.
+     * The key holder's connection ended mid-over: its TCP closed, or three
+     * PINGs in a row went unanswered and it was declared dead (R16).
      *
-     * Not an empty FIFO. An empty FIFO at a deadline is the normal state of
-     * a live over (R8): every byte arrives about B ms before its own
-     * deadline, so any element longer than B empties the queue and the
-     * applied state simply holds. What this fault says is that the holding
-     * lasted longer than cfg.play.key_grace_ms with a carrier up, and the
-     * engine lifted the key rather than leave it there.
+     * With the key DOWN this is the only thing that ends the over. A key
+     * held down with nothing arriving is an operator tuning up, not a
+     * fault, and the keying stream cannot tell that hand from a dead
+     * client; the PING can, because the program answers it and the hand
+     * does not (R8, KTD3).
      */
-    CWNET_SERVER_FAULT_GRACE_EXPIRED = 0,
-    CWNET_SERVER_FAULT_HOLDER_GONE,     /**< The key holder's TCP closed mid-over */
-    CWNET_SERVER_FAULT_IDLE,            /**< Nothing from the holder for the idle timeout */
+    CWNET_SERVER_FAULT_HOLDER_GONE = 0,
+    /**
+     * Nothing from the holder for the idle timeout, with the key UP.
+     *
+     * Between elements and between overs this frees a key nobody is using.
+     * It has no say while the key is down: there it would cut a tune-up
+     * short, which is what the PING is for (R6, R8).
+     */
+    CWNET_SERVER_FAULT_IDLE,
     CWNET_SERVER_FAULT_OVER_TOO_LONG,   /**< The over outlasted its ceiling */
 } cwnet_server_fault_t;
 
@@ -189,9 +195,9 @@ typedef enum {
     CWNET_SERVER_EV_PTT_OFF,          /**< PTT output: off */
     /**
      * A byte arrived after its own deadline: the element on the air came
-     * out longer by the delay (R8). The link is slipping, and this is how
-     * the operator learns it before the grace expires and it becomes a
-     * fault. value = bytes applied late since start, peak_ms = the
+     * out longer by the delay (R8). The link is slipping, and this is the
+     * only warning the operator gets before it slips far enough for the
+     * PINGs to go unanswered. value = bytes applied late since start, peak_ms = the
      * milliseconds they added, in total (cwnet_play_late_bytes(),
      * cwnet_play_late_ms()).
      */
@@ -250,7 +256,7 @@ typedef struct {
     uint16_t max_clients;          /**< Clients served at once (default 4) */
     uint32_t ping_interval_ms;     /**< PING cadence per client (default 2000) */
     uint32_t handshake_timeout_ms; /**< Accept to CONNECT (default 5000) */
-    uint32_t idle_timeout_ms;      /**< Silence from the holder mid-over (default 5000) */
+    uint32_t idle_timeout_ms;      /**< Silence from the holder, key up (default 5000) */
     uint32_t over_max_ms;          /**< Ceiling on one over (default 120000) */
     uint32_t buffer_floor_ms;      /**< Floor under B (default 100) */
     uint32_t buffer_ceiling_ms;    /**< Link eligibility ceiling (default 1000) */

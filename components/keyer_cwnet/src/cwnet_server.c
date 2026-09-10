@@ -241,10 +241,6 @@ static void map_play_events(cwnet_server_t *srv, const cwnet_play_result_t *pr,
             case CWNET_PLAY_EV_PTT_OFF:
                 emit(out, CWNET_SERVER_EV_PTT_OFF, srv->key_holder, 0, 0, ev->at_ms);
                 break;
-            case CWNET_PLAY_EV_GRACE_EXPIRED:
-                emit(out, CWNET_SERVER_EV_FAULT, srv->key_holder,
-                     (int32_t)CWNET_SERVER_FAULT_GRACE_EXPIRED, 0, ev->at_ms);
-                break;
             case CWNET_PLAY_EV_LATE_BYTE:
                 /* The engine counts; the caller is the only one that can
                  * say it out loud (KTD10). The numbers are the running
@@ -682,7 +678,6 @@ void cwnet_server_cfg_defaults(cwnet_server_cfg_t *cfg) {
     cfg->buffer_ceiling_ms = CWNET_SERVER_DEFAULT_BUFFER_CEILING_MS;
     cfg->play.ptt_lead_ms = 0u;
     cfg->play.ptt_tail_ms = CWNET_PLAY_DEFAULT_PTT_TAIL_MS;
-    cfg->play.key_grace_ms = CWNET_PLAY_DEFAULT_KEY_GRACE_MS;
     cfg->send_cb = NULL;
     cfg->user_data = NULL;
 }
@@ -845,11 +840,19 @@ void cwnet_server_poll(cwnet_server_t *srv, int64_t now_ms,
         c->next_ping_at_ms = now_ms + (int64_t)srv->cfg.ping_interval_ms;
     }
 
-    /* Safety nets on the over in progress (R6) */
+    /* Safety nets on the over in progress (R6). The third one, a holder the
+     * PINGs declared dead, fired in the loop above through close_client().
+     *
+     * The idle net speaks only with the key UP: between elements and
+     * between overs it frees a key nobody is using, but under a key that is
+     * down it would cut an operator's tune-up short at five seconds. There
+     * the PING is the judge, because the program answers it and the hand
+     * does not (R6, R8). */
     if (srv->key_holder != CWNET_SERVER_NOBODY) {
         if (now_ms - srv->over_started_at_ms >= (int64_t)srv->cfg.over_max_ms) {
             force_release(srv, CWNET_SERVER_FAULT_OVER_TOO_LONG, now_ms, out);
-        } else if (now_ms - srv->holder_last_byte_ms >= (int64_t)srv->cfg.idle_timeout_ms) {
+        } else if (!cwnet_play_key_down(&srv->play) &&
+                   now_ms - srv->holder_last_byte_ms >= (int64_t)srv->cfg.idle_timeout_ms) {
             force_release(srv, CWNET_SERVER_FAULT_IDLE, now_ms, out);
         }
     }
@@ -891,8 +894,14 @@ bool cwnet_server_next_deadline(const cwnet_server_t *srv, int64_t *out_ms) {
 
     if (srv->key_holder != CWNET_SERVER_NOBODY) {
         deadline_min(srv->over_started_at_ms + (int64_t)srv->cfg.over_max_ms, &have, &best);
-        deadline_min(srv->holder_last_byte_ms + (int64_t)srv->cfg.idle_timeout_ms,
-                     &have, &best);
+        /* Not while the key is down: nothing is due then, and putting an
+         * instant here would wake the loop only to decide to do nothing.
+         * The key comes up on a deadline of the engine's, which is already
+         * a candidate, and the poll after it sees the idle net again. */
+        if (!cwnet_play_key_down(&srv->play)) {
+            deadline_min(srv->holder_last_byte_ms + (int64_t)srv->cfg.idle_timeout_ms,
+                         &have, &best);
+        }
     }
 
     if (have) {

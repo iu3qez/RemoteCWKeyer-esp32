@@ -49,10 +49,10 @@ Ctrl-C (SIGINT) o SIGTERM chiudono i client e riportano l'uscita a riposo
 --link-ceiling MS   peak-hold oltre cui il link non e' idoneo (default 1000)
 --ptt-tail MS       coda del PTT dopo l'ultimo key-up (default 100)
 --ptt-lead MS       anticipo del PTT sul primo key-down, mai oltre B (default 0)
---idle MS           silenzio del titolare che rilascia la chiave (default 5000)
+--idle MS           silenzio del titolare col tasto su che rilascia la chiave
+                    (default 5000; col tasto giu' decide il PING)
 --over-max MS       tetto di un over (default 120000)
 --handshake MS      tempo per completare il CONNECT (default 5000)
---key-grace MS      silenzio tollerato col tasto giu' prima del fault (default 500)
 --out-cap BYTE      byte non inviati per client oltre i quali lo chiudo
                     (default 16384, min 256, max 16777216)
 --output BACKEND    uscita di tasto e PTT: virtual (default virtual)
@@ -68,13 +68,13 @@ I default sono quelli del riferimento e della scatola (R13): `--ptt-tail
 100` è "il valore della scatola" (R9), `--play-floor 100` il B minimo scelto
 per assorbire il jitter della LAN/VPN senza un ritardo percepibile.
 
-**`--key-grace` va alzata alle velocità basse.** È il tempo che il tasto può
-restare giù senza che arrivi un byte prima che il motore lo sollevi e scriva
-un fault (R8). A 8 WPM una linea dura 450 ms, contro i 500 ms di default:
-un margine di 50 ms, che un singolo ritardo di rete si mangia. Chi opera
-sotto le 12 WPM la porta a `--key-grace 2000` e non ci pensa più. Il verso
-opposto — abbassarla — accorcia solo il tempo in cui una portante resta su
-dopo che il link è morto.
+**`--idle` non tocca un tasto giù.** Fra un elemento e l'altro e fra un over
+e l'altro libera una chiave che nessuno sta usando; sotto un tasto tenuto
+giù non ha voce, altrimenti taglierebbe l'accordatura dopo cinque secondi.
+Chi decide lì è il PING: risponde il programma, non la mano dell'operatore,
+quindi continua a rispondere per tutta l'accordatura e smette quando il
+client muore. Tre PING senza risposta chiudono quel client e la chiave si
+rilascia con tasto su e PTT giù alla coda (R8, R16).
 
 **`--out-cap` è una rete di sicurezza, non una prestazione.** Il server manda
 a un client qualche decina di byte ogni due secondi: 16 KiB sono minuti di
@@ -139,7 +139,7 @@ Vocabolario (client, connessioni):
 
 | Riga | Significato |
 |---|---|
-| `stato ascolto ADDR:PORTA max-clients N B>=X ms tetto Y ms coda Z ms lead W ms grazia G ms out-cap C byte` | il daemon e' pronto, con la configurazione che ha davvero |
+| `stato ascolto ADDR:PORTA max-clients N B>=X ms tetto Y ms coda Z ms lead W ms out-cap C byte` | il daemon e' pronto, con la configurazione che ha davvero |
 | `stato uscita BACKEND fronti DEST` | dove finiscono i fronti (riga a parte: un path lungo non deve troncare la configurazione) |
 | `stato accettato client N da IP:PORTA` | TCP accettata, in attesa del CONNECT |
 | `stato rifiutato da IP:PORTA: nessuno slot libero` | oltre `--max-clients`, chiusa subito (R1: l'accept non blocca mai) |
@@ -155,20 +155,20 @@ Vocabolario (chiave, link, over):
 | `stato link non idoneo client N NOME: peak Y ms` | il peak-hold ha superato `--link-ceiling`: quel client non prende la chiave |
 | `stato over client N NOME B X ms` | un over e' iniziato, con il B calcolato per quella sessione |
 | `stato byte in ritardo client N NOME: B byte, M ms in totale` | un byte e' arrivato dopo la scadenza del fronte che portava: l'elemento e' uscito piu' lungo di quanto e' stato manipolato, e il link sta scivolando. Cumulativi, quindi due righe a distanza dicono *quanto in fretta* |
-| `stato fault [client N NOME:] MOTIVO` | FAULT philosophy: tasto su e si ferma (grazia scaduta col tasto giu', over troppo lungo, titolare muto oltre `--idle`, ...) |
+| `stato fault [client N NOME:] MOTIVO` | FAULT philosophy: tasto su e si ferma (titolare sparito a meta' over — TCP chiuso o tre PING senza risposta —, over troppo lungo, titolare muto oltre `--idle` col tasto su) |
 | `stato eventi persi N` | il core ha prodotto piu' eventi di quanti il buffer di lettura ne tenesse: nessun fronte si perde, solo la riga descrittiva |
 | `stato uscita fronti (DEST) non drena: N ms e aspetto` | il descrittore dei fronti ha smesso di prendere byte e il loop e' fermo li' da N ms (vedi *Due uscite*) |
 | `stato uscita fronti (DEST): A attese per M ms, E errori, P persi` | il consuntivo a fine sessione: `P` diverso da zero e' l'unico caso in cui un fronte non e' stato scritto, e succede solo dopo un SIGINT |
 
-**Una FIFO vuota non e' piu' un guasto.** Il fault che una volta si chiamava
-`underrun` diceva "FIFO vuota, tasto su": oggi la FIFO vuota e' lo stato
-normale di un over dal vivo (R8), perche' ogni byte arriva circa B ms prima
-della propria scadenza e ogni elemento piu' lungo di B la svuota. Quello che
-il fault dice adesso e' che il tasto e' rimasto giu' per piu' di
-`--key-grace` senza che arrivasse niente, e il motore l'ha sollevato: una
-portante che nessuno modula e' peggio del silenzio che la sostituisce
-(ARCHITECTURE.md 8.1). Il segnale che arriva *prima*, quando il link comincia
-a scivolare ma i byte ancora arrivano, e' `stato byte in ritardo`.
+**Ne' una FIFO vuota ne' un tasto tenuto giu' sono un guasto.** La FIFO vuota
+e' lo stato normale di un over dal vivo (R8): ogni byte arriva circa B ms
+prima della propria scadenza, e ogni elemento piu' lungo di B la svuota. Un
+tasto giu' con niente che arriva e' l'accordatura, che a bassa potenza e'
+procedura: il motore non lo solleva mai da se', perche' il silenzio del
+keying non distingue chi tiene giu' da chi e' caduto. Quella distinzione la
+fa il PING, e il fault che si vede col tasto giu' e' il titolare dichiarato
+morto. Il segnale che arriva *prima*, quando il link comincia a scivolare ma
+i byte ancora arrivano, e' `stato byte in ritardo`.
 
 Uscita di tasto e PTT (`key_output.h`, backend `virtual`) — **non su stdout**:
 sul descrittore di `--edges`, che di default e' `stderr`:

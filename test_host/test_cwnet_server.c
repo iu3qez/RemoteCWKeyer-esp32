@@ -191,14 +191,26 @@ static size_t build_frame(uint8_t *out, size_t out_size, uint8_t cmd,
 }
 
 /**
- * @brief A key-down that stays down: one MORSE frame of two capture bytes
+ * @brief A key-down and the key-up 669 ms later: one MORSE frame, two bytes
  *
  * 0x80 is the key-down with wait 0 that opens ref_first_over, 0x60 the
- * key-up after 669 ms that closes it. Between them the played key stays
- * down, which is what a safety-net test needs: a lone key-down byte is an
- * underrun by design (R8), and the engine lifts it at once.
+ * key-up after 669 ms that closes it. Between them the played key is down;
+ * after it, up, with the over still open because one key-up is no end of
+ * over.
  */
 static const uint8_t morse_key_down_held[] = { 0x50, 0x02, 0x80, 0x60 };
+
+/**
+ * @brief The key-down alone: the operator leans on the key and holds it
+ *
+ * Nothing follows it, so the played key stays down for as long as the test
+ * wants it to. That is a tune-up, not a defect (R8, KTD3): the engine has
+ * no deadline for it, and only the caller's safety nets can end it.
+ */
+static const uint8_t morse_key_down_only[] = { 0x50, 0x01, 0x80 };
+
+/** The key-up that ends a held element, whenever it turns up */
+static const uint8_t morse_key_up[] = { 0x50, 0x01, 0x60 };
 
 /*===========================================================================*/
 /* Setup helpers                                                             */
@@ -239,9 +251,7 @@ static int ready_client(const char *username, const char *callsign, int64_t now_
  * answers it as the client would with cwnet_ping_build_response(), and the
  * answer arrives rtt_ms later.
  */
-static void ping_exchange(int idx, int64_t request_at_ms, int32_t rtt_ms) {
-    cwnet_server_poll(&srv, request_at_ms, &res);
-
+static void answer_ping(int idx, int64_t request_at_ms, int32_t rtt_ms) {
     uint8_t frame[2 + CWNET_PING_PAYLOAD_SIZE];
     size_t frame_len = 0;
     TEST_ASSERT_TRUE(wire_frame(idx, (uint8_t)CWNET_CMD_PING, SIZE_MAX,
@@ -257,6 +267,11 @@ static void ping_exchange(int idx, int64_t request_at_ms, int32_t rtt_ms) {
     size_t reply_len = build_frame(reply, sizeof(reply), (uint8_t)CWNET_CMD_PING,
                                    payload, sizeof(payload));
     cwnet_server_on_data(&srv, idx, reply, reply_len, request_at_ms + rtt_ms, &res);
+}
+
+static void ping_exchange(int idx, int64_t request_at_ms, int32_t rtt_ms) {
+    cwnet_server_poll(&srv, request_at_ms, &res);
+    answer_ping(idx, request_at_ms, rtt_ms);
 }
 
 /*===========================================================================*/
@@ -732,8 +747,8 @@ void test_server_plays_the_first_over_of_the_capture_and_announces_both_ends(voi
  * R8: a byte that arrives after its own deadline is applied on arrival, the
  * element comes out longer by the delay, and the delay is counted. The core
  * counts it; without an event the daemon has no way to say so, and the
- * operator only learns the link is slipping when the grace turns it into a
- * fault.
+ * operator only learns the link is slipping once it has slipped far enough
+ * for the PINGs to go unanswered.
  */
 void test_server_a_byte_past_its_deadline_is_reported_with_the_running_totals(void) {
     server_setup();
@@ -932,7 +947,13 @@ void test_server_the_holder_disconnecting_frees_the_key_for_the_others(void) {
     TEST_ASSERT_FALSE(cwnet_server_ptt_on(&srv));
 }
 
-void test_server_silence_from_the_holder_releases_the_key_with_a_fault(void) {
+/*
+ * The idle net, with the key UP: between elements and between overs it
+ * frees a key nobody is using. The two bytes play a key-down at 2100 and
+ * the key-up 669 ms later, and from there nothing arrives; five seconds
+ * after the last byte the key comes back to everyone (R6).
+ */
+void test_server_silence_with_the_key_up_releases_the_key_with_a_fault(void) {
     server_setup();
     int idx = ready_client("Moritz", "Moritz", 1000);
 
@@ -941,7 +962,10 @@ void test_server_silence_from_the_holder_releases_the_key_with_a_fault(void) {
     cwnet_server_poll(&srv, 2100, &res);
     TEST_ASSERT_TRUE(cwnet_server_key_down(&srv));
 
+    /* The played key-up is what opens the idle net's mouth: the element is
+     * over, and from here the silence is nobody's transmission. */
     cwnet_server_poll(&srv, 2000 + CWNET_SERVER_DEFAULT_IDLE_MS - 1, &res);
+    TEST_ASSERT_FALSE(cwnet_server_key_down(&srv));
     TEST_ASSERT_EQUAL_INT(idx, cwnet_server_key_holder(&srv));
 
     cwnet_server_poll(&srv, 2000 + CWNET_SERVER_DEFAULT_IDLE_MS, &res);
@@ -950,6 +974,108 @@ void test_server_silence_from_the_holder_releases_the_key_with_a_fault(void) {
     const cwnet_server_event_t *fault = event_first(CWNET_SERVER_EV_FAULT);
     TEST_ASSERT_NOT_NULL(fault);
     TEST_ASSERT_EQUAL_INT((int32_t)CWNET_SERVER_FAULT_IDLE, fault->value);
+}
+
+/*
+ * AE6, first half. The operator holds the key down to tune up and sends
+ * nothing else for eleven seconds — more than twice the idle timeout —
+ * while his program goes on answering the PINGs. The key stays down and
+ * nothing is released: the idle net has no say under a key-down, because
+ * there it cannot tell a hand that has not let go from a client that died,
+ * and the PING can (R6, R8, KTD3).
+ *
+ * Note what does NOT happen on the way: answering a PING never touches the
+ * idle counter, which still points at the byte received at 2000. The idle
+ * net is silent here because the key is down, not because the clock was
+ * reset under it.
+ */
+void test_server_a_key_held_down_survives_the_idle_net_while_the_pings_answer(void) {
+    server_setup();
+    int idx = ready_client("Moritz", "Moritz", 1000);
+
+    cwnet_server_on_data(&srv, idx, morse_key_down_only, sizeof(morse_key_down_only),
+                         2000, &res);
+    cwnet_server_poll(&srv, 2100, &res);
+    TEST_ASSERT_TRUE(cwnet_server_key_down(&srv));
+    TEST_ASSERT_TRUE(cwnet_server_ptt_on(&srv));
+
+    for (int64_t t = 3000; t <= 13000; t += CWNET_SERVER_DEFAULT_PING_INTERVAL_MS) {
+        cwnet_server_poll(&srv, t, &res);
+        TEST_ASSERT_NULL(event_first(CWNET_SERVER_EV_FAULT));
+        answer_ping(idx, t, 0);
+        TEST_ASSERT_TRUE(cwnet_server_key_down(&srv));
+        TEST_ASSERT_EQUAL_INT(idx, cwnet_server_key_holder(&srv));
+    }
+
+    /* The finger lifts at last. The byte is long past the deadline it
+     * carries — the element was held, not keyed — so its edge lands on
+     * arrival and the element comes out as long as it was held: from 2100
+     * to 13000, ten seconds and nine hundred milliseconds. The lateness is
+     * counted, which is the diagnostic, not a fault. */
+    cwnet_server_on_data(&srv, idx, morse_key_up, sizeof(morse_key_up), 13000, &res);
+
+    const cwnet_server_event_t *up = event_first(CWNET_SERVER_EV_KEY_UP);
+    TEST_ASSERT_NOT_NULL(up);
+    TEST_ASSERT_EQUAL_INT64(13000, up->at_ms);
+    TEST_ASSERT_FALSE(cwnet_server_key_down(&srv));
+    TEST_ASSERT_NULL(event_first(CWNET_SERVER_EV_FAULT));
+    TEST_ASSERT_NOT_NULL(event_first(CWNET_SERVER_EV_LATE_BYTE));
+
+    cwnet_server_poll(&srv, 13000 + CWNET_PLAY_DEFAULT_PTT_TAIL_MS, &res);
+    TEST_ASSERT_FALSE(cwnet_server_ptt_on(&srv));
+}
+
+/*
+ * AE6, second half. The same held key-down, but this time the client stops
+ * answering. Three PINGs in a row go unanswered, which closes it (R16), and
+ * closing the holder is what frees the key: the key goes up at that
+ * instant, the PTT drops a tail later, the fault names the client that had
+ * it. This is the release the engine no longer does for itself.
+ *
+ * The instants matter: the idle timeout would have expired at 7000, and the
+ * key is still down and still his there. The PING is what decides.
+ */
+void test_server_the_pings_free_a_key_held_down_by_a_client_that_died(void) {
+    server_setup();
+    int idx = ready_client("Moritz", "Moritz", 1000);
+
+    cwnet_server_on_data(&srv, idx, morse_key_down_only, sizeof(morse_key_down_only),
+                         2000, &res);
+    cwnet_server_poll(&srv, 2100, &res);
+    TEST_ASSERT_TRUE(cwnet_server_key_down(&srv));
+
+    cwnet_server_poll(&srv, 3000, &res);   /* first REQUEST, nothing missed yet */
+    for (unsigned n = 1; n < CWNET_SERVER_PING_MISSES; n++) {
+        cwnet_server_poll(&srv, 3000 + (int64_t)n * CWNET_SERVER_DEFAULT_PING_INTERVAL_MS,
+                          &res);
+        TEST_ASSERT_NULL(event_first(CWNET_SERVER_EV_FAULT));
+        TEST_ASSERT_TRUE(cwnet_server_key_down(&srv));
+        TEST_ASSERT_EQUAL_INT(idx, cwnet_server_key_holder(&srv));
+    }
+
+    int64_t verdict = 3000 + (int64_t)CWNET_SERVER_PING_MISSES *
+                                 CWNET_SERVER_DEFAULT_PING_INTERVAL_MS;
+    cwnet_server_poll(&srv, verdict, &res);
+
+    const cwnet_server_event_t *closed = event_first(CWNET_SERVER_EV_CLIENT_CLOSED);
+    TEST_ASSERT_NOT_NULL(closed);
+    TEST_ASSERT_EQUAL_INT((int32_t)CWNET_SERVER_CLOSE_PING_TIMEOUT, closed->value);
+
+    const cwnet_server_event_t *up = event_first(CWNET_SERVER_EV_KEY_UP);
+    TEST_ASSERT_NOT_NULL(up);
+    TEST_ASSERT_EQUAL_INT64(verdict, up->at_ms);
+    TEST_ASSERT_FALSE(cwnet_server_key_down(&srv));
+    TEST_ASSERT_EQUAL_INT(CWNET_SERVER_NOBODY, cwnet_server_key_holder(&srv));
+
+    const cwnet_server_event_t *fault = event_first(CWNET_SERVER_EV_FAULT);
+    TEST_ASSERT_NOT_NULL(fault);
+    TEST_ASSERT_EQUAL_INT((int32_t)CWNET_SERVER_FAULT_HOLDER_GONE, fault->value);
+    TEST_ASSERT_EQUAL_INT(idx, fault->client_idx);
+
+    /* The PTT goes down at the tail, no later */
+    TEST_ASSERT_TRUE(cwnet_server_ptt_on(&srv));
+    cwnet_server_poll(&srv, verdict + CWNET_PLAY_DEFAULT_PTT_TAIL_MS, &res);
+    TEST_ASSERT_FALSE(cwnet_server_ptt_on(&srv));
 }
 
 void test_server_an_over_past_its_ceiling_is_cut_off(void) {
@@ -1227,10 +1353,10 @@ void test_server_next_deadline_is_the_nearest_of_the_over_and_the_pings(void) {
     TEST_ASSERT_TRUE(cwnet_server_next_deadline(&srv, &at));
     TEST_ASSERT_EQUAL_INT64(6000 + (int64_t)CWNET_SERVER_DEFAULT_BUFFER_FLOOR_MS, at);
 
-    /* Played out — the two bytes hold the key down and then lift it, and
-     * with an empty FIFO under them that is an underrun (R8), not the end of
-     * an over: the holder keeps the key and the idle net is now the nearest
-     * thing the server has to do. */
+    /* Played out — the two bytes key down and then lift it, and one key-up
+     * is no end of over: the holder keeps the key. With the key back up the
+     * idle net has a say again, and it is now the nearest thing the server
+     * has to do. */
     cwnet_server_poll(&srv, 7000, &res);
     TEST_ASSERT_EQUAL_INT(first, cwnet_server_key_holder(&srv));
     TEST_ASSERT_TRUE(cwnet_server_next_deadline(&srv, &at));

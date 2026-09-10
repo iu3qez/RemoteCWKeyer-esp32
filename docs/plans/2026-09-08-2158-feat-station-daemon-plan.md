@@ -55,7 +55,7 @@ Il lato stazione non ha un server nostro. Esiste solo `tools/cwnet/cwnet_echo.py
 - F2. **Un over.** Il primo byte MORSE di A1 prende la chiave se è libera; TX_INFO a tutti. I byte entrano nella FIFO del titolare con l'ora di ricezione. La riproduzione parte al primo byte, ritardata del buffer B, e riproduce le attese codificate. Il PTT sale al primo key-down riprodotto e scende alla coda dopo l'ultimo key-up riprodotto. Il marker di fine over riprodotto e il PTT sceso rilasciano la chiave; TX_INFO «nobody» a tutti. Covered by R6, R7, R9.
 - F3. **Due client.** Il MORSE di chi non ha la chiave è scartato in silenzio, nessun annuncio. Quando il titolare rilascia, il prossimo byte di chiunque prende la chiave. Covered by R6.
 - F4. **Caduta a metà over.** Il TCP del titolare si chiude, o non arriva più niente: la chiave si rilascia con tasto su forzato e PTT giù dopo la coda; TX_INFO «nobody». Covered by R6, R16.
-- F5. **Jitter.** Un byte arriva in ritardo sulla propria scadenza: l'elemento in corso si allunga, il ritardo si conta. Se il tasto è giù e non arriva niente per il tempo di grazia: tasto su, riga di fault, PTT giù alla coda; i byte successivi ripartono come un over nuovo con lo stesso B. Covered by R8.
+- F5. **Jitter.** Un byte arriva in ritardo sulla propria scadenza: l'elemento in corso si allunga, il ritardo si conta. Se il tasto è giù e non arriva niente, non succede niente: è l'accordatura. Il rilascio arriva quando i PING dichiarano morto il client (R16), e allora tasto su, riga di fault e PTT giù alla coda. Covered by R8, R16.
 
 ### Requirements
 
@@ -235,7 +235,7 @@ a ogni deadline raggiunta:
   se FIFO vuota: lo stato resta; ultimo_fronte = deadline; attendi il byte successivo
   prossimo byte -> deadline += attesa_decodificata; stato_pendente = bit7
 all'arrivo di un byte con deadline già passata: applicalo subito, conta il ritardo (R8)
-se tasto giù e now - ultimo_fronte > grazia: tasto su, fault, over chiuso (R8)
+un tasto giu' senza byte non ha scadenza: la chiave la libera il PING (R8, R16)
 fine over = due key-up consecutivi riprodotti
 ```
 
@@ -388,7 +388,7 @@ Fase A (codec, tutta nella suite host): U1, U2 e U4 in parallelo; U3 dopo tutti 
 - **Files.** `components/keyer_cwnet/include/cwnet_play.h`, `components/keyer_cwnet/src/cwnet_play.c`, `test_host/test_cwnet_play.c`, `test_host/CMakeLists.txt`, `test_host/test_main.c`; `components/keyer_cwnet/include/cwnet_client.h` e `src/cwnet_client.c` per usare la FIFO estratta (test in `test_host/test_cwnet_client.c` invariati); `components/keyer_cwnet/CMakeLists.txt` resta senza il file nuovo (KTD2).
 - **Approach.**
   1. La FIFO di 128 byte con ora di ricezione, `rx_pop`, i ms bufferizzati e il predicato di fine over escono da `cwnet_client.c` e diventano il cuore del motore; il client le chiama attraverso il modulo nuovo (KTD2). Overflow scartato e contato.
-  2. `start_over(B)` fissa il buffer; `push(byte, now)`; `next_deadline()` restituisce l'istante del prossimo fronte; `tick(now)` applica i fronti dovuti e restituisce gli eventi: fronte tasto, PTT su/giù, fine over, ritardo di un byte, fault di grazia, over finito.
+  2. `start_over(B)` fissa il buffer; `push(byte, now)`; `next_deadline()` restituisce l'istante del prossimo fronte; `tick(now)` applica i fronti dovuti e restituisce gli eventi: fronte tasto, PTT su/giù, fine over, ritardo di un byte, over finito. Il motore non ha un evento di fault suo: non alza mai il tasto da sé.
   3. Schema del High-Level Technical Design: la scadenza avanza delle attese codificate, mai del tempo misurato; istanti e scadenze in ms a 64 bit, senza wrap.
   4. PTT: su al primo key-down meno il lead; giù dopo la coda dall'ultimo key-up; `force_release()` per le reti di sicurezza di U3 con tasto su e PTT giù alla coda.
 - **Patterns to follow.** `cwnet_client.c`, `rx_pop` e `rx_has_end_of_over`; `KeyerThread.c:2887-2960` per il ritardo iniziale e l'avanzamento; `components/keyer_audio/src/ptt.c` per la coda.
@@ -397,7 +397,7 @@ Fase A (codec, tutta nella suite host): U1, U2 e U4 in parallelo; U3 dopo tutti 
   - Covers AE2. `ref_first_over` (solo i frame MORSE via `ref_morse_frames`) con B = 50: fronti a +50, +98, +146, +290; PTT su a +50 e giù a +390; fine over al byte `0x60`.
   - Covers AE9. Gli stessi byte consegnati uno alla volta al proprio istante di ricezione (fronte più 30 ms), B = 100: stessi intervalli, contatore dei ritardi a zero, nessun fault. È il test che distingue la regola di R8 da «FIFO vuota = underrun».
   - Attesa spezzata (`0xFF 0xEA` dal caso C di `keyer_sim.c`): un solo fronte dopo la somma delle attese.
-  - Covers AE6. Un key-down riprodotto, FIFO vuota, 500 ms di silenzio: tasto su, evento di fault, PTT giù alla coda; un byte che arriva dopo apre un over nuovo con lo stesso B.
+  - Covers AE6. Un key-down riprodotto e dieci secondi senza byte mentre i PING rispondono: il tasto resta giù, nessun fault, e il key-up in ritardo chiude l'elemento lungo quanto è stato tenuto. Il rilascio con il tasto giù è del server, quando i PING dichiarano morto il client.
   - Covers AE6. Key-up che arriva 30 ms dopo la propria scadenza: fronte all'arrivo, ritardo contato, nessun fault.
   - Elemento di 144 ms con B = 50 e byte che arrivano al proprio istante: nessun fronte spurio, nessun fault (la FIFO è vuota alla scadenza del key-down e questo è normale).
   - Lead 20 ms con B = 50: PTT su a +30, tasto a +50; lead oltre B viene limitato a B.
