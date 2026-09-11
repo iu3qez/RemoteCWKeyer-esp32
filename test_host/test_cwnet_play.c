@@ -71,7 +71,6 @@ static const char *ev_name(cwnet_play_event_type_t t) {
         case CWNET_PLAY_EV_PTT_ON:        return "PTT_ON";
         case CWNET_PLAY_EV_PTT_OFF:       return "PTT_OFF";
         case CWNET_PLAY_EV_END_OF_OVER:   return "END_OF_OVER";
-        case CWNET_PLAY_EV_GRACE_EXPIRED:      return "UNDERRUN";
         case CWNET_PLAY_EV_OVER_FINISHED: return "OVER_FINISHED";
         case CWNET_PLAY_EV_LATE_BYTE:     return "LATE_BYTE";
         default:                          return "?";
@@ -167,15 +166,6 @@ static void first_over_morse_bytes(uint8_t *out, size_t cap, size_t *out_len) {
         }
         off += r.bytes_consumed;
     }
-}
-
-static void play_setup_grace(cwnet_play_t *play, uint32_t lead_ms, uint32_t buffer_ms,
-                             uint32_t grace_ms) {
-    cwnet_play_cfg_t cfg = {
-        .ptt_lead_ms = lead_ms, .ptt_tail_ms = TAIL_MS, .key_grace_ms = grace_ms
-    };
-    cwnet_play_init(play, &cfg);
-    cwnet_play_start_over(play, buffer_ms);
 }
 
 static void play_setup(cwnet_play_t *play, uint32_t lead_ms, uint32_t buffer_ms) {
@@ -374,7 +364,6 @@ void test_play_an_over_delivered_as_it_is_keyed_plays_like_a_buffered_one(void) 
     /* The two things AE9 is for: no byte was late, nothing faulted */
     TEST_ASSERT_EQUAL_UINT32(0u, cwnet_play_late_bytes(&play));
     TEST_ASSERT_EQUAL_INT64(0, cwnet_play_late_ms(&play));
-    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_GRACE_EXPIRED));
     TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_LATE_BYTE));
 }
 
@@ -410,7 +399,6 @@ void test_play_an_element_longer_than_the_buffer_is_not_an_underrun(void) {
     };
     assert_log(&log, want, sizeof want / sizeof want[0]);
     TEST_ASSERT_EQUAL_UINT32(0u, cwnet_play_late_bytes(&play));
-    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_GRACE_EXPIRED));
 }
 
 /*===========================================================================*/
@@ -555,91 +543,209 @@ void test_play_a_key_down_longer_than_one_byte_is_not_an_end_of_over(void) {
     TEST_ASSERT_FALSE(cwnet_play_ptt_on(&play));
 }
 
+
+/*
+ * The same 1994 ms hold as the test above, but delivered the way a client
+ * that tunes up actually delivers it: the operator leans on the key, and
+ * NOTHING goes out until the release. Then the whole split wait arrives in
+ * one frame, at once, and every chunk of it is already past the deadline
+ * its own 1165 ms would have had.
+ *
+ *   0x80  key down, 0x00                                 pushed at T0
+ *   0x7F  key up,   0x7F -> 1165 ms, chunk of the wait   pushed at T0 + 2010
+ *   0x6A  key up,   0x6A ->  829 ms, the edge            pushed at T0 + 2010
+ *   0x06  key up,   0x06 ->    6 ms, the end-of-over mark
+ *
+ * A chunk carries no edge: its only job is to move the timeline on. So the
+ * deadline that means anything is the EDGE's, and it is the previous edge
+ * plus the sum of the whole group — T0 + 50 + 1165 + 829 = T0 + 2044 —
+ * which the group beats by 34 ms. Nothing here is late, and the key stays
+ * down 1994 ms, the 2000 ms hold as the 7-bit codec can express it.
+ *
+ * Judging each chunk against a deadline of its own instead, the 1165 ms
+ * one is 795 ms "late", the timeline restarts from the arrival, and the
+ * 829 ms remainder is spent from there: the key goes up at T0 + 2839 and
+ * the station keys on for 2789 ms of a 2000 ms hold. That is a carrier
+ * left in the air three quarters of a second after the operator let go.
+ */
+void test_play_a_split_wait_delivered_at_the_release_keys_the_hold(void) {
+    cwnet_play_t play;
+    play_setup(&play, 0u, B_MS);
+
+    const uint8_t down[] = { 0x80 };
+    push_bytes(&play, down, sizeof down, T0);
+
+    evlog_t log = { .n = 0 };
+    run_until(&play, &log, T0 + 2010);
+    TEST_ASSERT_TRUE(cwnet_play_key_down(&play));
+
+    /* The release: the whole wait, in one frame, 2010 ms after the client
+     * keyed down — B ahead of the edge it carries, like any other byte. */
+    const uint8_t release[] = { 0x7F, 0x6A, 0x06 };
+    push_bytes(&play, release, sizeof release, T0 + 2010);
+    run_until(&play, &log, T0 + 4000);
+
+    const exp_ev_t want[] = {
+        { CWNET_PLAY_EV_PTT_ON,       T0 + 50 },
+        { CWNET_PLAY_EV_KEY_DOWN,     T0 + 50 },
+        { CWNET_PLAY_EV_KEY_UP,       T0 + 2044 },
+        { CWNET_PLAY_EV_END_OF_OVER,  T0 + 2044 },
+        { CWNET_PLAY_EV_PTT_OFF,      T0 + 2144 },
+        { CWNET_PLAY_EV_OVER_FINISHED, T0 + 2144 },
+    };
+    assert_log(&log, want, sizeof want / sizeof want[0]);
+
+    /* 1994 ms of carrier for a 1994 ms hold, and not a byte late: the
+     * chunk had no deadline to miss. */
+    TEST_ASSERT_EQUAL_UINT32(0u, cwnet_play_late_bytes(&play));
+    TEST_ASSERT_EQUAL_INT64(0, cwnet_play_late_ms(&play));
+    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_LATE_BYTE));
+}
+
+/*
+ * R8 still applies to the group, it just applies to it ONCE. The same
+ * release, held back on the link until T0 + 2500 — 456 ms past the edge's
+ * deadline of T0 + 2044. The edge comes out on arrival, the element is
+ * longer by the delay, and the delay is counted: one late byte, 456 ms,
+ * not one per chunk and not the arrival taken as a fresh timeline.
+ */
+void test_play_a_split_wait_that_arrives_late_makes_its_edge_on_arrival(void) {
+    cwnet_play_t play;
+    play_setup(&play, 0u, B_MS);
+
+    const uint8_t down[] = { 0x80 };
+    push_bytes(&play, down, sizeof down, T0);
+
+    evlog_t log = { .n = 0 };
+    run_until(&play, &log, T0 + 2500);
+
+    const uint8_t release[] = { 0x7F, 0x6A };
+    push_bytes(&play, release, sizeof release, T0 + 2500);
+    run_until(&play, &log, T0 + 4000);
+
+    const exp_ev_t want[] = {
+        { CWNET_PLAY_EV_PTT_ON,   T0 + 50 },
+        { CWNET_PLAY_EV_KEY_DOWN, T0 + 50 },
+        { CWNET_PLAY_EV_LATE_BYTE, T0 + 2500 },
+        { CWNET_PLAY_EV_KEY_UP,   T0 + 2500 },
+        { CWNET_PLAY_EV_PTT_OFF,  T0 + 2600 },
+    };
+    assert_log(&log, want, sizeof want / sizeof want[0]);
+
+    TEST_ASSERT_EQUAL_UINT32(1u, cwnet_play_late_bytes(&play));
+    TEST_ASSERT_EQUAL_INT64(2500 - 2044, cwnet_play_late_ms(&play));
+}
+
 /*===========================================================================*/
-/* AE6: silence under a key-down, and a byte that comes late                 */
+/* AE6: a key held down, and a byte that comes late                          */
 /*===========================================================================*/
 
 /*
- * One key-down byte and nothing else. At T0 + B the key goes down and the
- * FIFO is empty, which by itself says nothing: the byte that ends this
- * element is produced by a finger that has not lifted yet. So the key
- * stays down and the engine waits — but not forever. When the grace runs
- * out, 500 ms after the edge, nothing on this link is coming and a carrier
- * nobody is modulating is worse than silence: the key goes up and the
- * fault is reported (R8, ARCHITECTURE.md 8.1).
+ * The operator holds the key down to tune up, and for ten seconds nothing
+ * else reaches the station. That is not a fault and it has no deadline: an
+ * empty FIFO under a key-down is a finger that has not lifted yet, and the
+ * keying stream cannot tell that finger from a client that died. The PING
+ * can, so the engine holds and the release comes from the caller (R8,
+ * KTD3).
  *
- *   T0 + B(50)                  key down, FIFO empty, grace armed
- *   + grace(500)  = T0 + 550    key up, fault
- *   + tail(100)   = T0 + 650    PTT off
+ * The bytes are the ones a live client actually sends. A wait longer than
+ * one byte can carry is split by the encoder as it elapses
+ * (CwStreamEnc.c:135-146): a chunk of 0x7F, worth CWSTREAM_MAX_WAIT_MS =
+ * 1165 ms, every time the wait in progress passes that, then the
+ * remainder. Ten seconds is 8 x 1165 = 9320 plus 680, and 680 encodes as
+ * 0x60 which decodes back to 669: the element comes out 9320 + 669 =
+ * 9989 ms long, the hold as the 7-bit codec can express it.
  *
- * The over is not finished: no marker was played, and the bytes that
- * follow restart it.
+ *   T0 + B(50)                          key down
+ *   + 8 chunks and the remainder        key up at T0 + 50 + 9989
+ *   + tail(100)                         PTT off
  */
-void test_play_the_grace_lifts_the_key_when_nothing_arrives_under_it(void) {
+void test_play_a_key_held_down_holds_until_the_byte_that_lifts_it(void) {
     cwnet_play_t play;
-    play_setup(&play, 0u, B_MS);   /* grace 0 in the cfg: the 500 ms default */
+    play_setup(&play, 0u, B_MS);
 
-    const uint8_t only_down[] = { 0x80 };
-    push_bytes(&play, only_down, sizeof only_down, T0);
+    const uint8_t down[] = { 0x80 };
+    push_bytes(&play, down, sizeof down, T0);
 
     evlog_t log = { .n = 0 };
-    run_until(&play, &log, T0 + 549);
+    run_until(&play, &log, T0 + 5000);
 
-    /* Halfway through the element the key is down and legitimately so, and
-     * the only thing in the diary is the end of the grace. */
+    /* Halfway through the hold: the key is down, and the engine has nothing
+     * at all in its diary. That empty diary IS the decision — with a grace
+     * armed there would be an instant here, and it would lift the key while
+     * the operator is still leaning on it. */
     TEST_ASSERT_TRUE(cwnet_play_key_down(&play));
     int64_t next = 0;
-    TEST_ASSERT_TRUE(cwnet_play_next_deadline(&play, &next));
-    TEST_ASSERT_EQUAL_INT64(T0 + 550, next);
-    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_GRACE_EXPIRED));
+    TEST_ASSERT_FALSE(cwnet_play_next_deadline(&play, &next));
 
-    run_until(&play, &log, T0 + 1000);
+    /* The chunks of the wait, each sent when the encoder would send it */
+    for (int k = 1; k <= 8; k++) {
+        int64_t at = T0 + 1165 * k;
+        run_until(&play, &log, at);
+        TEST_ASSERT_TRUE(cwnet_play_push(&play, 0x7F, at));
+    }
+    run_until(&play, &log, T0 + 10000);
+    TEST_ASSERT_TRUE(cwnet_play_key_down(&play));
+
+    /* 10000 - 9320 = 680 ms left, which encodes as 0x60 (669 ms) */
+    TEST_ASSERT_TRUE(cwnet_play_push(&play, 0x60, T0 + 10000));
+    run_until(&play, &log, T0 + 12000);
 
     const exp_ev_t want[] = {
         { CWNET_PLAY_EV_PTT_ON,   T0 + 50 },
         { CWNET_PLAY_EV_KEY_DOWN, T0 + 50 },
-        { CWNET_PLAY_EV_KEY_UP,   T0 + 550 },
-        { CWNET_PLAY_EV_GRACE_EXPIRED, T0 + 550 },
-        { CWNET_PLAY_EV_PTT_OFF,  T0 + 650 },
+        { CWNET_PLAY_EV_KEY_UP,   T0 + 50 + 9989 },
+        { CWNET_PLAY_EV_PTT_OFF,  T0 + 50 + 9989 + (int64_t)TAIL_MS },
     };
     assert_log(&log, want, sizeof want / sizeof want[0]);
 
-    TEST_ASSERT_FALSE(cwnet_play_key_down(&play));
-    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_OVER_FINISHED));
+    /* Ten seconds of holding, and not one byte was late: every chunk landed
+     * its own B ahead of the deadline it carried. */
+    TEST_ASSERT_EQUAL_UINT32(0u, cwnet_play_late_bytes(&play));
+    TEST_ASSERT_EQUAL_INT64(0, cwnet_play_late_ms(&play));
 }
 
 /*
- * The grace is the caller's number, not a constant: with 200 ms the key
- * comes up at T0 + 50 + 200 and the PTT a tail later.
+ * The other end of the same hold: the client stops answering, the caller's
+ * PINGs declare it dead (R16) and it forces the release. From a held
+ * key-down — the state the test above leaves the engine in — that means the
+ * key up at that instant and the PTT a tail later, not at some deadline of
+ * the engine's own.
  */
-void test_play_the_grace_is_the_one_the_caller_configured(void) {
+void test_play_force_release_lifts_a_held_key_at_the_instant_it_is_called(void) {
     cwnet_play_t play;
-    play_setup_grace(&play, 0u, B_MS, 200u);
+    play_setup(&play, 0u, B_MS);
 
-    const uint8_t only_down[] = { 0x80 };
-    push_bytes(&play, only_down, sizeof only_down, T0);
+    const uint8_t down[] = { 0x80 };
+    push_bytes(&play, down, sizeof down, T0);
 
     evlog_t log = { .n = 0 };
-    run_until(&play, &log, T0 + 1000);
+    run_until(&play, &log, T0 + 6000);
+    TEST_ASSERT_TRUE(cwnet_play_key_down(&play));
+
+    cwnet_play_result_t r;
+    cwnet_play_force_release(&play, T0 + 6000, &r);
+    log_append(&log, &r);
+    run_until(&play, &log, T0 + 8000);
 
     const exp_ev_t want[] = {
-        { CWNET_PLAY_EV_PTT_ON,   T0 + 50 },
-        { CWNET_PLAY_EV_KEY_DOWN, T0 + 50 },
-        { CWNET_PLAY_EV_KEY_UP,   T0 + 250 },
-        { CWNET_PLAY_EV_GRACE_EXPIRED, T0 + 250 },
-        { CWNET_PLAY_EV_PTT_OFF,  T0 + 350 },
+        { CWNET_PLAY_EV_PTT_ON,        T0 + 50 },
+        { CWNET_PLAY_EV_KEY_DOWN,      T0 + 50 },
+        { CWNET_PLAY_EV_KEY_UP,        T0 + 6000 },
+        { CWNET_PLAY_EV_PTT_OFF,       T0 + 6100 },
+        { CWNET_PLAY_EV_OVER_FINISHED, T0 + 6100 },
     };
     assert_log(&log, want, sizeof want / sizeof want[0]);
+    TEST_ASSERT_FALSE(cwnet_play_over_open(&play));
 }
 
 /*
- * The other half of AE6. The key-up that ends the dot is due at T0 + 98,
+ * The last part of AE6. The key-up that ends the dot is due at T0 + 98,
  * 48 ms after the key-down at T0 + 50, and the link hiccups: it arrives at
  * T0 + 128, 30 ms past its own deadline. The element cannot be shortened
  * back into the past, so it is applied on arrival — the dot comes out
  * 78 ms long instead of 48 — and the 30 ms are counted. This is jitter,
- * not a fault: nothing is reported, and the grace never expires because a
- * byte did arrive.
+ * not a fault: nothing but the edge itself is reported.
  */
 void test_play_a_byte_past_its_deadline_makes_its_edge_on_arrival(void) {
     cwnet_play_t play;
@@ -667,36 +773,6 @@ void test_play_a_byte_past_its_deadline_makes_its_edge_on_arrival(void) {
     /* One byte late, by the 30 ms between its deadline and its arrival */
     TEST_ASSERT_EQUAL_UINT32(1u, cwnet_play_late_bytes(&play));
     TEST_ASSERT_EQUAL_INT64(30, cwnet_play_late_ms(&play));
-    TEST_ASSERT_EQUAL_size_t(0u, count_of(&log, CWNET_PLAY_EV_GRACE_EXPIRED));
-}
-
-/*
- * After the grace fault the bytes that follow restart as a new over with
- * the SAME B, without the caller arming anything: a byte received at
- * T0+1000 keys down at T0+1050, and its dot still lasts its encoded 48 ms.
- */
-void test_play_after_the_grace_fault_the_next_byte_restarts_with_the_same_buffer(void) {
-    cwnet_play_t play;
-    play_setup(&play, 0u, B_MS);
-
-    const uint8_t only_down[] = { 0x80 };
-    push_bytes(&play, only_down, sizeof only_down, T0);
-
-    evlog_t log = { .n = 0 };
-    run_until(&play, &log, T0 + 900);
-    log.n = 0;   /* the fault itself is pinned by the test above */
-
-    const uint8_t again[] = { 0x80, 0x24 };
-    push_bytes(&play, again, sizeof again, T0 + 1000);
-    run_until(&play, &log, T0 + 2000);
-
-    const exp_ev_t want[] = {
-        { CWNET_PLAY_EV_PTT_ON,   T0 + 1050 },
-        { CWNET_PLAY_EV_KEY_DOWN, T0 + 1050 },
-        { CWNET_PLAY_EV_KEY_UP,   T0 + 1098 },
-        { CWNET_PLAY_EV_PTT_OFF,  T0 + 1198 },
-    };
-    assert_log(&log, want, sizeof want / sizeof want[0]);
 }
 
 /*===========================================================================*/
@@ -957,31 +1033,30 @@ void test_play_survives_null_and_reports_nothing(void) {
 }
 
 /*===========================================================================*/
-/* The invariant: the engine never comes to rest with the key down           */
+/* The invariant: at rest with the key down means a held element             */
 /*===========================================================================*/
 
 /**
  * @brief Tick once, then check the one state that must never exist
  *
- * A key that is down with an empty FIFO is legitimate now: the byte that
- * ends the element has not been keyed yet (R8). What is never legitimate
- * is a key that is down with NOTHING in the diary — no keying deadline and
- * no end of grace — because that is a carrier nobody will ever lower
- * (ARCHITECTURE.md 8.1, corrupted timing is worse than silence, and a
- * stuck carrier is worse than both). The grace is what makes the first
- * state bounded, so "at rest" means cwnet_play_next_deadline() says there
- * is nothing left to do.
+ * A key down with an empty FIFO and nothing scheduled is legitimate: the
+ * byte that ends the element is under a finger that has not lifted, and the
+ * engine has no timer for that (R8, KTD3). What is never legitimate is the
+ * key being down while the engine believes an over is over — CLOSING, its
+ * queue thrown away and only the PTT left to drop, or IDLE, waiting for a
+ * byte to anchor a new over on. In those two the key would be down with
+ * nobody left who will ever key it up, and that is a stuck carrier
+ * (ARCHITECTURE.md 8.1, and worse than either side of it).
  */
 static void tick_and_check_invariant(cwnet_play_t *play, int64_t now_ms) {
     cwnet_play_result_t r;
     cwnet_play_tick(play, now_ms, &r);
 
-    int64_t next = 0;
-    bool scheduled = cwnet_play_next_deadline(play, &next);
-    if (cwnet_play_key_down(play) && !scheduled) {
+    if (play->key_down && play->state != CWNET_PLAY_RUNNING &&
+        play->state != CWNET_PLAY_WAITING) {
         char msg[128];
-        snprintf(msg, sizeof msg, "key down at T0%+lld with nothing scheduled",
-                 (long long)(now_ms - T0));
+        snprintf(msg, sizeof msg, "key down at T0%+lld in state %d, with the over closed",
+                 (long long)(now_ms - T0), (int)play->state);
         TEST_FAIL_MESSAGE(msg);
     }
 }
@@ -989,18 +1064,18 @@ static void tick_and_check_invariant(cwnet_play_t *play, int64_t now_ms) {
 /*
  * The sequences this file pins, plus the reference's own slow end of over
  * (keyer_sim.c case F, 80 31 7F 44), each ticked at every millisecond of
- * its span. The engine is allowed to key down, to hold a state with an
- * empty FIFO, to fault when the grace runs out, and to close; it is never
- * allowed to stop with the key down and no deadline in the diary.
+ * its span. The engine is allowed to key down, to hold that state with an
+ * empty FIFO for as long as the operator holds the key, and to close; it is
+ * never allowed to close or to go idle with the key still down.
  */
-void test_play_never_comes_to_rest_with_the_key_down(void) {
+void test_play_only_a_held_element_leaves_the_key_down(void) {
     static const uint8_t long_down[]   = { 0x80, 0x7F, 0x6A };              /* 1994 ms down */
     static const uint8_t split_gap[]   = { 0x80, 0x14, 0xFF, 0xEA, 0x21 };  /* 1994 ms up */
     static const uint8_t end_of_over[] = { 0x80, 0x24, 0x24 };
     static const uint8_t starved[]     = { 0x80 };
     static const uint8_t slow_eoo[]    = { 0x80, 0x31, 0x7F, 0x44 };
     /* A key-down whose next byte keeps it down and then stops: the engine
-     * waits twice, and the second wait must still end in the grace. */
+     * waits twice, and both waits are the operator's, not a defect. */
     static const uint8_t held_then_gone[] = { 0x80, 0xFF };
 
     const struct {
@@ -1022,6 +1097,13 @@ void test_play_never_comes_to_rest_with_the_key_down(void) {
         for (int64_t t = T0; t <= T0 + 2400; t++) {
             tick_and_check_invariant(&play, t);
         }
+        /* And the release the caller always has: from wherever that case
+         * ended up, force_release leaves the key up and the over shut. */
+        cwnet_play_result_t r;
+        cwnet_play_force_release(&play, T0 + 2400, &r);
+        cwnet_play_tick(&play, T0 + 2400 + (int64_t)TAIL_MS, &r);
+        TEST_ASSERT_FALSE(cwnet_play_key_down(&play));
+        TEST_ASSERT_FALSE(cwnet_play_over_open(&play));
     }
 }
 

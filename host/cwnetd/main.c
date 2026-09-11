@@ -516,9 +516,8 @@ static const char *close_reason_name(int32_t v) {
 
 static const char *fault_name(int32_t v) {
     switch ((cwnet_server_fault_t)v) {
-        case CWNET_SERVER_FAULT_GRACE_EXPIRED: return "grazia scaduta col tasto giu': tasto su";
         case CWNET_SERVER_FAULT_HOLDER_GONE:   return "titolare sparito a meta' over";
-        case CWNET_SERVER_FAULT_IDLE:          return "titolare muto oltre l'inattivita'";
+        case CWNET_SERVER_FAULT_IDLE:          return "titolare muto oltre l'inattivita' col tasto su";
         case CWNET_SERVER_FAULT_OVER_TOO_LONG: return "over oltre il tetto";
         default:                               return "?";
     }
@@ -637,8 +636,8 @@ static void handle_events(const cwnet_server_result_t *res, int64_t now_ms) {
                 /* The link is slipping: a byte turned up after the edge it
                  * carried was due, so that element went out longer than the
                  * operator keyed it. Cumulative, so two lines apart say how
-                 * fast it is slipping. This is the warning that comes
-                 * before the grace expires and it becomes a fault. */
+                 * fast it is slipping. It is the warning that comes before
+                 * the link slips far enough to stop answering the PINGs. */
                 status_line("stato byte in ritardo client %d %s: %d byte, %d ms in totale",
                             e->client_idx, name_of(e->client_idx), e->value, e->peak_ms);
                 break;
@@ -815,7 +814,6 @@ typedef struct {
     unsigned long idle_ms;
     unsigned long over_max_ms;
     unsigned long handshake_ms;
-    unsigned long key_grace_ms;
     unsigned long out_cap;
     const char *output;
     const char *edges;
@@ -835,11 +833,10 @@ static void usage(const char *argv0, const args_t *d) {
         "  --link-ceiling MS   peak-hold oltre cui il link non e' idoneo (default %lu)\n"
         "  --ptt-tail MS       coda del PTT dopo l'ultimo key-up (default %lu)\n"
         "  --ptt-lead MS       anticipo del PTT sul primo key-down, mai oltre B (default %lu)\n"
-        "  --idle MS           silenzio del titolare che rilascia la chiave (default %lu)\n"
+        "  --idle MS           silenzio del titolare col tasto su che rilascia la\n"
+        "                      chiave (default %lu; col tasto giu' decide il PING)\n"
         "  --over-max MS       tetto di un over (default %lu)\n"
         "  --handshake MS      tempo per completare il CONNECT (default %lu)\n"
-        "  --key-grace MS      silenzio tollerato col tasto giu' prima del fault\n"
-        "                      (default %lu; a 8 WPM una linea dura 450 ms: alzalo)\n"
         "  --out-cap BYTE      byte non inviati per client oltre i quali lo chiudo\n"
         "                      (default %lu, min %lu, max %lu)\n"
         "  --output BACKEND    uscita di tasto e PTT: %s (default %s)\n"
@@ -856,7 +853,7 @@ static void usage(const char *argv0, const args_t *d) {
         "client e rilasciano l'uscita.\n",
         argv0, d->listen_addr, d->port, CWNET_SERVER_MAX_CLIENTS, d->max_clients,
         d->play_floor_ms, d->link_ceiling_ms, d->ptt_tail_ms, d->ptt_lead_ms,
-        d->idle_ms, d->over_max_ms, d->handshake_ms, d->key_grace_ms,
+        d->idle_ms, d->over_max_ms, d->handshake_ms,
         d->out_cap, (unsigned long)CWNETD_MIN_OUT_CAP, (unsigned long)CWNETD_MAX_OUT_CAP,
         key_output_backends(), d->output, d->edges);
 }
@@ -875,7 +872,7 @@ static bool parse_ulong(const char *s, unsigned long max, unsigned long *out) {
 enum {
     OPT_LISTEN = 1000, OPT_PORT, OPT_MAX_CLIENTS, OPT_PLAY_FLOOR, OPT_LINK_CEILING,
     OPT_PTT_TAIL, OPT_PTT_LEAD, OPT_IDLE, OPT_OVER_MAX, OPT_HANDSHAKE,
-    OPT_KEY_GRACE, OPT_OUT_CAP, OPT_OUTPUT, OPT_EDGES,
+    OPT_OUT_CAP, OPT_OUTPUT, OPT_EDGES,
     OPT_HELP
 };
 
@@ -891,7 +888,6 @@ static bool parse_args(int argc, char **argv, args_t *a, bool *want_help) {
         { "idle",         required_argument, NULL, OPT_IDLE },
         { "over-max",     required_argument, NULL, OPT_OVER_MAX },
         { "handshake",    required_argument, NULL, OPT_HANDSHAKE },
-        { "key-grace",    required_argument, NULL, OPT_KEY_GRACE },
         { "out-cap",      required_argument, NULL, OPT_OUT_CAP },
         { "output",       required_argument, NULL, OPT_OUTPUT },
         { "edges",        required_argument, NULL, OPT_EDGES },
@@ -921,7 +917,6 @@ static bool parse_args(int argc, char **argv, args_t *a, bool *want_help) {
             case OPT_IDLE:         ok = parse_ulong(optarg, 3600000u, &a->idle_ms) && a->idle_ms > 0u; break;
             case OPT_OVER_MAX:     ok = parse_ulong(optarg, 3600000u, &a->over_max_ms) && a->over_max_ms > 0u; break;
             case OPT_HANDSHAKE:    ok = parse_ulong(optarg, 3600000u, &a->handshake_ms) && a->handshake_ms > 0u; break;
-            case OPT_KEY_GRACE:    ok = parse_ulong(optarg, 3600000u, &a->key_grace_ms) && a->key_grace_ms > 0u; break;
             case OPT_OUT_CAP:
                 ok = parse_ulong(optarg, (unsigned long)CWNETD_MAX_OUT_CAP, &a->out_cap) &&
                      a->out_cap >= (unsigned long)CWNETD_MIN_OUT_CAP;
@@ -975,7 +970,6 @@ int main(int argc, char **argv) {
         .idle_ms         = CWNET_SERVER_DEFAULT_IDLE_MS,
         .over_max_ms     = CWNET_SERVER_DEFAULT_OVER_MAX_MS,
         .handshake_ms    = CWNET_SERVER_DEFAULT_HANDSHAKE_MS,
-        .key_grace_ms    = CWNET_PLAY_DEFAULT_KEY_GRACE_MS,
         .out_cap         = CWNETD_DEFAULT_OUT_CAP,
         .output          = "virtual",
         .edges           = "stderr",
@@ -1034,7 +1028,6 @@ int main(int argc, char **argv) {
     cfg.handshake_timeout_ms = (uint32_t)args.handshake_ms;
     cfg.play.ptt_tail_ms    = (uint32_t)args.ptt_tail_ms;
     cfg.play.ptt_lead_ms    = (uint32_t)args.ptt_lead_ms;
-    cfg.play.key_grace_ms   = (uint32_t)args.key_grace_ms;
     cfg.send_cb             = send_cb;
     cfg.user_data           = NULL;
     if (!cwnet_server_init(&g_srv, &cfg)) {
@@ -1055,10 +1048,10 @@ int main(int argc, char **argv) {
     uint16_t bound = (uint16_t)args.port;
     (void)sock_local_port(listener, &bound);
     status_line("stato ascolto %s:%u max-clients %lu B>=%lu ms tetto %lu ms "
-                "coda %lu ms lead %lu ms grazia %lu ms out-cap %lu byte",
+                "coda %lu ms lead %lu ms out-cap %lu byte",
                 args.listen_addr, (unsigned)bound, args.max_clients,
                 args.play_floor_ms, args.link_ceiling_ms, args.ptt_tail_ms,
-                args.ptt_lead_ms, args.key_grace_ms, args.out_cap);
+                args.ptt_lead_ms, args.out_cap);
     /* Its own line: a path can be long, and truncating it must not take the
      * configuration with it. */
     status_line("stato uscita %s fronti %s", g_out.name, g_edge_name);

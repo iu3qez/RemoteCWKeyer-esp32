@@ -32,9 +32,16 @@
  * 7-bit field at its maximum (CwStreamEnc.c:135-146). A byte whose 7-bit
  * field is that maximum therefore carries no edge here: it only advances
  * the timeline by CWSTREAM_MAX_WAIT_MS, and the state is applied when the
- * remainder arrives, so the edge lands after the sum of the waits. The
- * reference's own receiver applies such a byte immediately and keys up to
- * a second early; that is corrupted timing, and we do not copy it
+ * remainder arrives, so the edge lands after the sum of the waits. Only
+ * the byte that carries the edge owns a deadline, and that deadline is the
+ * previous edge plus the sum of the whole group; a chunk is never late,
+ * however long after its own share of the wait it turns up. It has to be
+ * that way: a client holding the key to tune sends nothing at all until
+ * the release, and then the whole split wait in one frame, every chunk of
+ * it already past a share it never owned.
+ *
+ * The reference's own receiver applies such a byte immediately and keys up
+ * to a second early; that is corrupted timing, and we do not copy it
  * (ARCHITECTURE.md 8.1). The one wait this costs us is a wait of exactly
  * CWSTREAM_MAX_WAIT_MS, the single value the encoder can emit as a lone
  * maximum byte: its edge is dropped, which is silence, not wrong timing.
@@ -50,8 +57,8 @@
  * it arrives: waiting out a wait that ends an over would keep the key
  * busy for up to a second after the operator let go of it.
  *
- * An empty FIFO, jitter, and the grace
- * ------------------------------------
+ * An empty FIFO, jitter, and the key that is held
+ * -----------------------------------------------
  * A client that keys live sends one byte per edge, at the edge. Every byte
  * therefore reaches us about B ms before its own deadline, and during any
  * element longer than B the FIFO is empty by construction: the byte that
@@ -63,16 +70,22 @@
  * A byte that arrives after its own deadline cannot shorten an element
  * that is already on the air: it is applied on arrival, the element in
  * progress comes out longer by the delay, and the delay is counted and
- * reported as CWNET_PLAY_EV_LATE_BYTE. A byte carrying the state already
- * applied makes no edge.
+ * reported as CWNET_PLAY_EV_LATE_BYTE. A split wait is judged that way
+ * once, at its edge and against the sum, never chunk by chunk: judged per
+ * chunk, the arrival becomes a fresh timeline and every later chunk spends
+ * its wait from there, keying the station on well after the operator let
+ * go. A byte carrying the state already applied makes no edge.
  *
- * What the holding must not do is leave a carrier up forever. If the key
- * is down and nothing at all arrives within the grace (cfg.key_grace_ms,
- * 500 ms by default) of the last edge, the key goes up at once and
- * CWNET_PLAY_EV_GRACE_EXPIRED says why; the PTT drops at the tail and the bytes
- * that follow restart as a new over with the same B. The grace runs only
- * while the key is down with nothing scheduled: an element whose next byte
- * is already queued, however long, is timing we know and we play it out.
+ * The engine never lifts the key on its own, and a key held down with
+ * nothing arriving has no deadline here. That is what an operator tuning
+ * up looks like, and at low power holding the key is the procedure, not a
+ * preference: silence in the keying is indistinguishable between a hand
+ * that has not let go and a client that has died. The PING tells those two
+ * apart, because it is answered by the program and not by the hand, so the
+ * release comes from there (the caller's PING verdict, R16), from the
+ * socket closing, or from the ceiling on an over — all of them through
+ * cwnet_play_force_release(). Whatever the reason, the key comes up at
+ * once and the PTT drops at the tail (R8, KTD3).
  *
  * PTT
  * ---
@@ -101,9 +114,6 @@
 /** Default PTT tail, the box's own value, in milliseconds */
 #define CWNET_PLAY_DEFAULT_PTT_TAIL_MS 100u
 
-/** Default grace: how long the key may stay down with nothing arriving */
-#define CWNET_PLAY_DEFAULT_KEY_GRACE_MS 500u
-
 /**
  * @brief What the engine did, at the instant it was meant to happen
  */
@@ -113,7 +123,6 @@ typedef enum {
     CWNET_PLAY_EV_PTT_ON,         /**< PTT raised, lead ahead of the first key-down */
     CWNET_PLAY_EV_PTT_OFF,        /**< PTT dropped, a tail after the last key-up */
     CWNET_PLAY_EV_END_OF_OVER,    /**< Two consecutive key-up bytes were played */
-    CWNET_PLAY_EV_GRACE_EXPIRED,       /**< Grace expired under a key-down: forced up, fault */
     CWNET_PLAY_EV_OVER_FINISHED,  /**< Over played out and PTT down: the key can be released */
     CWNET_PLAY_EV_LATE_BYTE,      /**< A byte arrived past its deadline; its edge is here */
 } cwnet_play_event_type_t;
@@ -146,11 +155,6 @@ typedef struct {
 typedef struct {
     uint32_t ptt_lead_ms;  /**< PTT ahead of the first key-down, clamped to B (default 0) */
     uint32_t ptt_tail_ms;  /**< PTT after the last key-up (default 100, the box's) */
-    /** How long the key may stay down with nothing arriving, before the key
-     *  goes up and a fault is reported. Zero means the 500 ms default: a
-     *  caller that leaves the field at zero gets the grace, not a station
-     *  that faults on every element longer than B. */
-    uint32_t key_grace_ms;
 } cwnet_play_cfg_t;
 
 /** Where the engine is in an over */
@@ -179,8 +183,6 @@ typedef struct {
 
     int64_t deadline_ms;          /**< Next keying deadline (CWNET_PLAY_RUNNING) */
     int64_t last_edge_ms;         /**< Instant the state now applied began: the timeline base */
-    bool grace_pending;           /**< The key is down with nothing queued under it */
-    int64_t grace_at_ms;          /**< When that stops being tolerable */
     uint32_t late_bytes;          /**< Bytes applied past their own deadline, since init */
     int64_t late_total_ms;        /**< Milliseconds those bytes were late, in total */
     bool pending_key_down;        /**< State to apply at that deadline */
@@ -234,10 +236,11 @@ bool cwnet_play_push(cwnet_play_t *play, uint8_t cmd, int64_t now_ms);
 /**
  * @brief Instant of the next thing the engine has to do
  *
- * The nearest of the keying deadline, the PTT's own transitions and the
- * end of the grace under a key-down. The daemon sleeps until then, or
- * until data arrives: get this wrong and the key does not come up when it
- * has to.
+ * The nearer of the keying deadline and the PTT's own transitions. A key
+ * held down with nothing queued schedules nothing at all: that state ends
+ * when a byte arrives or when the caller forces the release (R8), never on
+ * a timer of ours. The daemon sleeps until this instant, or until data
+ * arrives.
  *
  * A byte queued on an engine that is holding a state makes this instant
  * due at once, possibly in the past: the caller ticks, it does not sleep
