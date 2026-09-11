@@ -349,7 +349,31 @@ LAN, o una VPN su fibra — lo riporta dov'era con `--play-floor 50`, e riavrà
 pavimento non è il ritardo: se il peak-hold del titolare è più alto, B è
 quello, e il tempo di scambio sale di conseguenza.
 
-**Linux — mancante.** Questo worktree ha solo un Mac: nessun numero Linux
-in questa tabella, e nessuno stimato al suo posto. Chi ha un'immagine Linux
-a disposizione esegue `tools/cwnet/cwnet_jitter.py` li' e completa la
-tabella; nel frattempo la lacuna resta scritta qui, non nascosta.
+**Linux, x86-64 su metallo** — `sf-B450M-DS3H-V2` (AMD Ryzen 7 5700G),
+Linux 7.0.0-31-generic x86_64, 2026-09-12, gli stessi default. E' la
+macchina di stazione, avviata da un disco Ubuntu:
+
+| Misura | Valore |
+|---|---|
+| Scarto medio (jitter), 3 run da 104 fronti | fra 0.25 e 0.47 ms |
+| Scarto massimo, stesse 3 run | fra 0.62 e 1.07 ms |
+| Fronti ricevuti | 104/104 in ogni run |
+| Intervallo stazione: ultimo key-up -> PTT giu' (`--handover`) | 100 ms (= `--ptt-tail`) |
+| Tempo di scambio dopo la TX | B + coda = 100 + 100 = **200 ms** |
+
+**Misurati a macchina scarica**, senza altro carico in esecuzione. Nessuno
+ha misurato cosa succede sotto carico, e quello e' il caso che conta per una
+stazione che fa anche altro: chi ci mette sopra un browser, una cattura o un
+backup rifaccia la misura invece di fidarsi di questa riga.
+
+Con quella riserva: piu' fedele del Mac, e non di poco, perche' il massimo
+peggiore qui sta sotto il migliore di la'. Due macchine sole non fanno una
+legge, e nessuna delle due e' una misura all'oscilloscopio sul tasto vero —
+quella resta il passo di banco con la scatola.
+
+Una nota sul metodo, perche' cambia fra i due sistemi: lo script si calibra
+sul primo fronte e misura la deriva da li'. Su macOS **deve** farlo, perche'
+`time.monotonic()` di Python e `CLOCK_MONOTONIC` del daemon non condividono
+l'epoca; su Linux la condividono, quindi li' la calibrazione non serve e non
+nasconde niente. I numeri delle due tabelle restano confrontabili perche'
+misurano la stessa cosa, la deriva fronte per fronte.
