@@ -96,18 +96,15 @@ The dissector provides expert info for debugging:
 
 ## Comparing Our Client vs Official Client
 
-```bash
-# Capture our client
-tshark -i eth0 -f "tcp port 7355" -w our_client.pcap
+Not by eye, and not here. Two captures opened side by side in the GUI is how the
+protocol was reconstructed, and it left nothing that runs twice. The comparison
+belongs to the host suite: capture once, extract the raw stream per direction
+with `tools/cwnet/pcap_to_stream.py` (standard library only, no tshark), and add
+the bytes to `test_host/cwnet_fixtures.h` with their provenance stated in the
+comment.
 
-# Capture official client (same scenario)
-tshark -i eth0 -f "tcp port 7355" -w official_client.pcap
-
-# Compare with Wireshark:
-# 1. Open both captures
-# 2. Filter: cwnet.cmd_type == 0x03
-# 3. Compare t0/t1/t2 values and RTT over time
-```
+This dissector keeps one job: naming the frame and the field that diverge once
+the suite says something diverged. It never produces the verdict.
 
 ## Example Output
 

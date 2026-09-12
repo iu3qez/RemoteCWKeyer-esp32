@@ -4,12 +4,27 @@ type: feat
 date: 2026-09-01
 topic: banco-prova-cwnet
 artifact_contract: ce-unified-plan/v1
-artifact_readiness: requirements-only
+artifact_readiness: implementation-ready
 product_contract_source: ce-brainstorm
 execution: code
 ---
 
 # Banco di prova CWNet - Plan
+
+> **Reperto, non piano vivo (2026-09-11).** Questo documento ha fatto il suo
+> lavoro: ha portato la conformità CWNet da impressione a metodo, e la sessione
+> di cattura del 2026-09-05 ne ha chiuso le ipotesi. U1 e U2 sono in albero, U6
+> non costruisce più nulla perché il capo RX del loop esiste.
+>
+> **Il lavoro che resta vive sul tracker, non qui**, in tre issue: il comparatore
+> di replay ([#82](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/82)), la strumentazione del turnaround al PING
+> ([#83](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/83)), e la sessione di cattura ([#84](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/84)). Questo file resta come registrazione dell'indagine, del
+> perché le decisioni tecniche sono quelle e di cosa le sette ipotesi hanno
+> insegnato. Non va più riallineato all'albero: quando divergerà, avrà ragione
+> l'albero.
+>
+> Due punti del Product Contract sono noti disallineati e sono segnalati in fondo
+> alle Key Technical Decisions.
 
 ## Goal Capsule
 
@@ -19,9 +34,9 @@ execution: code
 
 **Means.** Il pcap è l'archivio, non la fixture: il flusso TCP estratto una volta sulla macchina dell'operatore diventa un header C di byte, che la suite host legge senza I/O, senza parser pcap e senza dipendenze nuove in CI (KTD1).
 
-**Blocchi risolti (2026-09-06).** Le due issue bloccanti sono chiuse con decisione del maintainer: [#7](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/7) — sorgente `text_keyer_send()`, uguaglianza byte-per-byte sul payload MORSE con tolleranza zero, sequenza a due WPM che attraversa le tre fasce del codec; [#8](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/8) — un `manifest.yaml` per sessione di cattura, con tutti i campi. **U5 e U6 non sono più bloccate.** Il piano resta `requirements-only` per un motivo diverso: la doc-review delle sezioni di implementazione non è mai stata fatta ([#19](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/19)), e la sessione del 2026-09-05 ha cambiato il terreno sotto quelle sezioni — H6 smentita, H3 a 14 dot-time, frame MORSE multi-evento reali: è la regola in [CLAUDE.md](../../CLAUDE.md#a-blocking-issue-blocks) applicata a sé stesso.
+**Blocchi risolti (2026-09-06).** Le due issue bloccanti sono chiuse con decisione del maintainer: [#7](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/7) — sorgente `text_keyer_send()`, uguaglianza byte-per-byte sul payload MORSE con tolleranza zero, sequenza a due WPM che attraversa le tre fasce del codec; [#8](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/8) — un `manifest.yaml` per sessione di cattura, con tutti i campi. **U5 e U6 non sono più bloccate.** Il piano è rimasto `requirements-only` fino al 2026-09-11 per un motivo diverso: la doc-review delle sezioni di implementazione non era mai stata fatta ([#19](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/19)), e la sessione del 2026-09-05 aveva cambiato il terreno sotto quelle sezioni — H6 smentita, H3 a 14 dot-time, frame MORSE multi-evento reali. Quella review è stata eseguita e i suoi esiti sono incorporati qui: il piano è `implementation-ready`.
 
-**Sbloccato e pronto a partire adesso:** U1, U2, U3, U4. Nessuna di queste dipende dalle due issue.
+**Stato al 2026-09-11, dopo la doc-review delle sezioni di implementazione.** U1 e U2 sono in albero: il dissector ha perso la registrazione postdissector (commit 7e670e4) e l'estrazione dal pcap vive in `tools/cwnet/pcap_to_stream.py` (commit a7cd8b0), con la sola libreria standard e senza `tshark`. Di U1 resta la sezione a occhio del README Wireshark; di U2 resta da dichiarare la regola che nessun atteso può venire da una cattura della nostra scatola. **Da aprire: U3, U4, U5.** U6 dipende da U5 e non costruisce più nulla, perché il capo RX del loop esiste già.
 
 **Product Contract preservation.** Invariato da questo arricchimento: nessun R-ID rinumerato, nessun requisito riscritto. Le modifiche al Product Contract sono del passaggio `ce-doc-review` precedente, tracciate nel commit che le porta.
 
@@ -216,79 +231,77 @@ Finché sono aperte non si pianifica intorno, non si sostituiscono con assunzion
 
 ### Key Technical Decisions
 
-KTD1. **Il pcap è l'archivio; la fixture è un header C generato.** L'estrazione del flusso TCP per direzione gira una volta sulla macchina dell'operatore, che ha già Wireshark perché sta catturando, e produce un header con array `static const uint8_t`. In repo finiscono entrambi. *Perché:* nel repo non esiste nessuna fixture su file e l'idioma consolidato sono array di byte inline nei test (`test_cwnet_frame_parser.c:144`, `:161`). Leggere un pcap a runtime imporrebbe un parser pcap più la riassemblatura TCP dentro `test_runner` sotto `-Werror -Wconversion`, più `tshark` come dipendenza di CI. Un header generato continua l'idioma esistente, tiene `test_runner` ermetico e non tocca il workflow. Governa R5, R9; realizza il Means del Goal Capsule.
+KTD1. **Il pcap è l'archivio; la fixture è un header C generato.** L'estrazione del flusso TCP per direzione gira una volta sulla macchina dell'operatore, che ha già Wireshark perché sta catturando, e produce un header con array `static const uint8_t`. In repo finiscono entrambi. *Perché:* nel repo non esiste nessuna fixture su file e l'idioma consolidato sono array di byte inline nei test (`test_cwnet_frame_parser.c:144`, `:161`). Leggere un pcap a runtime imporrebbe un parser pcap più la riassemblatura TCP dentro `test_runner` sotto `-Werror -Wconversion`, più `tshark` come dipendenza di CI. Un header generato continua l'idioma esistente, tiene `test_runner` ermetico e non tocca il workflow. La terza opzione, quella poi adottata all'atto pratico, toglie `tshark` anche dal lato operatore: l'estrazione gira offline con la sola libreria standard, e `tools/cwnet/pcap_to_stream.py` la implementa già su pcap e pcapng. Governa R5, R9; realizza il Means del Goal Capsule.
 
 KTD2. **Il replay entra dal livello puro, non dal socket.** I byte estratti vengono dati a `cwnet_frame_parse()` e al client via i callback iniettati, mai a `cwnet_socket.c`. *Perché:* `cwnet_socket.c` è già escluso da `CWNET_SOURCES` perché non host-safe, e `test_host/stubs/` non shimma né lwIP né FreeRTOS. Il parser è inoltre già progettato per essere alimentato in frammenti arbitrari ed è già esercitato così. Governa R5, R7.
 
-KTD3. **Il verdetto è sui byte, la spiegazione è del dissector.** Il confronto pass/fail non passa mai per i campi decodificati. Cita la decisione di prodotto "Due oracoli distinti". Governa R6, R8.
+KTD3. **Il verdetto è sulla successione di eventi; i confini di frame sono differenza legittima.** Il pass/fail riduce il payload MORSE alla sua successione di stato del tasto e attesa, e su quella decide: successione diversa, fallimento. A parità di successione, confini di frame diversi sono una differenza **legittima** e si riportano come informazione, non come fallimento. Il client di riferimento impacchetta N eventi per frame secondo il proprio poll a ~20 ms, il nostro emette un frame per transizione, e la decisione è di **non** adeguare il nostro impacchettamento al suo. I byte grezzi restano l'evidenza allegata a ogni esito, e nominare il campo che diverge resta compito del dissector, mai del verdetto. Cita la decisione di prodotto "Due oracoli distinti". Governa R6, R8.
 
-KTD5. **Tre categorie di fixture, tre pesi probatori diversi.** `reference/` viene dal client ufficiale ed è l'unica che può portare un valore atteso di formato. `ours/` viene dalla nostra scatola ed è diagnostica: nessun atteso può derivarne. `synthetic/` è costruita a mano e prova **il comparatore, mai il protocollo** — una fixture generata dal nostro stesso codice è tautologica, torna verde per costruzione e non dimostra nulla sulla conformità. *Perché:* l'harness di U3 sarà verde mesi prima che esista una cattura vera, ed è in quella finestra che un verde sintetico può essere scambiato per conformità — lo stesso errore dei 189 test che certificavano `0x15`. L'esito di ogni confronto dichiara da quale categoria viene la fixture che lo ha prodotto. Governa R5, R8, R10.
+KTD5. **Tre provenienze di fixture, tre pesi probatori diversi.** Ciò che viene dal **client ufficiale** è l'unica cosa che può portare un valore atteso di formato. Ciò che viene dalla **nostra scatola** è diagnostico: nessun atteso può derivarne. Ciò che è **costruito a mano** prova il comparatore, mai il protocollo — una fixture generata dal nostro stesso codice è tautologica, torna verde per costruzione e non dimostra nulla sulla conformità. Lo stesso vale per i byte che tornano dal nostro echo: vedi la nota in fondo a questa sezione. La provenienza è una proprietà **dichiarata nel commento** che accompagna ogni blocco di byte, non un albero di directory: le fixture vivono in `test_host/cwnet_fixtures.h`, dove il commento di testa già nomina sessione e capo. *Perché:* il rischio che un verde ottenuto su materiale nostro venga letto come conformità non si chiude col tempo. La cattura di riferimento esiste già, ma è un estratto e non copre ogni scenario del comparatore, quindi le fixture costruite a mano restano necessarie accanto a essa — ed è lo stesso errore dei 189 test che certificavano `0x15`. L'esito di ogni confronto dichiara la provenienza della fixture che lo ha prodotto. Governa R5, R8, R10.
 
 KTD4. **La strumentazione del PING non tocca il path RT.** La misura vive su Core 1, dove il socket CWNet è già servito; nessun logging bloccante, nessuna allocazione. Governa R11.
+
+**Cosa prova davvero il confronto di determinismo.** H6 è smentita: il server di riferimento non rimanda mai il keying, e il capo RX del loop è `tools/cwnet/cwnet_echo.py`, scritto da noi. Quell'echo rimanda il payload MORSE verbatim, senza validarlo — il suo stesso log annota quando il server vero scarterebbe la chiave, e lo rimanda comunque. Quindi il confronto di determinismo prova che il nostro decodificatore inverte il nostro codificatore e che il transito non altera i byte; **non** prova la conformità al riferimento. La conformità la prova il solo confronto di formato, contro la cattura del client ufficiale. È una limitazione accettata consapevolmente: non si risolve con altro codice, si scrive qui perché chi legge un verde sappia che cosa ha in mano. **Due disallineamenti col Product Contract, lasciati apposta.** La doc-review del 2026-09-11 copriva le sole sezioni di implementazione, quindi due punti del Product Contract restano indietro e vanno allineati da un passaggio suo. Primo: la decisione "Due oracoli distinti" motiva il confronto di determinismo con "il server rimanda indietro solo ciò che ha saputo interpretare", frase che descriveva il server ufficiale e che il capoverso qui sopra smentisce. Secondo: R1 fa vivere le catture in `test_host/fixtures/cwnet/reference/` e `.../ours/`, directory che non esistono; le fixture stanno in `test_host/cwnet_fixtures.h` e la provenienza è dichiarata nel commento (KTD5). In entrambi i casi il Planning Contract è aggiornato e il Product Contract no: chi legge segua questa sezione.
 
 ### High-Level Technical Design
 
 ```
 sessione (macchina operatore, una volta)          repo                    CI (ogni push)
 ─────────────────────────────────────────         ────                    ──────────────
-Wireshark/tshark cattura           ──►  reference/sessione-N.pcap   ─┐    (archivio, non letto)
-                                        ours/sessione-N.pcap        ─┘
-tshark -q -z follow,tcp,raw        ──►  reference/sessione-N.h      ──►  test_runner
-                                        (static const uint8_t)            ├─ parser byte-a-byte
-tab Debug via HWND                 ──►  reference/sessione-N.log    ──►   ├─ confronto formato
-                                                                          └─ confronto determinismo
+Wireshark cattura                  ──►  sessione-N-reference.pcap  ─┐    (archivio, non letto)
+                                        sessione-N-ours.pcap       ─┘
+pcap_to_stream.py (solo stdlib)    ──►  cwnet_fixtures.h           ──►  test_runner
+                                        (static const uint8_t,           ├─ parser byte-a-byte
+                                         provenienza nel commento)       ├─ confronto formato
+tab Debug via HWND                 ──►  sessione-N-reference.log   ──►  └─ confronto determinismo
 ```
 
-Il confronto di formato mette i byte di `ours/` contro quelli di `reference/`. Il confronto di determinismo mette la sequenza inviata contro quella che il loop di relay ha restituito, entrambe da `ours/`. Il primo ha bisogno del riferimento, il secondo no.
+Il confronto di formato mette i byte della nostra scatola contro quelli del client ufficiale. Il confronto di determinismo mette la successione inviata contro quella che il nostro echo ha restituito, entrambe nostre. Il primo ha bisogno del riferimento, il secondo no — ed è esattamente per questo che il secondo non prova la conformità.
 
 ### Assumptions
 
-- `tshark -q -z follow,tcp,raw,<n>` produce il flusso riassemblato per direzione in forma esadecimale. Da verificare al primo uso: qui `tshark` non è installato e non ho potuto provarlo.
+- L'estrazione del flusso per direzione **non** dipende da `tshark`: `tools/cwnet/pcap_to_stream.py` legge pcap e pcapng con la sola libreria standard, su Ethernet, loopback, SLL e raw. L'assunzione originaria su `tshark -q -z follow,tcp,raw` è caduta, e la CI non guadagna dipendenze.
 - La cattura si fa su una macchina dove girano sia il client sia il server, oppure su un segmento dove il traffico è visibile. In loopback su Windows serve un catturatore che veda l'interfaccia locale.
 - L'header generato resta di dimensioni ragionevoli. Una sessione di keying a bassa banda produce pochi kB; se una sessione lunga producesse un header enorme, si taglia la sessione, non si cambia meccanismo.
 
 ### Sequencing
 
-U1, U2 e U4 sono indipendenti fra loro e possono partire in parallelo. U3 dipende dal formato deciso in U2. U5 è bloccata dalle issue #7 e #8. U6 dipende da U5 e dalla tolleranza definita in #7.
+U1 e U2 sono in albero: restano i due residui di testo detti nel Goal Capsule, che non hanno dipendenze. U4 è indipendente da tutto e può partire subito. U3 dipende dal formato dei byte prodotti da `tools/cwnet/pcap_to_stream.py`; la sua metà determinismo consuma ciò che torna dal nostro echo (`tools/cwnet/cwnet_echo.py`, già in albero), non dal server di riferimento, che H6 dice non rimandare mai il keying. U5 non è più bloccata: #7 e #8 sono chiuse dal 2026-09-06. U6 dipende da U5, che produce le fixture; la tolleranza è già decisa in #7 e il capo RX del loop esiste.
 
 ## Implementation Units
 
-### U1. Correggere la registrazione del dissector
+### U1. Il README del dissector — FATTA
 
-**Goal.** `cwnet.lua` smette di girare su ogni pacchetto della cattura, così i suoi campi tornano attendibili quando servono a localizzare una divergenza.
+**Landata il 2026-09-06** (commit 7e670e4, chiude [#15](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/15)): `register_postdissector` è stato tolto da `cwnet.lua`, che oggi si registra solo sulla porta TCP 7355. R6 è soddisfatto, e `add_for_decode_as`, che una prima stesura di questa unità prescriveva, non serve.
+
+**Goal.** Il README degli strumenti Wireshark smette di proporre come metodo il confronto a occhio fra due catture, che è ciò che questo piano sostituisce.
 
 **Requirements.** R6.
 
 **Files.**
-- `tools/wireshark/cwnet.lua` — sostituire `register_postdissector(cwnet_proto)` con `tcp_table:add_for_decode_as(cwnet_proto)`
-- `tools/wireshark/README.md` — correggere la sezione che descrive il confronto manuale a occhio, che questo lavoro sostituisce
+- `tools/wireshark/README.md` — la sezione "Comparing Our Client vs Official Client" descrive ancora l'apertura di due pcap nella GUI e il confronto manuale dei timestamp; va sostituita dal rimando alla catena automatica di `tools/cwnet/`
 
-**Approach.** Il commento attuale dice "Also allow manual decode-as" ma `register_postdissector` fa altro: registra il dissector perché Wireshark lo chiami su ogni frame, dopo tutti gli altri, con il tvb dell'intero frame. La funzione non ha guardie oltre `if length == 0`, quindi legge il primo byte del MAC di destinazione come command byte. Il "Decode As" vero passa dalla DissectorTable: `add_for_decode_as` è la chiamata che intendeva.
+**Approach.** Solo documentazione. Il dissector resta com'è: serve a nominare il frame e il campo che divergono, non a dare il verdetto (KTD3).
 
-**Test Scenarios.** Non ci sono test automatici per il Lua. Verifica manuale: aperta una cattura qualsiasi non-CWNet, nessun pacchetto deve mostrare campi `cwnet.*` né avere la colonna Protocol sovrascritta. Su una cattura CWNet i frame su 7355 devono decodificare come prima.
+**Verification.** `tshark -r <cattura-non-cwnet> -T fields -e cwnet.cmd_type` non produce alcun valore. È una verifica di non regressione sul fix già in albero, e resta l'unica verifica manuale del piano.
 
-**Verification.** `tshark -r <cattura-non-cwnet> -T fields -e cwnet.cmd_type` non produce alcun valore.
+### U2. La catena di estrazione — FATTA
 
-### U2. Catena di estrazione dal pcap alla fixture
+**Landata il 2026-09-05** (commit a7cd8b0): `tools/cwnet/pcap_to_stream.py` legge pcap e pcapng con la sola libreria standard — Ethernet, loopback, SLL, raw — e scrive i byte grezzi di una direzione per file. `tshark` non è mai diventato una dipendenza, né della CI né dell'operatore, e `.gitattributes` marca già `*.pcap` e `*.pcapng` come binari.
 
-**Goal.** Una cattura diventa un artefatto che la suite host può leggere senza I/O e senza dipendenze, con un solo comando.
+**Goal.** Una cattura diventa un artefatto che la suite host legge senza I/O e senza dipendenze, e chi lo usa sa da quale capo vengono i byte.
 
 **Requirements.** R1, R5.
 
 **Files.**
-- `tools/cwnet/pcap_to_fixture.py` — da pcap a header C
-- `test_host/fixtures/cwnet/README.md` — layout, formato, e come si rigenera
-- `.gitattributes` — già fatto: `*.pcap` e `*.pcapng` marcati binary
+- `test_host/cwnet_fixtures.h` — il commento di testa dichiara, per ogni blocco di byte, la sessione e il capo di provenienza, e la regola che **nessun valore atteso può derivare da una cattura della nostra scatola**. Quella regola oggi non è scritta da nessuna parte, ed è la più importante del banco
+- `tools/cwnet/README.md` — la stessa regola accanto allo strumento che produce i byte
 
-**Approach.** Lo script prende un pcap e il numero di stream TCP, invoca `tshark -q -z follow,tcp,raw,<n>`, separa le due direzioni e emette un header con due array `static const uint8_t` più le rispettive lunghezze, nominati per sessione e direzione. Nessuna interpretazione del contenuto: byte grezzi. Le directory sono `test_host/fixtures/cwnet/reference/` e `.../ours/`; il README dichiara che nessun valore atteso può venire da `ours/`.
+**Approach.** Solo documentazione: lo strumento esiste, funziona e non va riscritto. Ciò che manca è la regola probatoria di KTD5 messa dove la legge chi tocca le fixture, invece che sepolta in un piano.
 
-Lo script vive fuori dalla CI e gira solo quando si acquisisce una cattura.
+**Verification.** `test_host/cwnet_fixtures.h` continua a compilare sotto i flag del progetto, e per ogni blocco di byte il commento nomina provenienza e regola.
 
-**Test Scenarios.** Dato un pcap di prova costruito a mano, lo script produce un header che compila sotto `-Werror -Wconversion` e i cui byte coincidono con quelli attesi. Uno stream vuoto produce un array vuoto senza rompere la compilazione. Un numero di stream inesistente fallisce con un messaggio leggibile invece di emettere un header vuoto in silenzio.
-
-**Verification.** L'header generato compila in un file `.c` di prova; `gcc -Wall -Wextra -Werror -Wconversion -c` passa.
-
-### U3. Harness di replay nella suite host
+### U3. Harness di replay nella suite host — sul tracker come [#82](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/82)
 
 **Goal.** Un array di byte committato viene rigiocato attraverso il livello puro di CWNet, e una divergenza dice quale frame e quale campo.
 
@@ -296,28 +309,30 @@ Lo script vive fuori dalla CI e gira solo quando si acquisisce una cattura.
 
 **Files.**
 - `test_host/cwnet_replay.c`, `test_host/cwnet_replay.h` — il motore di replay e il confronto
-- `test_host/test_cwnet_replay.c` — i test dell'harness contro una fixture sintetica
-- `test_host/fixtures/cwnet/synthetic/` — la fixture costruita a mano che serve a sviluppare l'harness prima che esista una cattura vera
-- `test_host/CMakeLists.txt` — aggiungere i sorgenti a `TEST_SOURCES` e la directory delle fixture agli include
+- `test_host/test_cwnet_replay.c` — i test dell'harness contro fixture costruite a mano
+- `test_host/cwnet_fixtures.h` — le fixture costruite a mano si aggiungono qui, accanto ai byte reali già presenti, con la provenienza dichiarata nel commento (KTD5)
+- `test_host/CMakeLists.txt` — aggiungere i sorgenti a `TEST_SOURCES`
 - `test_host/test_main.c` — dichiarazioni in avanti e blocco `RUN_TEST` con banner, seguendo la convenzione esistente
 
-**Approach.** Il motore alimenta `cwnet_frame_parse()` a frammenti, come già fanno `test_stream_parse_ping_byte_by_byte` e simili, e per il percorso client usa `cwnet_client_on_data()` con i callback iniettati. Il keying che il loop restituisce entra da `handle_cw_event` attraverso il client, così il percorso RX viene esercitato davvero e non simulato.
+**Approach.** Il motore alimenta `cwnet_frame_parse()` a frammenti, come già fanno `test_stream_parse_ping_byte_by_byte` e simili, e per il percorso client usa `cwnet_client_on_data()` con i callback iniettati. I frame MORSE in ingresso entrano da `handle_morse` attraverso il client, così il percorso RX viene esercitato davvero e non simulato. Un frame MORSE porta N eventi e non uno: il client di riferimento ne impacchetta quanti ne trova in coda.
 
-Il confronto è byte a byte fra due array. Alla prima divergenza l'harness riporta offset assoluto, indice di frame, e il campo secondo la struttura del frame — categoria, comando, lunghezza, offset nel payload — ricavata dal parser, non dal dissector.
+Il confronto ha due livelli, secondo KTD3. Il pass/fail sta sulla successione di eventi ricavata dal payload — stato del tasto e attesa — e una successione diversa è un fallimento. A parità di successione, confini di frame diversi si riportano come differenza legittima. In entrambi i casi l'esito nomina offset assoluto, indice di frame e campo secondo la struttura ricavata dal parser, non dal dissector, e dichiara la provenienza della fixture che lo ha prodotto.
 
-L'harness si sviluppa contro la fixture sintetica: non aspetta la sessione zero.
+L'harness si sviluppa contro le fixture costruite a mano e contro l'estratto reale già in `test_host/cwnet_fixtures.h`: non aspetta il completamento di U5.
 
-**Test Scenarios.** Tutti contro fixture sintetiche, che provano il comparatore e non la conformità (KTD5).
+**Test Scenarios.** Tutti contro fixture costruite a mano, che provano il comparatore e non la conformità (KTD5).
 - Due array identici: nessuna divergenza.
 - Un byte diverso nel command byte del terzo frame: riporta frame 3, campo comando, offset corretto.
 - Un byte diverso dentro il payload: riporta frame e offset nel payload.
 - Lunghezza diversa a parità di prefisso: riporta troncamento, non un falso accordo.
 - Alimentazione a frammenti di dimensione 1, 3 e tutta insieme: stesso esito.
 - Array vuoto contro array non vuoto: divergenza al primo byte, nessun crash.
+- Stessa successione di eventi impacchettata in frame diversi: esito di differenza legittima, non fallimento (KTD3).
+- Un frame che porta più eventi: tutti gli eventi entrano nella successione, nessuno perso.
 
 **Verification.** `cd test_host && cmake -B build -G Ninja && cmake --build build && ./build/test_runner`, e la stessa cosa con `-DCMAKE_C_FLAGS="-fsanitize=address,undefined"`. Entrambe verdi, zero report dai sanitizer.
 
-### U4. Strumentazione del turnaround al PING
+### U4. Strumentazione del turnaround al PING — sul tracker come [#83](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/83)
 
 **Goal.** Si sa quanto tempo la scatola impiega a rispondere a un PING REQUEST, perché quel tempo entra nel numero che l'altro capo usa per dimensionare il buffer e la coda del PTT.
 
@@ -339,11 +354,11 @@ Non è un gate: nessuna soglia, nessun FAULT. Il protocollo non definisce latenz
 - Il massimo osservato non decresce.
 - Nessun REQUEST ricevuto: la misura resta al suo valore iniziale e non è confondibile con zero.
 
-**Verification.** Test host in `test_cwnet_ping.c` o in un nuovo gruppo, usando `esp_timer_set_time()` come già fa la suite. Suite verde in entrambe le varianti.
+**Verification.** Test host in `test_cwnet_ping.c` o in un nuovo gruppo, usando `esp_timer_set_time()` come già fa la suite. Suite verde in entrambe le varianti. Due confini da dire: la parte console si verifica a mano sul ferro, perché `components/keyer_console/src/commands.c` è escluso dalla suite host in quanto dipende dalla HAL, come il Lua di U1; e poiché `cwnet_client.h` è incluso anche dal server che il daemon di stazione compila, va verificata anche la build di `host/` sotto gli stessi flag.
 
-### U5. Sessione zero — SBLOCCATA
+### U5. Sessione zero — sul tracker come [#84](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/84)
 
-**Sbloccata il 2026-09-06**, chiuse [#7](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/7) e [#8](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/8). Parte della sessione è già stata eseguita il 2026-09-05 in forma parziale: H1-H6 hanno un esito, le catture esistono ma sono machine-local. Ciò che resta è rieseguirla con la sequenza nota decisa in #7 e committare le fixture col manifesto di #8.
+**Sbloccata il 2026-09-06**, chiuse [#7](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/7) e [#8](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/8). Parte della sessione è già stata eseguita il 2026-09-05 in forma parziale: H1-H6 hanno un esito, e un estratto dei byte è già committato in `test_host/cwnet_fixtures.h`, dove regge gli attesi di `test_cwnet_play.c`, `test_cwnet_feed.c` e `test_cwnet_client.c`. Restano machine-local i pcap interi. Ciò che resta è rieseguirla con la sequenza nota decisa in #7, committare le catture col manifesto di #8, e chiudere il divario di [#33](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/33): oggi nessun job di CI tocca l'oracolo differenziale.
 
 **Goal.** Le sette ipotesi H1-H7 smettono di essere ipotesi, e il repo guadagna le prime fixture reali.
 
@@ -351,19 +366,19 @@ Non è un gate: nessuna soglia, nessun FAULT. Il protocollo non definisce latenz
 
 **Cosa serve prima.** Nulla: entrambe le decisioni sono prese. La sequenza e la definizione di "identico" sono nel commento di chiusura di #7; il manifesto è `tools/cwnet/manifest.template.yaml`.
 
-### U6. I due confronti reali — SBLOCCATA, dipende da U5
+### U6. I due confronti reali — segue [#82](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/82) e [#84](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/84)
 
-**Non più bloccata da [#7](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/7)**: la tolleranza è decisa — zero, byte-per-byte sul payload MORSE, PTT escluso. Resta la dipendenza da U5, che produce le fixture. Il banco per il determinismo va costruito ([#14](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/14)): H6 è smentita, il server di riferimento non rimanda mai il keying.
+**Non più bloccata da [#7](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/7)**: la tolleranza è decisa — zero, PTT escluso, sulla successione di eventi del payload MORSE. **E il banco per il determinismo non va costruito: esiste.** H6 è smentita, il server di riferimento non rimanda mai il keying, e il ripiego previsto è stato realizzato come `tools/cwnet/cwnet_echo.py` ([#14](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/14), chiusa il 2026-09-08). Resta la sola dipendenza da U5, che produce le fixture.
 
-**Goal.** Il banco dà una risposta binaria sulla conformità di formato e sul determinismo.
+**Goal.** Il confronto di formato dà una risposta binaria sulla conformità della successione di eventi, e nomina come legittima ogni differenza di solo impacchettamento (KTD3). Il confronto di determinismo dà una risposta binaria sul round trip attraverso il nostro echo, che per costruzione non è una prova di conformità: vedi la nota in fondo alle Key Technical Decisions.
 
 **Requirements.** R6, R7, R10.
 
-**Cosa serve prima.** Le fixture reali da U5 e la tolleranza da #7. L'harness che le consuma è U3 e non è bloccato.
+**Cosa serve prima.** Le fixture reali da U5. L'harness che le consuma è U3 e non è bloccato; il capo RX del loop è già in albero.
 
 ---
 
-**Fuori da questo piano.** R13 e R14 — il passaggio del TX a `MORSE 0x10` con stream a 7 bit, e l'implementazione del filtro peak-hold — sono lavoro della track "CWNet client" di STRATEGY.md, subordinati all'esito di H1/H2 e H5. Il banco li sblocca e li verifica; non li implementa.
+**Fuori da questo piano, e già fatti.** R13 e R14 — il passaggio del TX a `MORSE 0x10` con stream a 7 bit, e il filtro peak-hold sulla latenza — sono landati nella track "CWNet client" di STRATEGY.md dopo la conferma di H1, H2 e H5: `cwnet_client.c` costruisce frame `CWNET_CMD_MORSE`, e `cwnet_client.h` espone `latency_peak_ms` con i suoi test in `test_cwnet_ping.c`. Restano elencati qui perché è il banco che li verifica, non perché siano lavoro da fare.
 
 ## Verification Contract
 
@@ -376,27 +391,36 @@ cmake -B build-asan -G Ninja -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-
 cmake --build build-asan && ./build-asan/test_runner
 ```
 
+E, per ogni modifica che tocchi `components/keyer_cwnet/include/`, anche il daemon di stazione, che compila quel componente per path sotto gli stessi flag:
+
+```bash
+cd host
+cmake -B build && cmake --build build && ctest --test-dir build --output-on-failure
+```
+
 Cancelli di qualità:
 
-- La suite host è verde in entrambe le varianti, `189 Tests 0 Failures` più i nuovi. Nessun test skippato, disabilitato o messo in quarantena per arrivarci.
+- La suite host è verde in entrambe le varianti, `315 Tests 0 Failures` più i nuovi. Nessun test skippato, disabilitato o messo in quarantena per arrivarci.
 - Zero report da ASan e UBSan.
-- La CI (`.github/workflows/host-tests.yml`) passa su entrambe le voci della matrice. Nessuna modifica al workflow è prevista: se una unità la richiedesse, è il segnale che KTD1 è stata aggirata.
+- La CI (`.github/workflows/host-tests.yml`) passa su tutte le voci dei suoi due job, `host-tests` e `host-build`. Nessuna modifica al workflow è prevista: se una unità la richiedesse, è il segnale che KTD1 è stata aggirata.
 - Il codice nuovo compila sotto `-Werror -Wconversion -Wsign-conversion` senza soppressioni.
+- Una modifica a `components/keyer_cwnet/include/` è verde anche su `host/`: `cwnetd` linka quel componente per path e usa gli stessi flag, quindi può rompersi mentre `test_host` resta verde.
 - U1 si verifica a mano su una cattura, non c'è infrastruttura di test per il Lua.
 
 ## Definition of Done
 
 Globale:
 
-- Nessuna issue `blocking` aperta copre il lavoro dichiarato fatto. #7 e #8 sono chiuse dal 2026-09-06; non esistono altre `blocking` su questo piano.
+- Al momento di dichiarare fatta un'unità si verifica **sul tracker** che nessuna issue `blocking` aperta copra il lavoro dichiarato. È un controllo da eseguire, non una fotografia: #7 e #8, che bloccavano U5 e U6, sono chiuse dal 2026-09-06.
 - Il Verification Contract passa per intero.
 - Nessun codice di tentativi abbandonati resta nel diff: approcci che non hanno funzionato si rimuovono, non si commentano.
 - La documentazione tocca solo ciò che è cambiato davvero.
 
 Per unità:
 
-- **U1** — nessun campo `cwnet.*` su una cattura non-CWNet; i frame su 7355 decodificano come prima.
-- **U2** — lo script produce da un pcap di prova un header che compila sotto i flag del progetto; il README dichiara la regola su `ours/`.
-- **U3** — i sei scenari passano in entrambe le varianti; l'harness riporta frame e campo, non solo "diverso"; ogni esito dichiara la categoria della fixture, così un verde sintetico non è leggibile come conformità.
-- **U4** — la misura è esposta, quantizzata a ~10 ms e documentata come tale; nessuna soglia, nessun FAULT, niente sul path RT.
-- **U5, U6** — bloccate.
+- **U1** — il README non propone più il confronto a occhio; e, come non regressione sul fix già in albero, nessun campo `cwnet.*` su una cattura non-CWNet mentre i frame su 7355 decodificano come prima.
+- **U2** — il commento di testa di `test_host/cwnet_fixtures.h` e il README di `tools/cwnet/` dichiarano, per ogni blocco di byte, la provenienza e la regola che nessun atteso può derivare da una cattura della nostra scatola.
+- **U3** — gli scenari passano in entrambe le varianti; l'harness riporta frame e campo, non solo "diverso"; distingue una successione di eventi diversa da un diverso impacchettamento; ogni esito dichiara la provenienza della fixture, così un verde ottenuto su materiale nostro non è leggibile come conformità.
+- **U4** — la misura è esposta, quantizzata a ~10 ms e documentata come tale; nessuna soglia, nessun FAULT, niente sul path RT; la build di `host/` resta verde.
+- **U5** — le fixture reali dei due capi sono committate con il manifesto di #8, e ognuna delle sette ipotesi ha un esito scritto in questo piano.
+- **U6** — almeno un confronto di formato gira sui byte del client ufficiale e dà un esito che distingue il fallimento dalla differenza legittima di impacchettamento; il confronto di determinismo chiude sulla successione di eventi con tolleranza zero, PTT escluso, e il suo esito dichiara che il capo RX è il nostro echo.

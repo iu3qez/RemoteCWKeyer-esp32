@@ -2,6 +2,22 @@
  * @file cwnet_fixtures.h
  * @brief Bytes from the 2026-09-05 capture of the official DL4YHF client and
  *        server, shared by the CWNet host suites
+ *
+ * Provenance is the evidential weight of a fixture, so every block below states
+ * where its bytes came from, and the three provenances are not interchangeable:
+ *
+ *   - the official DL4YHF client or server. The ONLY provenance an expected
+ *     wire-format value may be derived from.
+ *   - our own box, or our own echo server. Diagnostic. NO expected value may
+ *     ever be derived from these: asserting our bytes against our bytes is
+ *     tautological, passes by construction, and proves nothing about
+ *     conformance. This is the defect that let 189 green tests certify a
+ *     command byte that was never on the wire.
+ *   - built by hand. Proves the comparator, never the protocol.
+ *
+ * A test whose expected value comes from anything but the first provenance
+ * measures the implementation against itself. State the provenance in each
+ * block's comment so a later reader can tell which kind of green they have.
  */
 
 #pragma once
