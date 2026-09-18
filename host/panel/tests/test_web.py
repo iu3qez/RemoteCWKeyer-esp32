@@ -29,23 +29,11 @@ import cwnetd_panel
 import state
 import web
 from follow import Line
+from tests.test_state import snap
 
 PANEL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PANEL_PY = os.path.join(PANEL_DIR, "cwnetd_panel.py")
 PANEL_JS = os.path.join(PANEL_DIR, "static", "panel.js")
-
-MANOPOLE = ("stato snap manopole max-clients 4 B>= 100 tetto 1000 coda 100 lead 0 "
-            "idle 5000 over-max 120000 handshake 5000 out-cap 16384")
-
-
-def snap(seq, clients=(), holder="libera", ptt=0, period=5000, version="v1"):
-    lines = ["stato snap inizio %s istanza 1789769762-4242 seq %d client %d chiave %s ptt %d "
-             "periodo %d" % (version, seq, len(clients), holder, ptt, period), MANOPOLE]
-    for i, (idx, addr, name) in enumerate(clients, 1):
-        lines.append("stato snap client %d/%d %d pronto %s lat 1 peak 1 nome %d %s"
-                     % (i, len(clients), idx, addr, len(name), name))
-    lines.append("stato snap fine seq %d" % seq)
-    return lines
 
 
 class FakeClock:
@@ -272,7 +260,7 @@ class EventsTest(ServerTest):
     server_options = {"keepalive_s": 0.2}
 
     def test_first_message_is_the_complete_state(self):
-        self.feed(*snap(1, [(1, "10.0.0.1:50001", "IU3QEZ")], holder="1", ptt=1))
+        self.feed(*snap(1, [(1, "pronto", "10.0.0.1:50001", 1, 1, "IU3QEZ")], holder="1", ptt=1))
         d = self.sse().state()
         self.assertTrue(d["guaranteed"])
         self.assertEqual(d["key_holder"], 1)
@@ -346,7 +334,7 @@ class EventsTest(ServerTest):
 
     def test_ae5_callsign_markup_reaches_the_json_as_the_same_string(self):
         name = "<b>X</b>\\x1B"
-        self.feed(*snap(1, [(1, "10.0.0.1:50001", name)], holder="1"))
+        self.feed(*snap(1, [(1, "pronto", "10.0.0.1:50001", 1, 1, name)], holder="1"))
         d = self.sse().state()
         self.assertEqual(d["clients"][0]["name"], name)
         self.assertEqual(d["key_holder_name"], name)

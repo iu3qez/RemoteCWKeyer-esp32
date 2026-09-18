@@ -31,7 +31,7 @@ what lets a name containing "stato stdout" survive it.
 import collections
 import re
 import time
-from typing import Callable, Dict, List, NamedTuple, Optional
+from typing import Callable, Dict, List, NamedTuple
 
 # The vocabulary this module reads (README, "The periodic snapshot").
 VOCABULARY = "v1"
@@ -219,7 +219,7 @@ def _new_client(idx, addr):
 
 
 def _body(text):
-    return text[len("stato "):] if text.startswith("stato ") else text
+    return text.removeprefix("stato ")
 
 
 class Model:
@@ -382,9 +382,11 @@ class Model:
         self._reset_instance()
         self._event("new_instance", _body(text))
         self.listen = f["listen"]
-        for key in ("max_clients", "play_floor_ms", "link_ceiling_ms", "ptt_tail_ms",
-                    "ptt_lead_ms", "out_cap_bytes"):
-            self.settings[key] = f[key]
+        # The ascolto pattern names its groups after SETTINGS: it carries six of
+        # the nine, and the snapshot brings the rest.
+        for key in SETTINGS:
+            if key in f:
+                self.settings[key] = f[key]
 
     def _on_uscita(self, f, text):
         # KTD7: whether the edges go to a file, never the path, which on a

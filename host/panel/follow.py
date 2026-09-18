@@ -38,8 +38,7 @@ so it keeps writing into the renamed file while the path gets a new empty
 one. That is why the README asks for copytruncate.
 """
 import os
-import typing
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, NamedTuple, Optional, Tuple
 
 POLL_INTERVAL_S = 0.2
 BACKLOG_BYTES = 64 * 1024
@@ -50,7 +49,7 @@ MAX_LINE_BYTES = 64 * 1024
 READ_CHUNK = 64 * 1024
 
 
-class Line(typing.NamedTuple):
+class Line(NamedTuple):
     text: str       # decoded with errors='replace', trailing '\n' removed, nothing else stripped
     backlog: bool   # True only for lines already in the file when the panel first opened it
 
