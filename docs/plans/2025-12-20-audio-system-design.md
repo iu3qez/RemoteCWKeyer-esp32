@@ -1,23 +1,23 @@
 # Audio System Design
 
-**Data**: 2025-12-20
-**Stato**: Approvato
+**Date**: 2025-12-20
+**Status**: Approved
 
 ## Overview
 
-Sistema audio per sidetone locale e audio remoto, basato su ES8311 codec via I2S a 8 kHz. Architettura con buffer separati per sidetone (bassa latenza) e audio remoto (jitter buffer). PA sempre abilitato, switching automatico basato su stato PTT.
+Audio system for local sidetone and remote audio, based on an ES8311 codec via I2S at 8 kHz. Architecture with separate buffers for sidetone (low latency) and remote audio (jitter buffer). PA always enabled, automatic switching based on PTT state.
 
 ## Hardware
 
-### Componenti
+### Components
 
-| Chip | Funzione | Bus |
+| Chip | Function | Bus |
 |------|----------|-----|
 | ES8311 | Mono DAC + ADC codec | I2S (audio) + I2C (config) |
 | TCA95xx | GPIO expander | I2C |
 | PA | Power Amplifier | Enable via TCA95xx |
 
-### Connessioni ES8311
+### ES8311 Connections
 
 ```
 ESP32-S3                    ES8311
@@ -31,13 +31,13 @@ GPIO xx  ──── I2C SCL ─────▶ SCL
 
 ### PA Enable
 
-- TCA95xx GPIO imposta PA enable all'avvio
-- **Sempre ON** durante funzionamento normale
-- Zero I2C durante operazione audio
+- TCA95xx GPIO sets PA enable at startup
+- **Always ON** during normal operation
+- Zero I2C during audio operation
 
-## Architettura
+## Architecture
 
-### Flusso Audio
+### Audio Flow
 
 ```
 ┌──────────────────┐      ┌──────────────────┐
@@ -90,11 +90,11 @@ pub enum AudioSource {
 pub static AUDIO_SOURCE: AtomicU8 = AtomicU8::new(0);
 ```
 
-Sidetone e audio remoto si escludono a vicenda. Selezione basata su stato PTT.
+Sidetone and remote audio are mutually exclusive. Selection is based on PTT state.
 
 ## PTT State Machine
 
-### Logica
+### Logic
 
 ```
         first_audio_sample         last_audio_sample + tail_ms
@@ -104,29 +104,29 @@ PTT OFF ───────▶ PTT ON ─────────────�
                     │                              │
                     │                              ▼
                     │                    AudioSource::Remote
-                    │                    (se buffer ha dati)
+                    │                    (if buffer has data)
                     ▼
               AudioSource::Sidetone
 ```
 
 ### Trigger
 
-| Evento | Azione |
+| Event | Action |
 |--------|--------|
-| Primo sample audio locale | PTT ON, AudioSource::Sidetone |
-| Ogni sample audio locale | Reset tail timer |
-| Tail timeout (ptt_tail_ms) | PTT OFF, AudioSource::Remote (se disponibile) |
+| First local audio sample | PTT ON, AudioSource::Sidetone |
+| Every local audio sample | Reset tail timer |
+| Tail timeout (ptt_tail_ms) | PTT OFF, AudioSource::Remote (if available) |
 
-**Nota**: Il trigger è il sample audio emesso, non key_up. La memoria iambic può generare audio dopo key_up.
+**Note**: the trigger is the audio sample emitted, not key_up. The iambic memory can generate audio after key_up.
 
-### Parametri
+### Parameters
 
-Da `parameters.yaml`:
+From `parameters.yaml`:
 - `ptt_tail_ms`: 50-500ms (default 100ms)
 
 ## Sidetone Generator
 
-### Generazione Onda
+### Wave Generation
 
 **Lookup Table + Phase Accumulator**:
 
@@ -160,9 +160,9 @@ impl SidetoneGen {
 }
 ```
 
-### Frequenza
+### Frequency
 
-Phase increment calcolato da frequenza sidetone:
+Phase increment computed from sidetone frequency:
 
 ```rust
 /// Calculate phase increment for target frequency
@@ -171,13 +171,13 @@ fn calc_phase_inc(freq_hz: u32, sample_rate: u32) -> u32 {
     ((freq_hz as u64 * (1u64 << 32)) / sample_rate as u64) as u32
 }
 
-// Esempio: 700 Hz @ 8 kHz
+// Example: 700 Hz @ 8 kHz
 // phase_inc = (700 * 4294967296) / 8000 = 375809638
 ```
 
 ### Fade In/Out (Anti-Click)
 
-**Rampa lineare digitale**:
+**Digital linear ramp**:
 
 ```rust
 pub enum FadeState {
@@ -225,31 +225,31 @@ impl SidetoneGen {
 }
 ```
 
-### Parametri
+### Parameters
 
-Da `parameters.yaml`:
+From `parameters.yaml`:
 - `sidetone_freq_hz`: 400-800 Hz (default 600)
-- `sidetone_volume`: 1-100% (controllo ES8311)
+- `sidetone_volume`: 1-100% (ES8311 control)
 - `fade_duration_ms`: 1-10ms (default 5)
 
-Fade length in samples: `fade_duration_ms * 8` (a 8 kHz)
+Fade length in samples: `fade_duration_ms * 8` (at 8 kHz)
 
 ## ES8311 Configuration
 
-### Inizializzazione
+### Initialization
 
-Sequenza I2C all'avvio:
+I2C sequence at startup:
 
-1. Reset software
+1. Software reset
 2. Clock configuration (MCLK/BCLK ratio)
 3. Sample rate = 8 kHz
-4. DAC mode (no ADC per ora)
-5. Volume iniziale da CONFIG
+4. DAC mode (no ADC for now)
+5. Initial volume from CONFIG
 6. Power on DAC
 
 ### Volume Control
 
-Volume via registro ES8311 (non digitale):
+Volume via ES8311 register (not digital):
 
 ```rust
 /// Set ES8311 DAC volume (0-100%)
@@ -266,7 +266,7 @@ pub fn set_volume(i2c: &mut I2C, volume_pct: u8) -> Result<(), Error> {
 }
 ```
 
-Cambio volume via I2C (~50-100us) accettabile - avviene solo su richiesta utente, mai durante keying.
+Volume change via I2C (~50-100us) is acceptable - it only happens on user request, never during keying.
 
 ## Buffer Management
 
@@ -282,7 +282,7 @@ pub struct SidetoneBuffer {
 }
 ```
 
-- Producer: RT task (Core 0), genera da KeyingStream
+- Producer: RT task (Core 0), generates from KeyingStream
 - Consumer: I2S DMA callback
 
 ### Remote Audio Buffer
@@ -302,7 +302,7 @@ pub struct RemoteAudioBuffer {
 
 ### I2S DMA
 
-Double buffer, callback su completamento:
+Double buffer, callback on completion:
 
 ```rust
 fn i2s_tx_callback(buf: &mut [i16]) {
@@ -331,10 +331,10 @@ fn i2s_tx_callback(buf: &mut [i16]) {
 
 ## Threading Model
 
-| Component | Core | Priority | Descrizione |
+| Component | Core | Priority | Description |
 |-----------|------|----------|-------------|
-| Sidetone Gen | 0 | RT | Genera samples da KeyingStream |
-| PTT State | 0 | RT | Gestisce PTT e source switching |
+| Sidetone Gen | 0 | RT | Generates samples from KeyingStream |
+| PTT State | 0 | RT | Manages PTT and source switching |
 | I2S DMA | - | ISR | Hardware callback |
 | ES8311 Config | 1 | Low | Volume changes, init |
 | Remote Audio RX | 1 | Medium | Network → buffer |
@@ -348,7 +348,7 @@ KeyingStream.tick()
     → PTT.update()
 ```
 
-Tutto inline, zero context switch, < 100us.
+All inline, zero context switch, < 100us.
 
 ## File Structure
 
@@ -362,37 +362,37 @@ src/
 │   └── i2s.rs           # I2S DMA setup, callback
 ├── hal/
 │   ├── es8311.rs        # ES8311 driver (I2C)
-│   └── audio.rs         # (esistente, da rimuovere/sostituire)
+│   └── audio.rs         # (existing, to be removed/replaced)
 ```
 
-## Parametri (da parameters.yaml)
+## Parameters (from parameters.yaml)
 
-Già definiti:
+Already defined:
 - `sidetone_freq_hz`: u16, 400-800, default 600
 - `sidetone_volume`: u8, 1-100, default 70
 - `fade_duration_ms`: u8, 1-10, default 5
 - `ptt_tail_ms`: u32, 50-500, default 100
 
-Da aggiungere:
+To add:
 - `sidetone_buf_size`: usize, 32-64, default 64
 - `remote_buf_size`: usize, 256-512, default 512
 
 ## Error Handling
 
-| Errore | Azione |
+| Error | Action |
 |--------|--------|
-| I2S DMA underrun | Fill con silenzio, log warning |
-| Remote buffer underrun | Switch a silence, continua |
-| ES8311 I2C failure | Log error, retry, non blocca RT |
+| I2S DMA underrun | Fill with silence, log warning |
+| Remote buffer underrun | Switch to silence, continue |
+| ES8311 I2C failure | Log error, retry, does not block RT |
 | Sidetone buffer full | Drop oldest samples |
 
-**Nessun FAULT per audio** - audio non è safety-critical come TX timing. Silenzio è accettabile.
+**No FAULT for audio** - audio is not safety-critical like TX timing. Silence is acceptable.
 
 ## Testing
 
 ### Unit Tests (host)
 
-- SidetoneGen: frequenza corretta, fade timing
+- SidetoneGen: correct frequency, fade timing
 - Buffer: ring buffer wrap-around, underrun handling
 - PTT: state transitions, tail timing
 
@@ -404,6 +404,6 @@ Da aggiungere:
 
 ## Future Extensions
 
-- **ADC path**: ES8311 ha ADC per mic input (contest keyer)
-- **Audio mixing**: se necessario in futuro
-- **Sample rate switching**: attualmente fisso a 8 kHz
+- **ADC path**: ES8311 has an ADC for mic input (contest keyer)
+- **Audio mixing**: if needed in the future
+- **Sample rate switching**: currently fixed at 8 kHz

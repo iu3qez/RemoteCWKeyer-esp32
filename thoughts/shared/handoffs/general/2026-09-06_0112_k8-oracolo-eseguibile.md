@@ -1,70 +1,70 @@
 ---
 artifact_contract: "ce-handoff/v1"
 created_at: "2026-09-05T23:12:13Z"
-title: "Il K8 diventa un oracolo eseguibile, e la suite scopre di non essere ancorata"
-summary: "Sbloccati #7/#8, corretto l'handshake CWNet inventato, il firmware ricompila, il riferimento K8 letto, emulato in gpsim e misurato; #32 contiene la specifica verificata e le decisioni del maintainer per il terzo squeeze_mode."
+title: "The K8 becomes an executable oracle, and the suite discovers it isn't anchored"
+summary: "Unblocked #7/#8, fixed the invented CWNet handshake, the firmware links again, the K8 reference read, emulated in gpsim and measured; #32 holds the verified spec and the maintainer's decisions for the third squeeze_mode."
 keywords: ["k8", "k1el", "gpsim", "iambic", "squeeze_mode", "issue-32", "oracolo-differenziale", "issue-sweep"]
 cwd: "/Users/sf/Developer/RemoteCWKeyer-esp32"
-resume_focus: "Implementare il terzo squeeze_mode (livello campionato agli istanti k·u, default) in TDD contro tracce K8 generate con gpsim, secondo #32."
+resume_focus: "Implement the third squeeze_mode (level sampled at instants k·u, default) in TDD against K8 traces generated with gpsim, per #32."
 repository: "iu3qez/RemoteCWKeyer-esp32"
 repo_root_sha: "f153e01ec202b2cae17102fa0f355d657bb641c7"
 branch: "docs-unblock-u5-u6"
 head: "34deae5"
 ---
 
-# Il K8 diventa un oracolo eseguibile
+# The K8 becomes an executable oracle
 
-Sessione del 5-6 settembre 2026, ripresa dall'handoff `2026-09-05_2145_sessione-zero-parziale.md`. Ha fatto quattro cose diverse in sequenza; le decisioni sono tutte sul tracker, questo file dice solo dove guardare e cosa è fragile.
+Session of September 5-6, 2026, resumed from the handoff `2026-09-05_2145_sessione-zero-parziale.md`. It did four different things in sequence; the decisions are all on the tracker, this file only says where to look and what's fragile.
 
-## Come è andata, in ordine
+## How it went, in order
 
-1. **Sblocco.** Le due `blocking` (#7 sequenza/identico/tolleranza, #8 provenienza) sono **chiuse con decisione del maintainer** nei rispettivi commenti di chiusura. Nessuna `blocking` aperta. U5/U6 del piano banco-prova sono sbloccate; il piano resta `requirements-only` per #19 (doc-review mai fatta).
-2. **Processo.** Merged: #22 (issue chiuse su evidenza, `/issue-sweep` prima dell'handoff, hook su entrambi i percorsi di `ce-handoff`, `.claude/` in convenzione, regola «una sola famiglia di skill: CE»; superpowers disinstallato a livello utente). Aperta: **PR #34** (STRATEGY: un boundary vieta di costruire, non di ricordare). Branch senza PR: `docs-unblock-u5-u6` (5 doc che dicevano ancora «bloccato»), `debt-iambic-config-vs-k8` (una riga in `code-quality.md`: doppio default di `squeeze_mode` in `parameters.yaml:120/260`).
-3. **Ferro.** Il firmware **non linkava da maggio** — `gen_config_c.py` scriveva `config_nvs.c` in `include/src/`; fix merged (#28), build verificata su ESP-IDF **v6.0.2** (EIM: attivare con `. ~/.espressif/tools/activate_idf_v6.0.2.sh`, **non** `export.sh`; mai in pipe a `tail`, altrimenti le variabili muoiono nella subshell). Flashato: boot ok, WiFi ok. Bug console → #30 (editor: eco e stato decidono separatamente), #31 (nessun modo di vedere IP/stato; decisione: banner con `stats` alla connessione).
-4. **CWNet.** `CWNET_CMD_WELCOME = 0x00` era inventato: il server conferma **rimandando il CONNECT con i permessi**. Fix merged (#27, chiude #23): READY sull'echo, permessi conservati, **rifiuto di manipolare senza TRANSMIT**. Scoperti #25 (il server arbitra *chi ha la chiave*, annunciato via `TX_INFO 0x05`, che scartiamo) e #26 (LED: solo libero/non libero, bassa priorità).
-5. **Keyer — il grosso.** Audit della suite host: il progetto dichiara due riferimenti e la suite non ne aggancia nessuno; il K8 **non esisteva nel repo**. Poi è arrivato `morse8.zip`. Da lì: licenza (ridistribuzione permessa, **incompatibile GPL → fetch-non-vendor**), tre letture dell'assembly (analisi, review avversariale, confronto a tre), emulazione in gpsim, tre esperimenti misurati. **Tutto su #32.**
+1. **Unblocking.** The two `blocking` issues (#7 sequence/identical/tolerance, #8 provenance) are **closed with the maintainer's decision** in their respective closing comments. No `blocking` open. U5/U6 of the test-bench plan are unblocked; the plan stays `requirements-only` because of #19 (doc review never done).
+2. **Process.** Merged: #22 (issues closed on evidence, `/issue-sweep` before the handoff, hook on both `ce-handoff` paths, `.claude/` brought into convention, rule «one skill family only: CE»; superpowers uninstalled at the user level). Open: **PR #34** (STRATEGY: a boundary forbids building, not remembering). Branch without a PR: `docs-unblock-u5-u6` (5 docs that still said «blocked»), `debt-iambic-config-vs-k8` (one line in `code-quality.md`: double default of `squeeze_mode` in `parameters.yaml:120/260`).
+3. **Hardware.** The firmware **hadn't linked since May** - `gen_config_c.py` was writing `config_nvs.c` into `include/src/`; fix merged (#28), build verified on ESP-IDF **v6.0.2** (EIM: activate with `. ~/.espressif/tools/activate_idf_v6.0.2.sh`, **not** `export.sh`; never piped to `tail`, or the variables die in the subshell). Flashed: boot ok, WiFi ok. Console bugs → #30 (editor: echo and state decide separately), #31 (no way to see IP/status; decision: a banner with `stats` on connect).
+4. **CWNet.** `CWNET_CMD_WELCOME = 0x00` was invented: the server confirms **by sending the CONNECT back with the permissions**. Fix merged (#27, closes #23): READY on the echo, permissions preserved, **refuses to key without TRANSMIT**. Discovered #25 (the server arbitrates *who holds the key*, announced via `TX_INFO 0x05`, which we discard) and #26 (LED: only free/not-free, low priority).
+5. **Keyer - the big one.** Audit of the host suite: the project claims two references and the suite doesn't anchor to either; the K8 **did not exist in the repo**. Then `morse8.zip` arrived. From there: licence (redistribution permitted, **GPL-incompatible → fetch-not-vendor**), three readings of the assembly (analysis, adversarial review, three-way comparison), emulation in gpsim, three measured experiments. **All on #32.**
 
-## Dove sta la verità
+## Where the truth lives
 
-- **`#32`** — leggere i commenti **dal fondo verso l'alto**: ogni commento successivo corregge il precedente, e l'ultimo su ogni tema vince. In particolare: la specifica verificata del campionamento (una volta per **unità-dit**, non per elemento; livello, non fronte; stesso tipo cancellato *dopo* l'ultimo campione), il confronto a tre (cinque universali = «l'iambic», il resto varianti), le tre misure (`mark 84 566`, `space 84 382`, sidetone `1208` cicli), e le decisioni del maintainer.
-- **`STRATEGY.md:62-64`** — la metrica: decisioni esatte, tempo tollerante, tolleranza scritta prima del test.
-- **`components/keyer_iambic/src/iambic.c:200-232`** — il punto da modificare: oggi rileva un *fronte* (`dit_is_fresh`, `:224`) dentro una finestra percentuale, in entrambi i modi. `can_arm_dit/dah` (`:207-208`) fa già la memoria del solo opposto.
-- **`test_host/test_iambic.c:88`** — l'asserzione vuota (`SEND_DIT || SEND_DAH`) da sostituire.
+- **`#32`** - read the comments **from the bottom up**: every later comment corrects the previous one, and the last one on each topic wins. In particular: the verified sampling spec (once per **dit-unit**, not per element; level, not edge; same type cleared *after* the last sample), the three-way comparison (five universals = «the iambic», the rest variants), the three measurements (`mark 84 566`, `space 84 382`, sidetone `1208` cycles), and the maintainer's decisions.
+- **`STRATEGY.md:62-64`** - the metric: decisions exact, timing tolerant, tolerance written before the test.
+- **`components/keyer_iambic/src/iambic.c:200-232`** - the spot to change: today it detects an *edge* (`dit_is_fresh`, `:224`) inside a percentage window, in both modes. `can_arm_dit/dah` (`:207-208`) already does the opposite-only memory.
+- **`test_host/test_iambic.c:88`** - the empty assertion (`SEND_DIT || SEND_DAH`) to replace.
 
-## Decisioni del maintainer, tutte su #32
+## Maintainer decisions, all on #32
 
-- **WPM calcolati** (PARIS), non copiati dal K8; le durate K8 solo come fixture nei test, a velocità equivalente (TIMEBASE 70 ≈ 14,2 WPM). Il «5,7 % lento» è chiuso per il prodotto.
-- **Terzo `squeeze_mode`, default**: livello agli istanti k·u agganciati al confine dell'elemento + cancella lo stesso tipo dopo l'ultimo campione. Approvato a condizione di costo non eccessivo — stimato: qualche decina di righe, sostituisce il test di finestra con un test di attraversamento di multiplo dell'unità. **Ortogonale a `IAMBIC_MODE_A/B`**, come nel K8: combinare il bonus element del K8 con l'osservazione dipendente dal modo (DL4YHF) darebbe una quarta cosa che non è nessuna delle tre.
-- **La finestra percentuale resta** come estensione per le alte velocità, non come default. Default = K1EL.
-- **Memoria del solo opposto è la definizione dell'iambic** (debouncer naturale) — non una particolarità del K8. Già così nel codice.
-- Il K8 spedisce in **Mode B**; il suo A/B cambia solo il rilascio (B: un elemento in più; A: flush del latch). Legge il livello in **entrambi** i modi.
-- **Niente è bloccato su DJ5IL**: `[Lit5]` si scrive come due casi con rilascio a 0,8u (→E) e 1,5u (→A), letti dall'emulatore. L'articolo, quando il maintainer l'avrà, può cambiare l'etichetta, non il test. Il maintainer sta raccogliendo materiale (articolo e codice) per conto suo.
-- Test «squeeze a K»: da fermo il K8 manda **DIT** (→ R). Il test deve dire «dah, poi chiudi il dit».
+- **WPM computed** (PARIS), not copied from the K8; K8 durations only as fixtures in the tests, at equivalent speed (TIMEBASE 70 ≈ 14.2 WPM). The «5.7% slow» is closed for the product.
+- **Third `squeeze_mode`, default**: level at instants k·u anchored to the element boundary + clears the same type after the last sample. Approved on condition the cost isn't excessive - estimated: a few dozen lines, replaces the window test with a unit-multiple crossing test. **Orthogonal to `IAMBIC_MODE_A/B`**, as in the K8: combining the K8's bonus element with the mode-dependent observation (DL4YHF) would give a fourth thing that is none of the three.
+- **The percentage window stays** as an extension for high speeds, not as the default. Default = K1EL.
+- **Opposite-only memory is the definition of iambic** (a natural debouncer) - not a K8 peculiarity. Already like that in the code.
+- The K8 ships in **Mode B**; its A/B only changes release (B: one extra element; A: latch flush). It reads the level in **both** modes.
+- **Nothing is blocked on DJ5IL**: `[Lit5]` is written as two cases with release at 0.8u (→E) and 1.5u (→A), read from the emulator. The article, once the maintainer has it, can change the label, not the test. The maintainer is gathering material (article and code) on his own.
+- «Squeeze to K» test: from rest the K8 sends **DIT** (→ R). The test must say «dah, then close the dit».
 
-## Il lavoro da fare, e come
+## The work to do, and how
 
-TDD contro tracce gpsim. Ciclo: RED su `test_host` → GREEN in `iambic.c` → entrambe le varianti CI (`cmake -B build` e `build-asan` con `-fsanitize=address,undefined`). Test da scrivere, in ordine: (1) livello a k·u con tap fra due istanti → perso; (2) `[Lit4]` N/T; (3) `[Lit5]` due casi 0,8u/1,5u; (4) `[Lit6/7]` K/C con «dah poi dit»; (5) primo elemento in squeeze da fermo = DIT. Residuo da scrivere nella tolleranza: il nostro tick è 1 ms, il livello a k·u si legge al primo tick ≥ k·u.
+TDD against gpsim traces. Cycle: RED on `test_host` → GREEN in `iambic.c` → both CI variants (`cmake -B build` and `build-asan` with `-fsanitize=address,undefined`). Tests to write, in order: (1) level at k·u with a tap between two instants → lost; (2) `[Lit4]` N/T; (3) `[Lit5]` two cases 0.8u/1.5u; (4) `[Lit6/7]` K/C with «dah then dit»; (5) first element in a squeeze from rest = DIT. Residual to write into the tolerance: our tick is 1 ms, the level at k·u is read at the first tick ≥ k·u.
 
-Poi `tools/k8/` (puntatore archive.org **con timestamp dello snapshot**, sha256 `432df077…`, nota licenza + conflitto GPL, `ref/` ignorato) — mai vendorizzare.
+Then `tools/k8/` (archive.org pointer **with the snapshot timestamp**, sha256 `432df077…`, licence note + GPL conflict, `ref/` gitignored) - never vendor it.
 
 ## Machine-local, fragile
 
-- `tmp/k8/` (ignorato): `morse8.asm` **originale, non toccare** (sha256 `432df077a197…`), `morse8_gpasm.asm` (una sola etichetta `CONFIG→CONFIGM`, perché gpasm la riserva), `morse8.hex/.cod`, `exp1-3*.stc/.log`, `parse_gpio_log.py`. Ricetta: `gpasm --mpasm-compatible -p p12c509 -o morse8.hex morse8_gpasm.asm`; `gpsim -i -p pic12c509 -c exp.stc morse8.hex`; pin: gpio0 DIT, gpio1 DAH, gpio2 KEY, gpio3 PB, gpio4 TONE; ingressi con pull-up, premuto = 0; il sign-on all'accensione dura fino al ciclo ~591 556 con TX squelchato — premere dopo.
-- `morse8.zip` è **nella root del repo, non ignorato**: un `git add -A` lo committerebbe. Spostarlo o ignorarlo.
-- `tmp/oracle/` (ignorato): le 32 catture DL4YHF, copiate fuori da `/tmp` che evapora.
-- Sorgente DL4YHF completo e `cwnet_dump` compilato: `/private/tmp/claude-501/-Users-sf-Developer-RemoteCWKeyer-esp32/bed2bd1e-*/scratchpad/{dl4yhf,oracle}/` — **evapora al riavvio**; refetch in `tools/cwnet/README.md`.
-- Terzo sorgente di confronto: `/Users/sf/Developer/deskhpsdr/src/iambic.c` (GPL-3), fuori dal repo.
-- `gputils 1.5.2` e `gpsim 0.32.1` installati via brew questa sessione.
+- `tmp/k8/` (gitignored): `morse8.asm` **original, do not touch** (sha256 `432df077a197…`), `morse8_gpasm.asm` (one single label `CONFIG→CONFIGM`, because gpasm reserves it), `morse8.hex/.cod`, `exp1-3*.stc/.log`, `parse_gpio_log.py`. Recipe: `gpasm --mpasm-compatible -p p12c509 -o morse8.hex morse8_gpasm.asm`; `gpsim -i -p pic12c509 -c exp.stc morse8.hex`; pins: gpio0 DIT, gpio1 DAH, gpio2 KEY, gpio3 PB, gpio4 TONE; inputs with pull-up, pressed = 0; power-on sign-on lasts until cycle ~591,556 with TX squelched - press after that.
+- `morse8.zip` is **in the repo root, not gitignored**: a `git add -A` would commit it. Move it or ignore it.
+- `tmp/oracle/` (gitignored): the 32 DL4YHF captures, copied out of `/tmp`, which evaporates.
+- Full DL4YHF source and compiled `cwnet_dump`: `/private/tmp/claude-501/-Users-sf-Developer-RemoteCWKeyer-esp32/bed2bd1e-*/scratchpad/{dl4yhf,oracle}/` - **evaporates on restart**; refetch in `tools/cwnet/README.md`.
+- Third comparison source: `/Users/sf/Developer/deskhpsdr/src/iambic.c` (GPL-3), outside the repo.
+- `gputils 1.5.2` and `gpsim 0.32.1` installed via brew this session.
 
-## Non fatto, e perché
+## Not done, and why
 
-- Nessuna riga di `squeeze_mode` scritta: la sessione si è fermata a specifica verificata + decisioni, a contesto pieno per metà. È il punto giusto per ripartire puliti.
-- `[Lit5]` non scritto per la stessa ragione, non perché bloccato.
-- `tools/k8/` non creato.
-- Le PR di marzo (#2, #3) restano parcheggiate, non toccate.
+- No `squeeze_mode` line written: the session stopped at verified spec + decisions, at half a full context. It's the right point to restart clean.
+- `[Lit5]` not written for the same reason, not because it's blocked.
+- `tools/k8/` not created.
+- The March PRs (#2, #3) remain parked, untouched.
 
-## Verifica fatta
+## Verification done
 
-Host suite 191/191 verde, plain e ASan/UBSan, dopo #27. Firmware: `idf.py build` ok, `keyer_c.bin` 0x12a460, flashato, boot e WiFi ok (maintainer). Emulatore: tre esperimenti, ogni numero nella banda predetta o spiegato dal percorso di confine (~102 cicli). Sweep issue eseguito prima di questo handoff: nessuna chiudibile, #15 ristretta.
+Host suite 191/191 green, plain and ASan/UBSan, after #27. Firmware: `idf.py build` ok, `keyer_c.bin` 0x12a460, flashed, boot and WiFi ok (maintainer). Emulator: three experiments, every number within the predicted band or explained by the boundary path (~102 cycles). Issue sweep run before this handoff: none closeable, #15 narrowed.
 
-Skill utili: `ce-work` per #32, `issue-sweep` prima del prossimo handoff (l'hook lo ricorda su entrambi i percorsi — verificato dal vivo).
+Useful skills: `ce-work` for #32, `issue-sweep` before the next handoff (the hook reminds on both paths - verified live).

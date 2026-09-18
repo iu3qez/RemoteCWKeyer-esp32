@@ -1,6 +1,6 @@
 name: Host tests
 
-# Track 1 of STRATEGY.md ("Banco di prova"): every push must keep the
+# Track 1 of STRATEGY.md ("Test bench"): every push must keep the
 # host test suite green, with and without sanitizers.
 
 on:

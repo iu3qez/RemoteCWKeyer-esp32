@@ -1,5 +1,5 @@
 ---
-title: "Il conteggio di un oracolo differenziale non è un gradiente"
+title: "A differential oracle's count is not a gradient"
 date: 2026-09-06
 category: architecture-patterns
 module: keyer_iambic
@@ -7,9 +7,9 @@ problem_type: workflow_issue
 component: testing_framework
 severity: high
 applies_when:
-  - "Un oracolo differenziale restituisce un conteggio di divergenze invece di un verdetto binario"
-  - "Si sta per modificare una macchina a stati e rimisurare per decidere se tenere la modifica"
-  - "Lo sweep gira su una famiglia di stimoli campionata, non sul dominio esaustivo"
+  - "A differential oracle returns a divergence count instead of a binary verdict"
+  - "You are about to change a state machine and remeasure to decide whether to keep the change"
+  - "The sweep runs over a sampled family of stimuli, not the exhaustive domain"
 tags:
   - differential-testing
   - oracle
@@ -19,111 +19,105 @@ tags:
   - debugging
 ---
 
-# Il conteggio di un oracolo differenziale non è un gradiente
+# A differential oracle's count is not a gradient
 
-## Contesto
+## Context
 
-Il banco differenziale del keyer (`tools/k8/bench/`) manda lo stesso stimolo di
-paddle al K1EL K8 emulato in gpsim e alla nostra FSM, poi confronta le sequenze
-di elementi. Su 436 casi a 25 WPM partiva da **124 divergenze**, con una
-diagnosi corretta della causa (issue #44, oggi iu3qez/Esp32KeyerTest#1) e una raccomandazione motivata su come
-correggerla.
+The keyer's differential bench (`tools/k8/bench/`) sends the same paddle stimulus to the
+K1EL K8 emulated in gpsim and to our FSM, then compares the element sequences. Across 436
+cases at 25 WPM it started at **124 divergences**, with a correct diagnosis of the cause
+(issue #44, today iu3qez/Esp32KeyerTest#1) and a reasoned recommendation on how to fix it.
 
-L'implementazione è stata misurata dopo ogni passo:
+The implementation was measured after every step:
 
-| passo | divergenze |
+| step | divergences |
 |---|---|
-| stato di partenza | 124 |
-| dopo il riordino delle decisioni | 225 |
-| dopo la correzione su `BOTH_ON` | 145 |
+| starting state | 124 |
+| after reordering the decisions | 225 |
+| after the fix on `BOTH_ON` | 145 |
 
-Tre tentativi, tutti peggiori del punto di partenza, e il lavoro è stato
-abbandonato su un ramo `wip-` senza mai capire quale riga fosse sbagliata.
+Three attempts, all worse than the starting point, and the work was abandoned on a `wip-`
+branch without ever understanding which line was wrong.
 
-Il banco era corretto. La diagnosi era in larga parte corretta. **A essere
-sbagliato è stato l'uso del numero.**
+The bench was correct. The diagnosis was largely correct. **What was wrong was the use of
+the number.**
 
-## Guida
+## Guidance
 
-**1. Il conteggio risponde a "va meglio", mai a "perché".** È un cancello, non
-un gradiente. Serve a decidere se una correzione è finita, non a scegliere quale
-correzione fare.
+**1. The count answers "is it better", never "why".** It is a gate, not a gradient. It is
+there to decide whether a fix is finished, not to choose which fix to make.
 
-**2. Prima di cambiare una riga, traccia UN caso divergente da un capo
-all'altro sui due lati.** Il nostro tick per tick, il riferimento istruzione per
-istruzione nell'emulatore. Il caso si sceglie dalla classe più numerosa, così la
-comprensione che ne esce copre la maggior parte delle divergenze.
+**2. Before changing a line, trace ONE divergent case end to end on both sides.** Ours tick
+by tick, the reference instruction by instruction in the emulator. Pick the case from the
+most numerous class, so the understanding it yields covers most of the divergences.
 
-**3. Una modifica si giustifica con la traccia, non con il delta.** Se non sai
-dire in anticipo in che verso si muoverà il conteggio e all'incirca di quanto,
-non hai ancora capito la modifica che stai per fare.
+**3. A change is justified by the trace, not by the delta.** If you cannot say in advance
+which way the count will move and by roughly how much, you have not yet understood the
+change you are about to make.
 
-**4. Guarda sempre la composizione, non solo il totale.** Raggruppa le
-divergenze per coppia `(riferimento, nostro)` e conta ogni forma. Il totale
-nasconde esattamente l'informazione che serve.
+**4. Always look at the composition, not just the total.** Group the divergences by
+`(reference, ours)` pair and count each shape. The total hides exactly the information
+you need.
 
-**5. Se abbandoni, conserva il tentativo con i suoi numeri e la diagnosi del
-metodo**, non solo del codice. Un ramo `wip-` con un messaggio di commit onesto
-costa niente e impedisce al tentativo successivo di rifare la stessa strada.
+**5. If you abandon it, keep the attempt with its numbers and the diagnosis of the
+method**, not just the code. A `wip-` branch with an honest commit message costs nothing
+and stops the next attempt from retracing the same path.
 
-## Perché conta
+## Why it matters
 
-Il pattern gemello, `reference-source-as-differential-oracle.md`, descrive un
-confronto **esaustivo** che restituisce una risposta binaria: zero scarti su
-tutto il dominio, oppure no. Quella forma non si presta a questo abuso.
+The twin pattern, `reference-source-as-differential-oracle.md`, describes an **exhaustive**
+comparison that returns a binary answer: zero discrepancies over the whole domain, or not.
+That shape does not lend itself to this misuse.
 
-Uno sweep su una famiglia di stimoli campionata restituisce invece un
-**conteggio**, e un conteggio somiglia a un gradiente. Non lo è, per tre
-ragioni: i casi non sono indipendenti, una singola modifica può sistemare una
-classe e romperne due, e il totale non dice quale.
+A sweep over a sampled family of stimuli instead returns a **count**, and a count looks
+like a gradient. It is not, for three reasons: the cases are not independent, a single
+change can fix one class and break two, and the total does not say which.
 
-Il caso concreto è istruttivo. Passare da 124 a 145 sembrava "quasi tornato al
-punto di partenza". Ma la composizione era cambiata del tutto: 141 delle 145
-erano ormai una forma sola, "perdiamo l'elemento finale", che non era il difetto
-originale. Il numero diceva "un po' peggio". La composizione diceva "bug
-diverso".
+The concrete case is instructive. Going from 124 to 145 looked "almost back to the
+starting point". But the composition had changed entirely: 141 of the 145 were now a
+single shape, "we lose the final element", which was not the original defect. The number
+said "a bit worse". The composition said "a different bug".
 
-## Quando applicarla
+## When to apply it
 
-Ogni volta che l'oracolo restituisce un conteggio invece di un verdetto. E in
-particolare nel momento in cui ti accorgi di star lanciando lo sweep per
-decidere se tenere una modifica: quello è il segnale che stai usando il numero
-come gradiente.
+Any time the oracle returns a count instead of a verdict. And in particular the moment
+you notice you are running the sweep to decide whether to keep a change: that is the
+signal you are using the number as a gradient.
 
-## Esempi
+## Examples
 
-Il raggruppamento che avrebbe intercettato l'errore al primo giro, invece che al
-terzo:
+The grouping that would have caught the error on the first pass instead of the third:
 
 ```python
 import collections
 c = collections.Counter()
 for key, ev in cases():
-    k = k8seq.run(ev)          # riferimento
-    o = ours(ev)               # nostro
+    k = k8seq.run(ev)          # reference
+    o = ours(ev)               # ours
     if k != o:
         c[(k, o)] += 1
 for (k, o), n in c.most_common(8):
-    print(f"{n:4d}x  rif={k!r:10s} noi={o!r:10s}")
+    print(f"{n:4d}x  ref={k!r:10s} ours={o!r:10s}")
 ```
 
-Uscita al terzo tentativo, che rende evidente il cambio di natura del difetto:
+Output on the third attempt, which makes the change in the defect's nature obvious:
 
 ```
-  65x  rif='.-.'      noi='.-'
-  32x  rif='..-'      noi='.-'
-  20x  rif='....'     noi='...'
-  17x  rif='-.-'      noi='-.'
+  65x  ref='.-.'      ours='.-'
+  32x  ref='..-'      ours='.-'
+  20x  ref='....'     ours='...'
+  17x  ref='-.-'      ours='-.'
 ```
 
-Quattro forme, tutte "manca l'ultimo elemento". Un totale di 145 non lo dice.
+Four shapes, all "missing the last element". A total of 145 does not say that.
 
 ## Related
 
 - `docs/solutions/architecture-patterns/reference-source-as-differential-oracle.md`
-  — il pattern di cui questo documenta un modo di fallire
-- `components/keyer_iambic/tools/k8/bench/` — lo scheletro del banco, nel submodule
-  Esp32KeyerTest; il suo README dice perché lo sweep sintetico è superato
-- `components/keyer_iambic/tools/k8/README.md` — come far girare l'oracolo K8 in gpsim
-- iu3qez/Esp32KeyerTest#1 (il difetto, trasferita da #44), #32 (la specifica verificata del riferimento)
-- Ramo `wip-k8-decision-order-attempt` — il tentativo abbandonato, da non mergiare
+  - the pattern this documents a way of failing at
+- `components/keyer_iambic/tools/k8/bench/` - the bench's skeleton, in the
+  Esp32KeyerTest submodule; its README explains why the synthetic sweep is superseded
+- `components/keyer_iambic/tools/k8/README.md` - how to run the K8 oracle in gpsim
+- iu3qez/Esp32KeyerTest#1 (the defect, transferred from #44), #32 (the reference's
+  verified specification)
+- Branch `wip-k8-decision-order-attempt` - the abandoned attempt, not to be merged

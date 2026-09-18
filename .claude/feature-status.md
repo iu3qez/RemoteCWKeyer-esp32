@@ -1,53 +1,53 @@
-# Feature Status — 2026-05-07
+# Feature Status - 2026-05-07
 
-## CRITICAL — Core mancanti
+## CRITICAL - Missing core
 
-| Feature | Stato | File |
+| Feature | Status | File |
 |---------|-------|------|
-| Winkeyer3 USB (CDC2) | Stub completo, nulla implementato | `keyer_usb/src/usb_winkeyer.c` |
-| CWNet RX: callback eventi CW | Infrastruttura RX completa, `cw_event_cb = NULL` | `keyer_cwnet/src/cwnet_socket.c` |
+| Winkeyer3 USB (CDC2) | Complete stub, nothing implemented | `keyer_usb/src/usb_winkeyer.c` |
+| CWNet RX: CW event callback | RX infrastructure complete, `cw_event_cb = NULL` | `keyer_cwnet/src/cwnet_socket.c` |
 
-## HIGH — Riducono usabilità
+## HIGH - Reduce usability
 
-| Feature | Stato | File |
+| Feature | Status | File |
 |---------|-------|------|
-| Timeline page (waveform RT) | ~90% — bug: grid lines non visibili | `pages/Timeline.svelte` |
-| ~~config_load/save_param()~~ | Rimossi — bulk load/save_all sufficiente | — |
+| Timeline page (waveform RT) | ~90% - bug: grid lines not visible | `pages/Timeline.svelte` |
+| ~~config_load/save_param()~~ | Removed - bulk load/save_all sufficient | - |
 
-## MEDIUM — Polish
+## MEDIUM - Polish
 
-| Feature | Stato |
+| Feature | Status |
 |---------|-------|
-| PA/PTT integration (PA abilitato incondizionatamente) | `main.c:226` TODO |
-| OTA firmware update | UF2 stub (solo reboot ROM bootloader), no HTTP OTA |
-| WebUI authentication | Assente (API tutte aperte) |
-| Dark mode, mobile responsive, toast notifications | Non iniziati |
-| Latency monitoring (`hal_audio_write`) | Non strumentato |
+| PA/PTT integration (PA enabled unconditionally) | `main.c:226` TODO |
+| OTA firmware update | UF2 stub (ROM bootloader reboot only), no HTTP OTA |
+| WebUI authentication | Absent (all APIs open) |
+| Dark mode, mobile responsive, toast notifications | Not started |
+| Latency monitoring (`hal_audio_write`) | Not instrumented |
 
-## Completati (erano segnati come mancanti)
+## Completed (were marked as missing)
 
-| Feature | Stato reale |
+| Feature | Actual status |
 |---------|-------------|
-| Keyer page (testo, memory M1-M8) | Completa end-to-end (8 API, NVS, UI) |
-| WiFi status API | Implementata (stato, IP, CWNet latency) |
-| CWNet TX (locale→remoto) | MORSE 0x10 dal keying stream via `cwnet_feed` (#10, #55); non provato su hardware |
-| wireguard-vpn | Mergiato su main (commit `2678037`) — componente, console, WebUI, config |
-| ESP-IDF v6 migration | Completata — cJSON via component manager, esp_wireguard vendorato in `components/`, deps strict-check, GPIO iomux rename |
+| Keyer page (text, memory M1-M8) | Complete end-to-end (8 APIs, NVS, UI) |
+| WiFi status API | Implemented (status, IP, CWNet latency) |
+| CWNet TX (local→remote) | MORSE 0x10 from the keying stream via `cwnet_feed` (#10, #55); not tested on hardware |
+| wireguard-vpn | Merged into main (commit `2678037`) - component, console, WebUI, config |
+| ESP-IDF v6 migration | Completed - cJSON via component manager, esp_wireguard vendored in `components/`, deps strict-check, GPIO iomux rename |
 
-## Branch non mergiati
+## Unmerged branches
 
-| Branch | Commit avanti di main | Stato |
+| Branch | Commits ahead of main | Status |
 |--------|----------------------|-------|
-| `origin/winkeyer-server` | 4 (morse queue, parser, ui_theme, morse refactor) | WIP fasi 1-2, fase 3+ mancante |
+| `origin/winkeyer-server` | 4 (morse queue, parser, ui_theme, morse refactor) | WIP phases 1-2, phase 3+ missing |
 
-## Console — FUNZIONANTE (cleanup fatto)
+## Console - WORKING (cleanup done)
 
-- Tab completion: **funziona**, approccio show-all (non cycling)
-- History (arrow keys): **completa**
-- `line_buffer.c`: cancellato (commit `a67bc73`)
-- Docs in `console.h`: aggiornati (commit `a67bc73`)
+- Tab completion: **works**, show-all approach (not cycling)
+- History (arrow keys): **complete**
+- `line_buffer.c`: deleted (commit `a67bc73`)
+- Docs in `console.h`: updated (commit `a67bc73`)
 
-## Test
+## Tests
 
-- Host test in `test_host/` esistono, copertura FSM iambic incerta
-- Test console completion: copertura buona
+- Host tests in `test_host/` exist, iambic FSM coverage uncertain
+- Console completion tests: good coverage

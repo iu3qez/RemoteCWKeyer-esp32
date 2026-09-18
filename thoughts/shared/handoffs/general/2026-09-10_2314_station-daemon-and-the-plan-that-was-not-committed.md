@@ -1,11 +1,11 @@
 ---
 artifact_contract: "ce-handoff/v1"
 created_at: "2026-09-10T23:14:00Z"
-title: "Il daemon di stazione, e il piano che non era committato"
-summary: "Sessione 10 settembre 2026: le otto unità del daemon di stazione mergiate in #77, poi scoperto dopo il merge che il motore manipolava spazzatura con un operatore dal vivo; #78 corregge quello e le altre quattro voci di una revisione del piano che viveva solo in un file non committato. Restano il passo di banco (#64), Linux (#76) e una decisione aperta sulla rete di inattività."
+title: "The station daemon, and the plan that wasn't committed"
+summary: "Session September 10, 2026: the station daemon's eight units merged in #77, then discovered after the merge that the engine was keying garbage with a live operator; #78 fixes that and the other four entries of a plan revision that lived only in an uncommitted file. What remains: the bench pass (#64), Linux (#76) and an open decision on the idle-network policy."
 keywords: ["station-daemon", "cwnetd", "cwnet_play", "cwnet_server", "cwnet_rxfifo", "underrun", "grace", "buffer-floor", "edges-descriptor", "issue-64", "issue-65", "issue-68", "issue-76", "pr-77", "pr-78", "plan-provenance", "live-keying"]
 cwd: "/Users/sf/Developer/RemoteCWKeyer-esp32/.claude/worktrees/colour-rule-key-verdict-led-da2126"
-resume_focus: "La PR #78 attende il merge del maintainer. Dopo: la decisione aperta sulla rete di inattività (R6), il passo di banco con la scatola che tiene aperta la #64, e il client host della #68, che riusa host/platform/ e cwnet_rxfifo.h."
+resume_focus: "PR #78 is waiting on the maintainer's merge. After that: the open decision on the idle-network policy (R6), the bench pass with the box that keeps #64 open, and #68's host client, which reuses host/platform/ and cwnet_rxfifo.h."
 repository: "iu3qez/RemoteCWKeyer-esp32"
 repo_root_sha: "f153e01ec202b2cae17102fa0f355d657bb641c7"
 branch: "fix/64-the-element-holds"
@@ -13,132 +13,130 @@ head: "fed9073"
 worktree_path: "/Users/sf/Developer/RemoteCWKeyer-esp32/.claude/worktrees/colour-rule-key-verdict-led-da2126"
 ---
 
-# Il daemon di stazione, e il piano che non era committato
+# The station daemon, and the plan that wasn't committed
 
-Ripresa da `2026-09-09_2054_colour-rule-key-verdict-led-pruning.md`, che indicava il lato
-stazione come prossimo passo. Il lato stazione adesso esiste: [#77](https://github.com/iu3qez/RemoteCWKeyer-esp32/pull/77)
-mergiata in `606d39e`, [#78](https://github.com/iu3qez/RemoteCWKeyer-esp32/pull/78) aperta
-e verde, in attesa del maintainer.
+Resumed from `2026-09-09_2054_colour-rule-key-verdict-led-pruning.md`, which pointed to
+the station side as the next step. The station side now exists:
+[#77](https://github.com/iu3qez/RemoteCWKeyer-esp32/pull/77) merged in `606d39e`,
+[#78](https://github.com/iu3qez/RemoteCWKeyer-esp32/pull/78) open and green, waiting on
+the maintainer.
 
-Il fatto centrale della sessione non è il codice: è che **una revisione del piano è
-esistita per venti ore in un solo file non committato**, e nel frattempo la #77 ha
-implementato il testo vecchio. Il difetto che ne è uscito era grave. Chi legge questo
-handoff dovrebbe leggere prima la sezione «La provenienza del piano».
+The central fact of the session isn't the code: it's that **a plan revision existed for
+twenty hours in a single uncommitted file**, and in the meantime #77 implemented the old
+text. The defect that came out of it was serious. Whoever reads this handoff should read
+the "Where the plan came from" section first.
 
-## Cosa esiste adesso, e dove
+## What exists now, and where
 
-- **La stazione manipola.** `host/cwnetd/` è il daemon: un thread, `sock_poll()` con
-  timeout alla prossima scadenza, mai un tick fisso. `host/platform/` è il layer POSIX,
-  con la cucitura winsock nei nomi perché il client host della #68 lo riusi.
-- **Il core è puro e host-only.** `components/keyer_cwnet/cwnet_server.[ch]` porta un
-  client dal CONNECT a READY, arbitra la chiave e annuncia il titolare;
-  `cwnet_play.[ch]` trasforma i byte MORSE in fronti. Nessuno dei due legge l'orologio o
-  stampa: il tempo è un parametro, gli eventi tornano in una struttura. Sono
-  deliberatamente fuori dalle SRCS del componente ESP-IDF, e sono elencati a mano in
-  `host/CMakeLists.txt` e `test_host/CMakeLists.txt`.
-- **Una FIFO sola per i due capi**: `components/keyer_cwnet/include/cwnet_rxfifo.h`,
-  header-only. I timestamp restano separati apposta, e il perché è nell'header: la
-  scatola timbra col contatore a 31 bit del riferimento, che wrappa, il daemon con un
-  istante monotono a 64 bit.
-- **Le prove del filo** sono in `test_host/test_cwnet_server.c` e `test_cwnet_play.c`,
-  pinnate su `test_host/cwnet_fixtures.h`, cioè la cattura del 2026-09-05.
-- **La procedura di banco e i numeri** stanno in `host/cwnetd/README.md`. Il tempo di
-  scambio dopo la TX è 200 ms misurati, non calcolati.
+- **The station keys.** `host/cwnetd/` is the daemon: one thread, `sock_poll()` with a
+  timeout at the next deadline, never a fixed tick. `host/platform/` is the POSIX layer,
+  with winsock-style naming so the #68 host client can reuse it.
+- **The core is pure and host-only.** `components/keyer_cwnet/cwnet_server.[ch]` takes a
+  client from CONNECT to READY, arbitrates the key and announces the holder;
+  `cwnet_play.[ch]` turns MORSE bytes into edges. Neither reads the clock or prints:
+  time is a parameter, events come back in a struct. They're deliberately outside the
+  ESP-IDF component's SRCS, and are listed by hand in `host/CMakeLists.txt` and
+  `test_host/CMakeLists.txt`.
+- **A single FIFO for both ends**: `components/keyer_cwnet/include/cwnet_rxfifo.h`,
+  header-only. The timestamps stay separate on purpose, and the why is in the header:
+  the box stamps with the reference's wrapping 31-bit counter, the daemon with a
+  64-bit monotonic instant.
+- **The wire's proofs** are in `test_host/test_cwnet_server.c` and `test_cwnet_play.c`,
+  pinned to `test_host/cwnet_fixtures.h`, i.e. the 2026-09-05 capture.
+- **The bench procedure and the numbers** are in `host/cwnetd/README.md`. The turnaround
+  time after TX is 200 ms measured, not calculated.
 
-## La provenienza del piano, che è la cosa da non ripetere
+## Where the plan came from, which is the thing not to repeat
 
-Il piano `docs/plans/2026-09-08-2158-feat-station-daemon-plan.md` esisteva in due
-versioni. Quella che la #77 ha eseguito era la copia su disco alle 23:01 del 9 settembre.
-Una revisione più recente, scritta alle 01:30 del 10, viveva **solo** come file non
-tracciato nel worktree `station-daemon-startup-03165a`: nessun commit, nessun ramo, e
-`git log --all -S` non trovava una riga del suo testo.
+The plan `docs/plans/2026-09-08-2158-feat-station-daemon-plan.md` existed in two
+versions. The one #77 executed was the copy on disk at 23:01 on September 9. A more
+recent revision, written at 01:30 on the 10th, lived **only** as an untracked file in
+the `station-daemon-startup-03165a` worktree: no commit, no branch, and
+`git log --all -S` found no line of its text.
 
-Undici voci differivano, e non erano di forma: la regola dell'underrun, il pavimento del
-buffer, il descrittore dei fronti, l'estrazione della FIFO. La #78 la committa **come
-primo commit** (`37b8364`) proprio per chiudere quel buco: l'autorità deve stare in git
-prima che il codice le risponda.
+Eleven entries differed, and not in form: the underrun rule, the buffer floor, the edge
+descriptor, the FIFO extraction. #78 commits it **as the first commit** (`37b8364`)
+precisely to close that hole: authority has to be in git before the code answers to it.
 
-Come è stata scoperta: alla fine della sessione, controllando se quel worktree tenesse
-ancora qualcosa di unico prima di proporne la pulizia. Se non l'avessi controllato, la
-revisione sarebbe stata cancellata con il worktree.
+How it was discovered: at the end of the session, while checking whether that worktree
+still held anything unique before proposing to clean it up. If I hadn't checked, the
+revision would have been deleted along with the worktree.
 
-**Sull'attribuzione, e questa è la mia lettura, non un fatto accertato.** Il maintainer
-ha detto di aver fatto lui quelle modifiche. Un'altra sessione Claude, la `ce-plan` in
-quel worktree, ha poi scritto di averle scritte lei fra le 21:00 e le 22:00 del 10,
-dopo il merge della #77. Il filesystem dice che il file non è toccato dalle 01:30 del 10,
-nove ore *prima* del merge, e il contenuto era già quello. Il contenuto tecnico di quella
-sessione era invece verificato e corretto in due punti su due che ho controllato: la sua
-riproduzione indipendente del difetto, e la citazione `CwNet.c:164` sui 250 ms. Non ho
-risolto la contraddizione sull'autorship e non l'ho usata per decidere niente.
+**On attribution, and this is my reading, not an established fact.** The maintainer said
+he made those changes himself. Another Claude session, the `ce-plan` in that worktree,
+later wrote that it had written them between 21:00 and 22:00 on the 10th, after the #77
+merge. The filesystem says the file hasn't been touched since 01:30 on the 10th, nine
+hours *before* the merge, and the content was already that. The technical content of
+that session was instead verified and correct on the two points I checked: its
+independent reproduction of the defect, and the `CwNet.c:164` citation on the 250 ms. I
+haven't resolved the authorship contradiction and didn't use it to decide anything.
 
-## Il difetto che il merge non ha fermato
+## The defect the merge didn't stop
 
-Il motore trattava «FIFO vuota alla scadenza di un fronte» come underrun. Ma un operatore
-manda un byte per ogni fronte **quando accade**, quindi durante un elemento più lungo del
-buffer la FIFO è vuota per costruzione. Risultato con la scatola al tasto: la lettera A
-usciva come un punto corretto da 48 ms e poi un lampo di durata zero al posto della linea.
+The engine treated "FIFO empty at an edge's deadline" as underrun. But an operator sends
+one byte per edge **as it happens**, so during an element longer than the buffer the
+FIFO is empty by construction. Result with the box at the key: the letter A came out as
+a correct 48 ms dot followed by a zero-duration flash instead of the dash.
 
-I 303 test erano verdi perché ogni fixture viene consegnata in una raffica. Il test che
-distingue le due regole è
-`test_play_an_over_delivered_as_it_is_keyed_plays_like_a_buffered_one`: gli stessi byte
-uno alla volta al proprio istante di arrivo.
+The 303 tests were green because every fixture is delivered in one burst. The test that
+tells the two rules apart is
+`test_play_an_over_delivered_as_it_is_keyed_plays_like_a_buffered_one`: the same bytes,
+one at a time, at their own arrival instant.
 
-Verifica eseguita, e vale più dei test: un client che manipola in tempo reale contro il
-daemon vero. Prima del fix, il lampo di durata zero; dopo, punto 48, spazio 48, linea 144,
-coda del PTT 100, nessun fault. Lo script è machine-local, nello scratchpad di sessione,
-e non è stato committato: si riscrive in venti righe.
+Verification performed, and it counts more than the tests: a client keying in real time
+against the real daemon. Before the fix, the zero-duration flash; after, dot 48, space
+48, dash 144, PTT tail 100, no fault. The script is machine-local, in the session
+scratchpad, and wasn't committed: it's twenty lines to rewrite.
 
-## Decisioni, e di chi sono
+## Decisions, and whose they are
 
-- **Del maintainer**: non aprire una issue per il difetto del parser, perché sarebbe QRM
-  (quindi quella riga della Definition of done della #77 resta vuota per scelta, e la PR
-  lo dice); aprire invece una issue per la misura su Linux, che è la #76; le undici voci
-  della revisione del piano, secondo quanto ha dichiarato lui.
-- **Mie**: il pavimento del buffer espresso nei test come costante e non come numero, così
-  il prossimo cambio non passa inosservato; l'allineamento del nome dell'evento del motore
-  a ciò che adesso significa; il rifiuto, in review, di estrarre una FIFO generica —
-  **rovesciato dal piano**, ed è stato giusto rovesciarlo: da quando i due capi usano le
-  stesse regole di fine over, due copie che divergono diventano due comportamenti diversi
-  sullo stesso filo.
-- **Di un worker, approvata da me**: fra «i fronti non si scartano mai» e «il loop non si
-  ferma mai» vince il primo, perché quelle righe *sono* la misura del jitter; il costo è
-  reso visibile su una riga di stato invece che nascosto.
+- **From the maintainer**: not opening an issue for the parser defect, because it would
+  be QRM (so that line of #77's Definition of done stays empty by choice, and the PR
+  says so); opening an issue instead for the measurement on Linux, which is #76; the
+  eleven entries of the plan revision, according to what he stated.
+- **Mine**: the buffer floor expressed in the tests as a constant rather than a number,
+  so the next change doesn't go unnoticed; aligning the engine event's name to what it
+  now means; the refusal, in review, to extract a generic FIFO - **overturned by the
+  plan**, and it was right to overturn it: since both ends now use the same end-of-over
+  rules, two copies that diverge become two different behaviours on the same wire.
+- **From a worker, approved by me**: between "edges are never dropped" and "the loop
+  never stops", the first wins, because those lines *are* the jitter measurement; the
+  cost is made visible on a status line instead of hidden.
 
-## Cosa resta aperto
+## What's still open
 
-- **La decisione sulla rete di inattività (R6).** Misura il silenzio sul filo, non in
-  riproduzione: un client che accoda più del timeout si vede togliere la chiave a metà
-  trasmissione. La scatola non può farlo, un client che accoda sì. È una riga più un test,
-  ma cambia il significato di R6, quindi è policy di stazione. Chiesta al maintainer due
-  volte, senza risposta; sta scritta sotto «Not done here» nella #78.
-- **[#64](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/64) resta aperta** sulla
-  metà di banco. La procedura è in `host/cwnetd/README.md`, sezione «Banco con la
-  scatola». Un commento sulla issue registra che la metà host regge.
-- **[#76](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/76)**: il jitter è
-  misurato solo su macOS. La CI compila e testa `host/` anche su Ubuntu, che non è la
-  stessa cosa.
-- **[#65](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/65) resta `blocking`** per
-  la sola GUI del daemon, e nessuna delle due PR ne contiene una.
-- **[#68](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/68)**, il client host, è il
-  prossimo pezzo naturale: riusa `host/platform/` e `cwnet_rxfifo.h`, che sono stati
-  scritti pensando a lui.
+- **The decision on the idle-network policy (R6).** It measures silence on the wire, not
+  in playback: a client that queues more than the timeout gets the key taken away
+  mid-transmission. The box can't do that; a client that queues can. It's one line plus
+  a test, but it changes what R6 means, so it's station policy. Asked the maintainer
+  twice, no answer; it's written under "Not done here" in #78.
+- **[#64](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/64) stays open** on the
+  bench half. The procedure is in `host/cwnetd/README.md`, "Bench with the box (R18)"
+  section. A comment on the issue records that the host half holds up.
+- **[#76](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/76)**: jitter is measured
+  only on macOS. CI builds and tests `host/` on Ubuntu too, which isn't the same thing.
+- **[#65](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/65) stays `blocking`**
+  for the daemon's GUI alone, and neither PR contains one.
+- **[#68](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/68)**, the host client,
+  is the natural next piece: it reuses `host/platform/` and `cwnet_rxfifo.h`, which were
+  written with it in mind.
 
-## Stato locale e trappole
+## Local state and traps
 
-- Il worktree `station-daemon-startup-03165a` non tiene più niente di unico: il piano è
-  committato in `37b8364`, e i suoi `CONCEPTS.md` e `parameters.yaml` sono identici a
-  quelli su `main`. Prima di questa sessione era l'unica copia della revisione.
-- **Unity in questo repo non ha auto-discovery**: una funzione di test non dichiarata e
-  non passata a `RUN_TEST` in `test_host/test_main.c` compila e non gira mai. È successo
-  due volte in questa sessione. Quando più agenti lavorano in parallelo conviene che quel
-  file lo cabli una persona sola.
-- `SendMessage` è disabilitato in questa sessione: non si può rispondere alle altre
-  sessioni Claude, solo passare per il maintainer.
-- Il server MCP di GitHub non si connette (`Authorization header is badly formatted`); la
-  CLI `gh` funziona ed è quella che ho usato.
+- The `station-daemon-startup-03165a` worktree no longer holds anything unique: the plan
+  is committed in `37b8364`, and its `CONCEPTS.md` and `parameters.yaml` are identical to
+  the ones on `main`. Before this session it was the only copy of the revision.
+- **Unity in this repo has no auto-discovery**: a test function that's declared but not
+  passed to `RUN_TEST` in `test_host/test_main.c` compiles and never runs. It happened
+  twice in this session. When several agents work in parallel, that file is best wired
+  by one person.
+- `SendMessage` is disabled in this session: no replying to other Claude sessions, only
+  going through the maintainer.
+- The GitHub MCP server won't connect (`Authorization header is badly formatted`); the
+  `gh` CLI works and is what I used.
 
-## Verifica eseguita
+## Verification performed
 
-Suite host 312/312, liscia e con ASan/UBSan. `ctest` di `host/` verde in entrambe le
-varianti. CI verde su diciotto controlli per la #78, `firmware-build` compresa, che conta
-perché `cwnet_client.c` è cambiato. Più la prova dal vivo descritta sopra.
+Host suite 312/312, clean and with ASan/UBSan. `host/`'s `ctest` green in both variants.
+CI green on eighteen checks for #78, `firmware-build` included, which matters because
+`cwnet_client.c` changed. Plus the live proof described above.

@@ -1,11 +1,11 @@
 ---
 artifact_contract: "ce-handoff/v1"
 created_at: "2026-09-07T18:21:04Z"
-title: "La logica keyer vive in Esp32KeyerTest; #44 è quattro meccanismi e un corpus che non c'è"
-summary: "Sessione che ha tracciato il caso divergente di #44, fatto smentire metà della diagnosi da una review, cambiato la strategia (K8 = feeling, corpus black-box) e spostato la FSM in un repo suo consumato come submodule."
+title: "The keyer logic lives in Esp32KeyerTest; #44 is four mechanisms and a corpus that doesn't exist"
+summary: "Session that traced the divergent case of #44, had half the diagnosis disproven by a review, changed the strategy (K8 = feeling, black-box corpus) and moved the FSM into its own repo, consumed as a submodule."
 keywords: ["esp32keyertest", "submodule", "k8", "issue-44", "corpus", "black-box", "strategy", "feeling", "deploy-key", "axes"]
 cwd: "/Users/sf/Developer/RemoteCWKeyer-esp32/.claude/worktrees/k8-oracolo-handoff-resume-6f0342"
-resume_focus: "Sul repo Esp32KeyerTest: la ristrutturazione ad assi di issue #1 (senza cambio di comportamento) e, sul principale, la cattura delle leve (#54) che sblocca il corpus (#8)."
+resume_focus: "On the Esp32KeyerTest repo: the axis-based restructuring of issue #1 (no behaviour change) and, on the main repo, the lever capture (#54) that unblocks the corpus (#8)."
 repository: "iu3qez/RemoteCWKeyer-esp32"
 repo_root_sha: "f153e01ec202b2cae17102fa0f355d657bb641c7"
 branch: "main"
@@ -13,108 +13,113 @@ head: "3abb071"
 worktree_path: "/Users/sf/Developer/RemoteCWKeyer-esp32/.claude/worktrees/k8-oracolo-handoff-resume-6f0342"
 ---
 
-# La logica keyer vive in Esp32KeyerTest
+# The keyer logic lives in Esp32KeyerTest
 
-Sessione del 6-7 settembre 2026, ripresa da `2026-09-06_1245_k8-sampled-mode-diverge.md`.
-È partita per correggere #44 e ha finito per cambiare dove e come quel lavoro si fa.
-Chi riprende deve prima sapere questo: **la FSM iambic non è più in questo repo.**
+Session of September 6-7, 2026, resumed from `2026-09-06_1245_k8-sampled-mode-diverge.md`.
+It set out to fix #44 and ended up changing where and how that work gets done.
+Whoever picks this up needs to know this first: **the iambic FSM is no longer in this repo.**
 
-## Dove sono le cose adesso
+## Where things are now
 
-- **[iu3qez/Esp32KeyerTest](https://github.com/iu3qez/Esp32KeyerTest)** (privato; clone
-  locale `~/Developer/Esp32KeyerTest`, machine-local): la radice è il componente ESP-IDF.
-  Dentro: `include/`, `src/`, `test_host/` (26 test, `interface/sample.h` è una copia
-  congelata), `tools/k8/` (oracolo + banco come scheletro + `trace_decode.py`),
-  `STRATEGY.md` e `CLAUDE.md` propri, i tre template di issue. Otto issue aperte.
-- **Questo repo** lo consuma come submodule in `components/keyer_iambic`, pinnato a
-  `05d183f` (il repo keyer è avanti di tre commit, tutti documentali: il bump non è urgente).
-  PR **#53** mergiata in `8dea26f`, CI verde su entrambi i job. La suite host qui è 176 test;
-  176 + 26 = i 202 di prima.
-- **CI e submodule privato**: `GITHUB_TOKEN` non lo legge. I workflow fanno checkout
-  normale poi `insteadOf` verso ssh e `submodule update` con la deploy key in sola lettura
-  (id `162463041` sul repo keyer; secret `ESP32KEYERTEST_DEPLOY_KEY` qui). La chiave privata
-  non esiste su disco. **Non "semplificare" in `ssh-key:` di `actions/checkout`**: con una
-  chiave impostata non riscrive gli URL dei submodule (`git-auth-helper.ts:77`, letto).
+- **[iu3qez/Esp32KeyerTest](https://github.com/iu3qez/Esp32KeyerTest)** (private; local
+  clone `~/Developer/Esp32KeyerTest`, machine-local): the root is the ESP-IDF component.
+  Inside: `include/`, `src/`, `test_host/` (26 tests, `interface/sample.h` is a frozen
+  copy), `tools/k8/` (oracle + bench as a skeleton + `trace_decode.py`),
+  its own `STRATEGY.md` and `CLAUDE.md`, the three issue templates. Eight open issues.
+- **This repo** consumes it as a submodule in `components/keyer_iambic`, pinned to
+  `05d183f` (the keyer repo is three commits ahead, all documentation: the bump isn't
+  urgent). PR **#53** merged in `8dea26f`, CI green on both jobs. The host suite here is
+  176 tests; 176 + 26 = the 202 from before.
+- **CI and the private submodule**: `GITHUB_TOKEN` doesn't grant access to it. The
+  workflows do a normal checkout then `insteadOf` towards ssh and `submodule update` with
+  a read-only deploy key (id `162463041` on the keyer repo; secret
+  `ESP32KEYERTEST_DEPLOY_KEY` here). The private key doesn't exist on disk. **Don't
+  "simplify" into `ssh-key:` of `actions/checkout`**: with a key set it doesn't rewrite
+  the submodule URLs (`git-auth-helper.ts:77`, read).
 
-## Le decisioni del maintainer, in ordine
+## The maintainer's decisions, in order
 
-Tutte del maintainer, esplicite, in chat; scritte in `STRATEGY.md` di qua (commit `b883403`)
-e in `Esp32KeyerTest/STRATEGY.md`:
+All from the maintainer, explicit, in chat; written into `STRATEGY.md` here (commit
+`b883403`) and into `Esp32KeyerTest/STRATEGY.md`:
 
-1. **Il K8 è riferimento del feeling, non dell'implementazione.** Feeling = input umano →
-   output K8, riproducibile, **fino a 40 WPM**. I limiti di un PIC12 (finestra di polling da
-   14 µs) non sono i nostri. Sopra 40 WPM nessun riferimento, nessuna metrica.
-2. **Il sorgente nomina, la black box giudica.** Il sorgente K8 sceglie gli assi di
-   configurazione e controlla la copertura; l'atteso viene solo dall'oracolo eseguito su un
-   **corpus di manipolazioni reali** (errori inclusi); una divergenza conta solo se stabile
-   sotto la fase. Tolleranza nel comparatore, mai nel modello.
-3. **Logica universale per assi**: un comportamento entra come valore su un asse, mai come
-   `if` su un modello di keyer; il K8 è un preset. Un asse si apre quando un riferimento reale
-   sta altrove; valori non provati non si popolano.
-4. Due track nel repo keyer: **Banco** (vince) e **FSM ad assi**.
-5. Senza corpus si **ristruttura** (comportamento invariato, test verdi) ma non si cambia il
-   comportamento; la **copertura è un cancello**; la **cattura la fa il principale**.
-6. Repo nuovo privato, consumato come submodule (non branch, non copia vendorizzata).
+1. **The K8 is the reference for feeling, not for the implementation.** Feeling = human
+   input → K8 output, reproducible, **up to 40 WPM**. The limits of a PIC12 (a 14 µs
+   polling window) aren't ours. Above 40 WPM there's no reference, no metric.
+2. **The source names, the black box judges.** The K8 source picks the configuration
+   axes and controls coverage; the expected value comes only from the oracle run on a
+   **corpus of real keying** (errors included); a divergence counts only if it's stable
+   across phase. Tolerance lives in the comparator, never in the model.
+3. **Universal logic by axes**: a behaviour enters as a value on an axis, never as an
+   `if` on a keyer model; the K8 is a preset. An axis opens when a real reference sits
+   elsewhere; unproven values don't get populated.
+4. Two tracks in the keyer repo: **Bench** (wins) and **Axis-based FSM**.
+5. Without a corpus you **restructure** (behaviour unchanged, tests green) but don't
+   change behaviour; **coverage is a gate**; **the main repo does the capture**.
+6. New private repo, consumed as a submodule (not a branch, not a vendored copy).
 
-Scelte **mie**, non del maintainer: radice del repo = componente; suite spezzata 176/26;
-`FINDINGS.md` non migrato (numeri superati); deploy key invece di PAT; #32 lasciata qui e
-chiusa dal sweep; le formulazioni dei corpi delle issue.
+**My** choices, not the maintainer's: repo root = component; suite split 176/26;
+`FINDINGS.md` not migrated (numbers superseded); deploy key instead of PAT; #32 left
+here and closed by the sweep; the wording of the issue bodies.
 
-## Cosa ha stabilito il trace, e cosa ha smentito la review
+## What the trace established, and what the review disproved
 
-Tutto in `Esp32KeyerTest/tools/k8/bench/README.md` e nel corpo di **Esp32KeyerTest#1**
-(ex #44, riscritta). In breve: quattro meccanismi al confine di elemento (riarmo dello stesso
-tipo dopo `BCF` a `morse8.asm:374` via `AUTOSP :536`; tiebreak `INLAST` in `CHK_SINGLE`;
-`squeeze_seen` armato a metà elemento con cancellazione irraggiungibile in SAMPLED; ordine
-delle decisioni con `TOGGLE` prima della memoria). **Solo il primo ha prova stabile alla
-fase** (8 casi). I «124 su 436» sono ritirati: l'oracolo gira solo in Mode B e lo sweep
-confrontava anche il nostro Mode A; 32 stimoli malformati; 26 delle 50 divergenze reali si
-spostano con 4,7 µs. Il caso rappresentativo dell'handoff precedente sta 2 cicli dentro una
-finestra da 56.
+Everything is in `Esp32KeyerTest/tools/k8/bench/README.md` and in the body of
+**Esp32KeyerTest#1** (formerly #44, rewritten). In short: four mechanisms at the element
+boundary (same-type re-arm after `BCF` at `morse8.asm:374` via `AUTOSP :536`; `INLAST`
+tiebreak in `CHK_SINGLE`; `squeeze_seen` armed at mid-element with unreachable
+cancellation in SAMPLED; decision order with `TOGGLE` before memory). **Only the first
+has stable proof across phase** (8 cases). The "124 out of 436" is withdrawn: the oracle
+only runs in Mode B and the sweep was also comparing our Mode A; 32 malformed stimuli;
+26 of the 50 real divergences shift with 4.7 µs. The representative case from the
+previous handoff sits 2 cycles inside a window of 56.
 
-La review adversariale (agente su `opus`, mandato di falsificare) è il pattern che ha
-funzionato: due affermazioni mie su sei smentite. Ripetere.
+The adversarial review (agent on `opus`, mandated to falsify) is the pattern that
+worked: two of my six claims were disproven. Repeat it.
 
-## Stato del tracker
+## Tracker status
 
-Principale: #32 **chiusa** su evidenza (sweep del 2026-09-07); #26 `narrowed` — il
-maintainer ha ristretto i LED a un'indicazione binaria in un commento, il corpo non è
-aggiornato; #54 filata (cattura). Le altre aperte sono CWNet/USB/console, invariate.
+Main repo: #32 **closed** on evidence (sweep of 2026-09-07); #26 `narrowed` - the
+maintainer narrowed the LEDs to a binary indication in a comment, the body isn't
+updated; #54 queued (capture). The other open ones are CWNet/USB/console, unchanged.
 
-Esp32KeyerTest: #1 (ex #44), #2 (ex #39), #3/#4 parcheggiate (ex #37/#35), #5 modello host
-come cache di gpsim, #6 oracolo in Mode A, #7 patch `SLEEP` da verificare sul sorgente
-(**non** verificata da me: la review dice che il wake da `SLEEP` passa da `CLRF PROCLAT`
-`:774`), #8 corpus + comparatore. Catena: **#54 → #8 → #1**. Nessuna `blocking`.
+Esp32KeyerTest: #1 (formerly #44), #2 (formerly #39), #3/#4 parked (formerly #37/#35), #5
+host model as gpsim cache, #6 oracle in Mode A, #7 `SLEEP` patch to verify against the
+source (**not** verified by me: the review says the wake from `SLEEP` goes through
+`CLRF PROCLAT` `:774`), #8 corpus + comparator. Chain: **#54 → #8 → #1**. Nothing
+`blocking`.
 
-## Debito leggero, in `.claude/code-quality.md`
+## Light debt, in `.claude/code-quality.md`
 
-Blocchi `treecode` di `test_host/CLAUDE.md` e `keyer_core/CLAUDE.md` da risincronizzare con
-`map-tree`; ramo remoto `k8-differential-bench` da cancellare quando non serve. Il principio
-di universalità non è in `ARCHITECTURE.md` di qua: sta in `Esp32KeyerTest/CLAUDE.md` e
-`STRATEGY.md`, che è dove la FSM vive ora — se serva anche qui è del maintainer.
+`treecode` blocks in `test_host/CLAUDE.md` and `keyer_core/CLAUDE.md` need resyncing
+with `map-tree`; remote branch `k8-differential-bench` to delete once it's not needed.
+The universality principle isn't in `ARCHITECTURE.md` here: it lives in
+`Esp32KeyerTest/CLAUDE.md` and `STRATEGY.md`, which is where the FSM lives now - whether
+it's needed here too is the maintainer's call.
 
-## Stato machine-local, fragile
+## Machine-local state, fragile
 
-- `/Users/sf/Developer/RemoteCWKeyer-esp32/tmp/k8/`: `morse8.asm` originale (sha256
-  `432df077…`, non toccare), copia patchata, `morse8_tb40_nosleep.hex` (`e1764e09…`),
-  log gpsim. Il hex si riassembla dal README: verificato identico.
-- Rami locali `wip-k8-decision-order-attempt` (tentativo abbandonato, diagnosi superata ma
-  da tenere) e `k8-differential-bench`.
-- Lo scratchpad di sessione evapora: quello che serviva (decoder, script gpsim) è nel repo keyer.
+- `/Users/sf/Developer/RemoteCWKeyer-esp32/tmp/k8/`: original `morse8.asm` (sha256
+  `432df077…`, don't touch), patched copy, `morse8_tb40_nosleep.hex` (`e1764e09…`),
+  gpsim log. The hex reassembles from the README: verified identical.
+- Local branches `wip-k8-decision-order-attempt` (abandoned attempt, diagnosis
+  superseded but worth keeping) and `k8-differential-bench`.
+- The session scratchpad evaporates: what mattered (decoder, gpsim script) is in the
+  keyer repo.
 
-## Verifica fatta
+## Verification done
 
-CI verde su `8dea26f` (host-tests plain e ASan/UBSan, firmware-build esp32s3) e sul repo
-keyer al primo push. Localmente 176/176 + 26/26 in entrambe le varianti, `sample.h`
-identica. `firmware-build` **non** eseguibile su questa macchina: niente ESP-IDF.
+CI green on `8dea26f` (host-tests plain and ASan/UBSan, firmware-build esp32s3) and on
+the keyer repo at the first push. Locally 176/176 + 26/26 in both variants, `sample.h`
+identical. `firmware-build` **not** runnable on this machine: no ESP-IDF.
 
-## Continuazione
+## Continuation
 
-Una sola strada, su due repo:
+Only one path forward, across two repos:
 
-- **Esp32KeyerTest #1, prima metà**: ristrutturare `iambic.c` ad assi senza cambiare
-  comportamento, suite verde — l'unico lavoro sulla FSM autorizzato senza corpus. `ce-plan`
-  di là, con la review adversariale prima di scrivere.
-- **Principale #54**: la cattura sulla scatola (serve hardware). Sblocca #8, che sblocca la
-  seconda metà di #1.
-- Indipendenti e piccole: #6 (Mode A nell'oracolo), #7 (verifica della patch `SLEEP`), #5.
+- **Esp32KeyerTest #1, first half**: restructure `iambic.c` by axes without changing
+  behaviour, suite green - the only FSM work authorised without a corpus. `ce-plan`
+  over there, with the adversarial review before writing.
+- **Main repo #54**: the capture on the box (needs hardware). Unblocks #8, which
+  unblocks the second half of #1.
+- Independent and small: #6 (Mode A in the oracle), #7 (verification of the `SLEEP`
+  patch), #5.

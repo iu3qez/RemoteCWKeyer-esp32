@@ -2,16 +2,16 @@
 
 ## Overview
 
-WebUI completa per il CW keyer ESP32, con parità funzionale rispetto al riferimento in `tmp/webui/`.
+Complete WebUI for the ESP32 CW keyer, with feature parity relative to the reference in `tmp/webui/`.
 
 **Stack:**
-- Frontend: Svelte 5, compilato e embedded nel firmware
-- Backend: `esp_http_server` (thread pool default), API REST + SSE
-- Comunicazione: HTTP polling per config/status, SSE per timeline/decoder
+- Frontend: Svelte 5, compiled and embedded in the firmware
+- Backend: `esp_http_server` (default thread pool), REST API + SSE
+- Communication: HTTP polling for config/status, SSE for timeline/decoder
 
-## Architettura
+## Architecture
 
-### Componente: `components/keyer_webui/`
+### Component: `components/keyer_webui/`
 
 ```
 keyer_webui/
@@ -34,7 +34,7 @@ keyer_webui/
     └── embed_assets.py         # Build frontend → C arrays
 ```
 
-### Dipendenze
+### Dependencies
 
 ```
 keyer_webui
@@ -42,64 +42,64 @@ keyer_webui
     ├── keyer_core        (stream, consumer for timeline)
     ├── keyer_decoder     (status, enable/disable)
     ├── keyer_text        (send, memories, abort, status)
-    └── keyer_logging     (opzionale, per debug)
+    └── keyer_logging     (optional, for debugging)
 ```
 
 ## API Endpoints
 
 ### Config API
 
-| Method | Endpoint | Descrizione |
+| Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/config/schema` | Schema JSON parametri (generato a build time) |
-| GET | `/api/config` | Valori attuali tutti i parametri |
-| POST | `/api/parameter` | Modifica singolo parametro `{param, value}` |
-| POST | `/api/config/save` | Salva in NVS (opzionale `?reboot=true`) |
+| GET | `/api/config/schema` | JSON parameter schema (generated at build time) |
+| GET | `/api/config` | Current values of all parameters |
+| POST | `/api/parameter` | Modify a single parameter `{param, value}` |
+| POST | `/api/config/save` | Save to NVS (optional `?reboot=true`) |
 
 ### Keyer API
 
-| Method | Endpoint | Descrizione |
+| Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/keyer/status` | Stato: idle/sending, progress, wpm |
-| POST | `/api/keyer/send` | Invia testo `{text, wpm}` |
-| POST | `/api/keyer/message` | Invia memory slot `{message: 1-8}` |
-| POST | `/api/keyer/abort` | Interrompi trasmissione |
+| GET | `/api/keyer/status` | Status: idle/sending, progress, wpm |
+| POST | `/api/keyer/send` | Send text `{text, wpm}` |
+| POST | `/api/keyer/message` | Send memory slot `{message: 1-8}` |
+| POST | `/api/keyer/abort` | Abort transmission |
 
 ### System API
 
-| Method | Endpoint | Descrizione |
+| Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/status` | Stato WiFi: mode, IP, ready |
+| GET | `/api/status` | WiFi status: mode, IP, ready |
 | GET | `/api/system/stats` | Uptime, heap, task list |
-| POST | `/api/system/reboot` | Riavvia dispositivo |
+| POST | `/api/system/reboot` | Reboot device |
 
 ### Decoder API
 
-| Method | Endpoint | Descrizione |
+| Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/decoder/status` | Stato: enabled, wpm, text buffer |
-| POST | `/api/decoder/enable` | Abilita/disabilita `{enabled: bool}` |
-| GET | `/api/decoder/stream` | **SSE** - stream caratteri decodificati |
+| GET | `/api/decoder/status` | Status: enabled, wpm, text buffer |
+| POST | `/api/decoder/enable` | Enable/disable `{enabled: bool}` |
+| GET | `/api/decoder/stream` | **SSE** - decoded character stream |
 
 ### Timeline API
 
-| Method | Endpoint | Descrizione |
+| Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/timeline/config` | WPM corrente e sorgente |
-| GET | `/api/timeline/stream` | **SSE** - stream eventi keying real-time |
+| GET | `/api/timeline/config` | Current WPM and source |
+| GET | `/api/timeline/stream` | **SSE** - real-time keying event stream |
 
 ### Asset Serving
 
-| Method | Endpoint | Descrizione |
+| Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/` | `index.html` (SPA entry point) |
-| GET | `/*` | Asset statici (JS, CSS) con Content-Type corretto |
+| GET | `/*` | Static assets (JS, CSS) with correct Content-Type |
 
 ## Server-Sent Events (SSE)
 
-### Protocollo
+### Protocol
 
-Formato standard HTTP con `Content-Type: text/event-stream`:
+Standard HTTP format with `Content-Type: text/event-stream`:
 
 ```
 event: <event-type>
@@ -107,7 +107,7 @@ data: <json-payload>
 
 ```
 
-(Doppio newline separa gli eventi)
+(Double newline separates events)
 
 ### Timeline SSE (`/api/timeline/stream`)
 
@@ -125,14 +125,14 @@ event: gap
 data: {"ts":1234567890,"type":1}
 ```
 
-Dove:
-- `ts`: timestamp in microsecondi
+Where:
+- `ts`: timestamp in microseconds
 - `paddle`: 0=dit, 1=dah
 - `element`: 0=dit, 1=dah
 - `state`: 1=down, 0=up
 - `type`: 0=element, 1=char, 2=word
 
-**Heartbeat** (ogni 5s se nessun evento):
+**Heartbeat** (every 5s if no event):
 ```
 : keepalive
 
