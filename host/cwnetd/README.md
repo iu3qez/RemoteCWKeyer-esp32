@@ -263,6 +263,18 @@ does not change state is not an edge: it does not generate a line
 (`key_output.h`). None of these lines is ever dropped - that's the entire
 reason they have a descriptor of their own.
 
+## The station panel
+
+To see the state in a browser instead of following the lines as they
+scroll: [host/panel/](../panel/README.md). It reads these lines from a file,
+the journal or a pipe, and never talks to the daemon. Run the daemon with
+its stdout appended to a file (`>> cwnetd.log`) and `--edges` to another
+file, and point the panel at the first.
+
+Whoever reads stdout by eye sees the snapshot lines every 5 s among the
+events; `--snapshot-ms` spaces them out, at the price of a page that takes
+longer to correct itself after a lost line.
+
 ## Loop without the box
 
 Quick test, no hardware: a Python client in place of the box.

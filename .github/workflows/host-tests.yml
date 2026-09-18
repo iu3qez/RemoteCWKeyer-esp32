@@ -131,3 +131,60 @@ jobs:
       - name: Test
         working-directory: host
         run: ctest --test-dir build --output-on-failure
+
+  panel-tests:
+    # The station panel (host/panel/) is Python, standard library only, and
+    # its closing test (#86) runs against the daemon for real, so the job
+    # builds host/ and runs the panel's suite with CWNETD pointing at it.
+    # Like host-build it needs neither the keyer_iambic submodule nor its
+    # deploy key. 3.9 is the minimum the panel promises, and only Ubuntu
+    # has a build of it; the current Python runs on both systems.
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: "3.9"
+          - os: ubuntu-latest
+            python: "3.x"
+          - os: macos-latest
+            python: "3.x"
+    name: panel-tests (${{ matrix.python }}, ${{ matrix.os }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install toolchain (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends cmake gcc
+
+      - name: Build cwnetd
+        run: |
+          cmake -S host -B host/build
+          cmake --build host/build
+
+      # PANEL_REQUIRE_LIVE turns a missing CWNETD into a failure, and the
+      # check after it fails the job if nothing ran or anything was skipped:
+      # a live test that quietly stops running proves nothing.
+      - name: Test
+        shell: bash
+        env:
+          CWNETD: host/build/cwnetd
+          PANEL_REQUIRE_LIVE: "1"
+        run: |
+          python --version
+          python -W error -m unittest discover -s host/panel/tests -t host/panel -v 2>&1 | tee panel-tests.log
+
+      - name: No test skipped, some test run
+        shell: bash
+        run: |
+          grep -Eq '^Ran [1-9][0-9]* tests? in ' panel-tests.log || { echo "no panel test ran"; exit 1; }
+          # unittest's own markers, not the word: two test names say "skipped".
+          if grep -Eq '\.\.\. skipped |skipped=' panel-tests.log; then echo "a panel test was skipped"; exit 1; fi
