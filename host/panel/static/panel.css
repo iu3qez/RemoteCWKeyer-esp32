@@ -1,0 +1,215 @@
+:root {
+  --bg: #f6f6f4;
+  --fg: #1d1d1b;
+  --muted: #6b6b66;
+  --card: #ffffff;
+  --line: #d9d9d4;
+  --on: #0a7a3a;
+  --danger-bg: #fbe3e1;
+  --danger-fg: #8a1c12;
+  --warning-bg: #fdf1d6;
+  --warning-fg: #6b4a00;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615;
+    --fg: #ececea;
+    --muted: #9a9a94;
+    --card: #20201e;
+    --line: #3a3a37;
+    --on: #3ccf7a;
+    --danger-bg: #4a1a15;
+    --danger-fg: #ffcfc9;
+    --warning-bg: #40330f;
+    --warning-fg: #ffe4a3;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0 auto;
+  max-width: 64rem;
+  padding: 1rem;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* A dead panel greys out everything but the banner that says so. */
+body.unreachable main,
+body.unreachable header {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+h2 {
+  font-size: 1.1rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.muted,
+.liveness,
+.hint,
+.label {
+  color: var(--muted);
+}
+
+.liveness {
+  margin: 0;
+}
+
+.banner {
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.4rem;
+}
+
+.banner.danger {
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+  font-weight: 600;
+}
+
+.banner.warning {
+  background: var(--warning-bg);
+  color: var(--warning-fg);
+  font-size: 0.9rem;
+}
+
+.now {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.card p {
+  margin: 0;
+}
+
+.big {
+  font-size: 2.2rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  margin: 0.3rem 0 !important;
+}
+
+#ptt.on {
+  color: var(--on);
+}
+
+/* Last known, not certain: still readable, visibly not current. */
+.big.stale {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.hint {
+  font-size: 0.85rem;
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  background: var(--card);
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+td.call {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+td.num {
+  font-variant-numeric: tabular-nums;
+}
+
+tr.unfit td {
+  color: var(--danger-fg);
+}
+
+.settings {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.2rem 1rem;
+  margin: 0;
+}
+
+.settings dt {
+  color: var(--muted);
+}
+
+.settings dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.events {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.event {
+  display: grid;
+  grid-template-columns: 5.5rem 9rem 1fr;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.event .text {
+  font-family: ui-monospace, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+.event.fault .kind,
+.event.lost_events .kind,
+.event.dropped_lines .kind,
+.event.unreadable .kind {
+  color: var(--danger-fg);
+  font-weight: 600;
+}
+
+@media (max-width: 36rem) {
+  .event {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
