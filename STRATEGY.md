@@ -7,160 +7,159 @@ last_updated: 2026-09-08
 
 ## Purpose
 
-L'operatore vuole manipolare un rig remoto con un paddle vero. Oggi l'unica
-catena che parla CWNet (il protocollo del Remote CW Keyer di DL4YHF) è un PC
-Windows per lato, e chi vuole rifarne un pezzo non ha un riferimento contro
-cui dimostrare che è compatibile: né per il protocollo (sorgente non
-compilabile, nessuna spec), né per il timing del keyer. Il programma DL4YHF
-ha uno scopo diverso dal nostro e non si può piegare: Borland, Windows only,
-codice della GUI non disponibile, il carrozzone CI-V al seguito, scelte di
-stazione opinabili (PTT tenuto 500 ms). Il progetto si è arenato due volte
-per lo stesso motivo: non è mai stato impostato un metodo di test valido e
-veloce.
+The operator wants to key a remote rig with a real paddle. Today the only
+chain that speaks CWNet (the protocol of DL4YHF's Remote CW Keyer) is one
+Windows PC per side, and whoever wants to rebuild a piece of it has no
+reference to prove compatibility against: not for the protocol (source that
+does not compile, no spec), not for the keyer timing. The DL4YHF program
+has a different purpose from ours and cannot be bent: Borland, Windows only,
+GUI code not available, the whole CI-V baggage in tow, debatable station
+choices (PTT held 500 ms). The project has stalled twice for the same
+reason: a valid and fast test method was never set up.
 
 ## Positioning
 
-Ogni comportamento che conta ha un riferimento reale e viene dimostrato
-contro quello, non reso simile: il filo CWNet contro client e server DL4YHF
-originali, il keyer contro il K1EL K8 eseguito: input umano → output K8,
-riproducibile, fino a 40 WPM. Il K8 è riferimento del feeling, non
-dell'implementazione: i limiti di un PIC12 del 1998 non sono i nostri.
-Il programma DL4YHF è riferimento del protocollo, non del prodotto: il
-prodotto sono i due capi nostri, il server e un client che è la scatola o un
-programma su PC, e le scelte di stazione (PTT, cessione della chiave, buffer
-di riproduzione) sono nostre, prese una volta sola perché possediamo i due
-capi. CWNet trasporta anche audio, CI-V e
-spettro: noi lo usiamo per la manipolazione e per ciò che le serve; il resto
-della stazione non è impegnato a passare da lì.
-TX e RX crescono insieme perché la catena TX→RX in loop, sullo stesso
-hardware o su due, è il banco di prova: niente è fatto finché non passa lì.
+Every behaviour that matters has a real reference and is proven against it,
+not made similar: the CWNet wire against the original DL4YHF client and
+server, the keyer against the executed K1EL K8: human input → K8 output,
+reproducible, up to 40 WPM. The K8 is the reference for the feel, not for
+the implementation: the limits of a 1998 PIC12 are not ours.
+The DL4YHF program is the reference for the protocol, not for the product:
+the product is our two ends, the server and a client that is the box or a
+program on a PC, and the station choices (PTT, key handover, playback
+buffer) are ours, made once because we own both ends. CWNet also carries
+audio, CI-V and
+spectrum: we use it for keying and for what keying needs; the rest of the
+station is not committed to going through it.
+TX and RX grow together because the TX→RX chain in loop, on the same
+hardware or on two, is the test bench: nothing is done until it passes there.
 
 ## Users
 
-**Primary:** l'OM del team contest IO4A che partecipa da remoto col suo
-paddle - assume il box per sedersi alla postazione CW del team senza cablare
-una RS-232, senza configurare VPN e redirect audio, senza un PC Windows in
-mezzo. Lato stazione: Orion MkII + Thetis, e il server nostro su un PC Linux
-o Mac al posto del programma DL4YHF.
+**Primary:** the IO4A contest team OM who takes part remotely with their own
+paddle - hires the box to sit at the team's CW operating position without
+wiring an RS-232, without configuring VPN and audio redirect, without a
+Windows PC in between. Station side: Orion MkII + Thetis, and our server on
+a Linux or Mac PC in place of the DL4YHF program.
 
-**Primary, client su PC:** l'OM che manipola da un PC Windows con il paddle
-sulle linee di controllo di una seriale, senza scatola. Stesso core del
-client, stessa FSM del keyer.
+**Primary, client on PC:** the OM who keys from a Windows PC with the paddle
+on the control lines of a serial port, without the box. Same client core,
+same keyer FSM.
 
-**Secondary:** lo sviluppatore/tester - l'unico utente finché il riferimento
-non è dimostrato. Il suo strumento è la console seriale, non la WebUI.
+**Secondary:** the developer/tester - the only user until the reference is
+proven. Their tool is the serial console, not the WebUI.
 
 ## Boundaries
 
-- WireGuard: messa perché "c'è e costa poco", mai testata, in contest serve
-  comunque la VPN sul PC. Si abbandona se fa male.
-- Preset diversi dal K8 (Curtis A/B, Winkeyer, Ultimatic): la logica resta
-  configurabile per assi e non si lega al K8, ma un valore che nessun
-  riferimento eseguibile prova non si popola. Best effort, nessun investimento.
-- Sopra i 40 WPM il K8 non è più riferimento: le finestre configurabili sono
-  best effort, senza metrica.
-- Niente clone di DL4YHF: compatibile sul filo, non replica di tutto. Vale
-  di più ora che i due capi sono nostri anche su PC: CW-only, niente CI-V,
-  niente audio dentro CWNet.
-- Client su Mac: best effort. Il client host è portabile, Windows primo
-  target, Linux dopo; il paddle entra dalle linee di controllo di una seriale
-  USB e con il driver di sistema del Mac il latency timer resta a 16 ms.
-  Nessuna metrica, nessun investimento.
-- Feeling del K8 sul client PC: senza metrica finché il jitter del tick da
-  1 ms su Windows non è misurato. La metrica resta della scatola.
-- Audio, CI-V e spettro dentro CWNet: nessun impegno. Il server nostro
-  implementa i comandi che la manipolazione richiede; il resto della stazione
-  passa da dove passa oggi.
-- Niente scatola come server: per IO4A il server è un daemon su PC di
-  stazione. Una scatola con doppia personalità client/server è un repurpose
-  utile, anche per i test, ma non ora.
-- Niente OTA ora: aggiornamento via flasher web (repo separato) + USB. Se
-  arriva dopo, meglio.
-- WebUI: nessun investimento finché banco di prova, CWNet e K8 non tengono.
-- Il log seriale su ESP32 blocca il real time: nessun log bloccante sul
-  path RT, mai.
+- WireGuard: added because "it is there and costs little", never tested; in
+  a contest the VPN on the PC is needed anyway. Dropped if it hurts.
+- Presets other than the K8 (Curtis A/B, Winkeyer, Ultimatic): the logic
+  stays configurable along axes and is not tied to the K8, but a value that
+  no executable reference proves is not populated. Best effort, no investment.
+- Above 40 WPM the K8 is no longer the reference: the configurable windows
+  are best effort, without a metric.
+- No DL4YHF clone: compatible on the wire, not a replica of everything. This
+  holds even more now that both ends are ours on the PC too: CW-only, no
+  CI-V, no audio inside CWNet.
+- Client on Mac: best effort. The host client is portable, Windows first
+  target, Linux after; the paddle comes in through the control lines of a
+  USB serial port, and with the Mac's system driver the latency timer stays
+  at 16 ms. No metric, no investment.
+- K8 feel on the PC client: no metric until the jitter of the 1 ms tick on
+  Windows is measured. The metric stays with the box.
+- Audio, CI-V and spectrum inside CWNet: no commitment. Our server
+  implements the commands that keying requires; the rest of the station
+  goes through wherever it goes today.
+- No box as server: for IO4A the server is a daemon on a station PC. A box
+  with a dual client/server personality is a useful repurpose, for tests
+  too, but not now.
+- No OTA now: update via web flasher (separate repo) + USB. If it comes
+  later, so much the better.
+- WebUI: no investment until the test bench, CWNet and K8 hold.
+- The serial log on ESP32 blocks real time: no blocking log on the RT path,
+  ever.
 
-Un boundary vieta di **costruire**, non di **ricordare**. Aprire una issue su
-qualcosa che sta fuori dai confini non è investimento: è il modo di non
-riscoprirlo daccapo fra sei mesi, e di sapere cosa aspetta quando il confine
-si sposterà. Quello che il boundary esclude è la schedulazione - il lavoro
-parcheggiato non passa davanti a banco di prova, CWNet e K8.
+A boundary forbids **building**, not **remembering**. Opening an issue about
+something outside the boundaries is not investment: it is how we avoid
+rediscovering it from scratch in six months, and how we know what is
+waiting when the boundary moves. What the boundary excludes is scheduling -
+parked work does not jump ahead of the test bench, CWNet and K8.
 
-Il tracker registra anche ciò che non faremo adesso. Un backlog che contiene
-solo il lavoro autorizzato non è disciplina: è amnesia.
+The tracker also records what we will not do now. A backlog that holds only
+authorised work is not discipline: it is amnesia.
 
-_Resist a change when:_ l'unico argomento è "c'è e costa poco aggiungere",
-non può essere dimostrata contro il riferimento (client DL4YHF, K8
-eseguito), o riproduce una scelta di stazione del programma DL4YHF solo
-perché il riferimento la fa.
+_Resist a change when:_ the only argument is "it is there and costs little
+to add", it cannot be proven against the reference (DL4YHF client, executed
+K8), or it reproduces a station choice of the DL4YHF program only because
+the reference makes it.
 
 ## Key metrics
 
-- **Conformità CWNet** - il test loop contro client/server ufficiali DL4YHF
-  passa o no, in entrambi i ruoli: il client della scatola contro il server
-  DL4YHF, il daemon nostro contro il client DL4YHF. Vive in `test_host` più
-  un banco con il programma Windows. È stata la parte più dolorosa: metrica
-  numero uno.
-- **Feeling del K8** - su un corpus di manipolazioni reali fino a 40 WPM,
-  la sequenza di elementi nostra coincide con quella del K8 eseguito, stabile
-  sotto la fase dello stimolo: passa o no. Vive nel repo della logica keyer,
-  come suo gate di CI; qui si legge quale commit pinnato lo ha passato.
-  Il tempo resta tollerante come scritto in
-  [docs/k8-timing-tolerance.md](docs/k8-timing-tolerance.md): un tick,
-  1000 µs, a velocità allineate al tick.
-- **Tetto RT** - worst-case in µs di un giro del loop su Core 0
-  (GPIO → iambic → stream → audio); limite 100 µs da ARCHITECTURE.md.
-  Gate non ancora dimostrato: oggi non è strumentato.
+- **CWNet conformance** - the test loop against the official DL4YHF
+  client/server passes or not, in both roles: the box's client against the
+  DL4YHF server, our daemon against the DL4YHF client. It lives in
+  `test_host` plus a bench with the Windows program. It has been the most
+  painful part: metric number one.
+- **K8 feel** - on a corpus of real keying up to 40 WPM, our element
+  sequence matches that of the executed K8, stable under the phase of the
+  stimulus: passes or not. It lives in the keyer-logic repo, as its CI gate;
+  here we read which pinned commit passed it.
+  Timing stays tolerant as written in
+  [docs/k8-timing-tolerance.md](docs/k8-timing-tolerance.md): one tick,
+  1000 µs, at speeds aligned to the tick.
+- **RT ceiling** - worst case in µs of one loop iteration on Core 0
+  (GPIO → iambic → stream → audio); limit 100 µs from ARCHITECTURE.md.
+  Gate not yet proven: today it is not instrumented.
 
 ## Tracks
 
-### Banco di prova
+### Test bench
 
-Il metodo di test veloce che non c'è mai stato: loop contro client/server
-DL4YHF, cattura delle leve dalla scatola per il corpus del keyer,
-strumentazione RT, console seriale come strumento di lavoro (log, filtri,
-WiFi, comandi di test, non bloccante).
+The fast test method that never existed: loop against the DL4YHF
+client/server, capture of the paddle levers from the box for the keyer
+corpus, RT instrumentation, serial console as a working tool (log, filters,
+WiFi, test commands, non-blocking).
 
-_Why it serves the approach:_ senza questo "esatto" non è dimostrabile, e
-il progetto si è già arenato due volte per la sua assenza.
+_Why it serves the approach:_ without this, "exact" cannot be proven, and
+the project has already stalled twice for lack of it.
 
-### CWNet, i due capi
+### CWNet, both ends
 
-Client sulla scatola: TX, poi RX, contro il server DL4YHF. Server nostro
-come daemon su PC di stazione, Linux o Mac, contro il client DL4YHF, con le
-policy di stazione decise da noi. Il daemon è in C, in questo repo, sullo
-stesso codec di `keyer_cwnet` compilato per host: un solo filo, un solo
-test. L'echo server del banco resta il capo RX del loop di test ed è il
-seme del daemon. Il client esiste anche come programma host portabile,
-Windows primo target, con il paddle sulle linee di controllo di una seriale:
-stesso core di `keyer_cwnet` e stessa FSM del submodule; `cwnet_socket` è
-l'unico file di piattaforma. Il loop client-daemon sulla stessa macchina è
-il banco senza scatola.
+Client on the box: TX, then RX, against the DL4YHF server. Our server as a
+daemon on a station PC, Linux or Mac, against the DL4YHF client, with
+station policies decided by us. The daemon is in C, in this repo, on the
+same `keyer_cwnet` codec compiled for host: one wire, one test. The bench's
+echo server stays the RX end of the test loop and is the seed of the
+daemon. The client also exists as a portable host program, Windows first
+target, with the paddle on the control lines of a serial port: same
+`keyer_cwnet` core and same submodule FSM; `cwnet_socket` is the only
+platform file. The client-daemon loop on the same machine is the bench
+without the box.
 
-_Why it serves the approach:_ il filo è del golden standard, le policy di
-stazione sono nostre: possedere i due capi è il modo di deciderle una volta
-sola e di dimostrarle in loop.
+_Why it serves the approach:_ the wire belongs to the golden standard, the
+station policies are ours: owning both ends is how we decide them once and
+prove them in loop.
 
 ### Keyer
 
-La logica del keyer vive in un repo suo, consumato qui come submodule a
-commit pinnato. Interfaccia (`iambic.h`, `sample.h`) e motore RT sono di
-questo repo e da lì non si toccano; il resto è suo. Qui si fa il bump e si
-fornisce la cattura delle leve.
+The keyer logic lives in its own repo, consumed here as a submodule at a
+pinned commit. The interface (`iambic.h`, `sample.h`) and the RT engine
+belong to this repo and are not touched from there; the rest is that
+repo's. Here we do the bump and supply the lever capture.
 
-_Why it serves the approach:_ il feeling del K8 si dimostra con uno
-strumento suo, senza fermare CWNet e senza che CWNet lo fermi.
+_Why it serves the approach:_ the K8 feel is proven with a tool of its own,
+without stopping CWNet and without CWNet stopping it.
 
-### Postazione senza attrito
+### Frictionless operating position
 
-Hardware di riferimento spedito già flashato e personalizzato, Winkeyer USB
-per N1MM, rete che non chiede configurazione all'OM. WebUI solo come
-strumento di configurazione, ferma finché le prime tre track non tengono.
+Reference hardware shipped already flashed and personalised, Winkeyer USB
+for N1MM, a network that asks the OM for no configuration. WebUI only as a
+configuration tool, frozen until the first three tracks hold.
 
-_Why it serves the approach:_ è il motivo per cui l'OM di IO4A lascia il
-client Windows; senza, il riferimento dimostrato resta un esercizio.
+_Why it serves the approach:_ it is the reason the IO4A OM leaves the
+Windows client; without it, the proven reference stays an exercise.
 
 ## Brand
 
-**One-liner:** Siamo radioamatori: è un divertimento. È pronto quando è
-pronto.
+**One-liner:** We are radio amateurs: this is for fun. It is ready when it
+is ready.

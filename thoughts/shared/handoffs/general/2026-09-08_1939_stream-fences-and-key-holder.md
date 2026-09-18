@@ -1,11 +1,11 @@
 ---
 artifact_contract: "ce-handoff/v1"
 created_at: "2026-09-08T19:39:33Z"
-title: "Chiave del server, seqlock dello stream, config re-read: tre PR mergiate, tre issue chiuse, la CI su arm64"
-summary: "Sessione 8 settembre 2026 (pomeriggio): #25 (TX_INFO, chi ha la chiave), #57 (ordine di pubblicazione dello stream, due fence), #69 (re-read della config) mergiate come #66, #70, #71; gamba arm64 in CI che ha bocciato un fix a metà; sweep fatto, restano #26 narrowed e il lato stazione (#64, #65, #68) dell'altro handoff di oggi."
+title: "Server-side key, stream seqlock, config re-read: three PRs merged, three issues closed, CI on arm64"
+summary: "Session September 8, 2026 (afternoon): #25 (TX_INFO, who holds the key), #57 (stream publication order, two fences), #69 (config re-read) merged as #66, #70, #71; the arm64 leg in CI that failed a half-fix; sweep done, #26 narrowed and the station side (#64, #65, #68) from the other handoff of the day remain."
 keywords: ["cwnet", "tx_info", "key-holder", "callsign", "stream", "seqlock", "fence", "acquire", "release", "arm64", "rt_task", "config", "issue-25", "issue-57", "issue-69", "issue-26", "issue-64", "issue-68", "issue-65"]
 cwd: "/Users/sf/Developer/RemoteCWKeyer-esp32/.claude/worktrees/remotecwkeyer-issue-review-8ea3ab"
-resume_focus: "Il lato stazione dall'handoff 2026-09-08_1000 (#64 daemon, #68 client host; GUI ferma su #65 blocking). In coda: #26 narrowed (LED binario già deciso dal maintainer, nome nella Web UI), e una voce docs/solutions sulle due fence del seqlock, che il corpus non ha."
+resume_focus: "The station side from the 2026-09-08_1000 handoff (#64 daemon, #68 host client; GUI on hold for #65 blocking). In queue: #26 narrowed (binary LED already decided by the maintainer, name in the Web UI), and a docs/solutions entry on the seqlock's two fences, which the corpus doesn't have."
 repository: "iu3qez/RemoteCWKeyer-esp32"
 repo_root_sha: "f153e01ec202b2cae17102fa0f355d657bb641c7"
 branch: "main"
@@ -13,81 +13,84 @@ head: "ca321ff"
 worktree_path: "/Users/sf/Developer/RemoteCWKeyer-esp32/.claude/worktrees/remotecwkeyer-issue-review-8ea3ab"
 ---
 
-# Chiave del server, seqlock dello stream, config re-read
+# Server-side key, stream seqlock, config re-read
 
-Ripresa da `2026-09-08_0912_cwnet-client-track.md`. In parallelo, un'altra sessione dello
-stesso giorno ha rovesciato la strategia sul lato stazione e ha scritto
-`2026-09-08_1000_station-daemon-start.md`: quello è l'handoff per #64, #65, #68; questo
-copre il client e il core. Tutto è su `main` a `ca321ff`. Tre PR mergiate dal maintainer,
-CI verde su dieci gambe: **#66** (#25), **#70** (#57), **#71** (#69). Suite host da 205 a 218.
-Niente provato su hardware.
+Resumed from `2026-09-08_0912_cwnet-client-track.md`. In parallel, another session the
+same day flipped the strategy on the station side and wrote
+`2026-09-08_1000_station-daemon-start.md`: that's the handoff for #64, #65, #68; this
+one covers the client and the core. Everything is on `main` at `ca321ff`. Three PRs
+merged by the maintainer, CI green on ten legs: **#66** (#25), **#70** (#57), **#71**
+(#69). Host suite from 205 to 218. Nothing proven on hardware.
 
-## Cosa esiste adesso, e dove
+## What exists now, and where
 
-- **Chi ha la chiave** (#25, PR #66). `cwnet_client.c`: `handle_tx_info()` prende il frame
-  `TX_INFO 0x05` (indice signed + callsign NUL) e deriva `cwnet_key_holder_t`:
-  UNKNOWN / FREE / MINE / OTHER, come annunciato, senza timer nostro. «Mia» = indice ≥ 1 e
-  callsign uguale a quello mandato nel CONNECT, che ora porta `g_config.system.callsign`
-  (fallback username). Esposto da `cwnet_socket_get_key_holder()`, dalla riga di stato
-  periodica di `bg_task` e da `key_holder` / `key_holder_name` in `/api/system`.
-  Decisione del maintainer nel corpo di #25: la scatola manipola comunque e lo segnala.
-  Fixture: i tre payload della cattura del 5 settembre in `test_host/cwnet_fixtures.h`.
-- **Stream single-producer** (#57, PR #70). `stream.c`: fence release, store del campione,
-  publish di `write_idx` con store release; `behind >= capacity` è overrun (lo slot
-  `capacity` indietro è il prossimo del producer); `stream_read()` ricontrolla l'indice
-  dietro una fence acquire dopo la copia e scarta; `consumer_resync()` atterra a
-  `capacity - 1`. ARCHITECTURE.md 2.1.4, 3.1.2, 3.1.3, 3.2 riscritte, Amendment 003.
-  Il blocco treecode di `keyer_core/CLAUDE.md` è rigenerato col cartographer del plugin.
-- **Config re-read** (#69, PR #71). `rt_task.c`: fence acquire fra la copia dei campi e la
-  rilettura rilassata della generazione. Il commento dice cosa prova davvero il guard: il
-  setter bumpa *dopo* lo store, quindi un insieme misto passa per un tick idle e
-  `last_config_gen` (valore pre-lettura) lo fa ricaricare al successivo. Tolto anche un
-  `ESP_LOGI` one-shot su Core 0 in `hal_audio_write()`.
-- **CI**. `host-tests.yml` gira la matrice plain / asan-ubsan su `ubuntu-latest` e
-  `ubuntu-24.04-arm`, `timeout-minutes: 20`. `name` è un asse della matrice: con solo
-  `os` come asse, il secondo `include` sovrascriveva il primo e le gambe plain sparivano.
+- **Who holds the key** (#25, PR #66). `cwnet_client.c`: `handle_tx_info()` takes the
+  `TX_INFO 0x05` frame (signed index + NUL-terminated callsign) and derives
+  `cwnet_key_holder_t`: UNKNOWN / FREE / MINE / OTHER, exactly as announced, with no
+  timer of our own. "Mine" = index ≥ 1 and callsign equal to the one sent in CONNECT,
+  which now carries `g_config.system.callsign` (fallback username). Exposed by
+  `cwnet_socket_get_key_holder()`, by `bg_task`'s periodic status line and by
+  `key_holder` / `key_holder_name` in `/api/system`. Decision from the maintainer in the
+  body of #25: the box keys anyway and signals it. Fixture: the three payloads from the
+  September 5 capture in `test_host/cwnet_fixtures.h`.
+- **Single-producer stream** (#57, PR #70). `stream.c`: release fence, sample store,
+  `write_idx` publish with a release store; `behind >= capacity` is overrun (the slot
+  `capacity` back is the producer's next one); `stream_read()` rechecks the index behind
+  an acquire fence after the copy and discards; `consumer_resync()` lands at
+  `capacity - 1`. ARCHITECTURE.md 2.1.4, 3.1.2, 3.1.3, 3.2 rewritten, Amendment 003. The
+  treecode block of `keyer_core/CLAUDE.md` is regenerated with the plugin's
+  cartographer.
+- **Config re-read** (#69, PR #71). `rt_task.c`: an acquire fence between copying the
+  fields and the relaxed re-read of the generation. The comment says what the guard
+  actually proves: the setter bumps *after* the store, so a mixed set survives one idle
+  tick and `last_config_gen` (the pre-read value) makes it reload on the next one. Also
+  removed a one-shot `ESP_LOGI` on Core 0 in `hal_audio_write()`.
+- **CI**. `host-tests.yml` runs the plain / asan-ubsan matrix on `ubuntu-latest` and
+  `ubuntu-24.04-arm`, `timeout-minutes: 20`. `name` is a matrix axis: with only `os` as
+  an axis, the second `include` was overwriting the first and the plain legs vanished.
 
-## Cosa ha insegnato la sessione
+## What the session taught
 
-- **Un seqlock ha due metà, e servono due fence.** Lettore: un load acquire non ordina i load
-  *prima* di sé; fra copia e rilettura serve `atomic_thread_fence(acquire)` (3-6 campioni
-  strappati sotto ASan su M1 senza). Writer: uno store release non ordina gli store *dopo*
-  di sé; fra il publish precedente e i byte dello slot serve `atomic_thread_fence(release)`
-  (1 e 80 campioni strappati sulla gamba plain arm64 di CI senza; mai visti su M1 né x86).
-  Il test: `test_stream_two_threads_never_accept_a_stale_or_torn_sample`, ogni campione
-  porta il proprio indice. Il corpus `docs/solutions/` non ha nulla sul modello di memoria:
-  candidato a una voce (`ce-compound`).
-- **La gamba arm64 ha bocciato un fix che in locale passava sempre.** Vale il raddoppio dei job.
-- **Il nome in `TX_INFO` è il callsign, non lo username** (`CwNet.c:437`); il server al login
-  confronta solo lo username (`CwNet_CheckUserAndGetPermissions`).
-- **Review**: la mutazione fatta dal reviewer testing (worktree isolato) ha trovato il loop
-  senza limite dello stress e il guard `index >= 1` non pinnato; l'adversarial su Opus con
-  mandato di falsificare contro il sorgente resta il passaggio che paga.
+- **A seqlock has two halves, and needs two fences.** Reader: an acquire load doesn't
+  order the loads *before* it; between the copy and the re-read you need
+  `atomic_thread_fence(acquire)` (3-6 samples torn under ASan on M1 without it). Writer:
+  a release store doesn't order the stores *after* it; between the previous publish and
+  the slot's bytes you need `atomic_thread_fence(release)` (1 and 80 samples torn on
+  CI's plain arm64 leg without it; never seen on M1 or x86). The test:
+  `test_stream_two_threads_never_accept_a_stale_or_torn_sample`, every sample carries
+  its own index. The `docs/solutions/` corpus has nothing on the memory model: a
+  candidate for an entry (`ce-compound`).
+- **The arm64 leg failed a fix that always passed locally.** Doubling up on jobs pays
+  off.
+- **The name in `TX_INFO` is the callsign, not the username** (`CwNet.c:437`); at login
+  the server only checks the username (`CwNet_CheckUserAndGetPermissions`).
+- **Review**: the mutation done by the testing reviewer (isolated worktree) found the
+  unbounded stress loop and the unpinned `index >= 1` guard; the adversarial review on
+  Opus with a mandate to falsify against the source remains the step that pays off.
 
-## Sweep del 2026-09-08 sera
+## Sweep of the evening of 2026-09-08
 
-Chiuse con evidenza: #25, #57, #69. **#26 narrowed**: il punto 1 (client espone stato e
-holder) è vero; restano i LED (binario libera / non libera, deciso dal maintainer il 5
-settembre) e la Web UI col nome. Aperte e invariate: #54, #48, #46, #33, #19, #17; #64 e #68
-(lato stazione, altro handoff); #65 `blocking` per la GUI del daemon.
+Closed on evidence: #25, #57, #69. **#26 narrowed**: point 1 (client exposes state and holder) holds; what's left is the LEDs (binary free / not free, decided by the maintainer on September 5) and the Web UI with the name. Open and unchanged, issues #54, #48, #46, #33, #19, #17; #64 and #68 (station side, other handoff); #65 `blocking` for the daemon's GUI.
 
-Due finding P2 della review di #25 (twin callsign letto come «mia»; username sul filo senza
-callsign) sono **wontfix del maintainer**, registrati in memoria: non riproporli.
+Two P2 findings from the #25 review (twin callsign read as "mine"; username on the wire
+with no callsign) are **wontfix from the maintainer**, logged in memory: don't
+re-propose them.
 
-## Pattern e lessico
+## Pattern and vocabulary
 
-Review avversariale su Opus prima della PR, sonnet per il resto; il modello va sempre
-dichiarato. Il maintainer vuole **manipolare / manipolazione**; il blocco 0x06 è «la stringa
-di controllo radio».
+The maintainer wants **manipolare / manipolazione** (to key / keying); block 0x06 is
+«la stringa di controllo radio» (the radio control string). Adversarial review on Opus
+before the PR, sonnet for the rest; the model must always be stated.
 
-## Stato machine-local, fragile
+## Machine-local state, fragile
 
-- Sorgente DL4YHF: `~/Downloads/Remote_CW_Keyer_Sources.zip` (sha256 `d960d6b9...`), estratto
-  nello scratchpad di sessione (evapora). File CRLF: `grep -a`, `tr -d '\r'`.
-- Catture in `/Users/sf/Developer/RemoteCWKeyer-esp32/tmp/oracle/` (sessione 12 = keying,
-  47 `TX_INFO`; sessione 10 = sysop).
-- Artefatti delle tre review in `/tmp/compound-engineering-501/ce-code-review/`.
-- Debito leggero in `.claude/code-quality.md`: blocchi treecode stantii (`test_host`,
-  `keyer_cwnet`), clamp del marker di silenzio a 65,5 s. Da #70, non in issue:
-  `consumer_resync()` si fa ri-sorpassare al push successivo (nessun chiamante di
-  produzione); il `continue` del torn read in `rt_task` salta anche il delay del tick.
+- DL4YHF source: `~/Downloads/Remote_CW_Keyer_Sources.zip` (sha256 `d960d6b9...`),
+  extracted into the session scratchpad (evaporates). CRLF files: `grep -a`,
+  `tr -d '\r'`.
+- Captures in `/Users/sf/Developer/RemoteCWKeyer-esp32/tmp/oracle/` (session 12 =
+  keying, 47 `TX_INFO`; session 10 = sysop).
+- Artifacts from the three reviews in `/tmp/compound-engineering-501/ce-code-review/`.
+- Light debt in `.claude/code-quality.md`: stale treecode blocks (`test_host`,
+  `keyer_cwnet`), the silence-marker clamp at 65.5 s. From #70, not in an issue:
+  `consumer_resync()` gets overtaken again on the next push (no production caller); the
+  torn-read `continue` in `rt_task` also skips the tick delay.

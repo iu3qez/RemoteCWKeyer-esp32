@@ -24,7 +24,7 @@ Key abstractions:
   leave the daemon (R11): a struct of function pointers with one backend today,
   `virtual`, which prints `key <0|1> <at_ms>` / `ptt <0|1> <at_ms>` lines. They go to
   the `--edges` descriptor (`stderr` or a file), never to stdout, and are never
-  dropped — see *Due uscite* in `cwnetd/README.md` for what that costs.
+  dropped — see *Two outputs, and why* in `cwnetd/README.md` for what that costs.
 - `tests/loopback_test.c` — exercises `platform/` and nothing else: a real loopback
   connection, a short write resumed, a remote close seen through the poll, the clock's
   monotonicity and unit. The server core is proven in `test_host/`, against the

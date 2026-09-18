@@ -1,57 +1,57 @@
 # Development Journal
 
-Questo documento contiene informazioni critiche sullo sviluppo del progetto: decisioni architetturali, problemi risolti, e punti che possono causare rotture se modificati.
+This document holds critical information about the project's development: architectural decisions, solved problems, and points that can cause breakage if changed.
 
 ---
 
 ## 2025-12-19: Build System Configuration - CRITICAL
 
-### Problema Risolto: Build Failure con ldproxy
+### Solved Problem: Build Failure with ldproxy
 
-**Sintomo:**
+**Symptom:**
 ```
 error: linking with `ldproxy` failed: exit status: 101
 thread 'main' panicked at 'Cannot locate argument '--ldproxy-linker <linker>''
 ```
 
-**Causa Radice:**
-Il file `build.rs` personalizzato non chiamava `embuild::espidf::sysenv::output()`. Questa funzione è **ASSOLUTAMENTE CRITICA** perché:
+**Root Cause:**
+The custom `build.rs` file did not call `embuild::espidf::sysenv::output()`. This function is **ABSOLUTELY CRITICAL** because:
 
-1. Emette le istruzioni `cargo:rustc-link-arg` necessarie per configurare ldproxy
-2. Configura l'ambiente ESP-IDF (variabili, path, compilatore)
-3. Passa i parametri del linker GCC a cargo
+1. It emits the `cargo:rustc-link-arg` instructions needed to configure ldproxy
+2. It configures the ESP-IDF environment (variables, paths, compiler)
+3. It passes the GCC linker parameters to cargo
 
-**⚠️ BREAKING POINT - NON MODIFICARE:**
+**⚠️ BREAKING POINT - DO NOT MODIFY:**
 
 ```rust
 fn main() {
-    // DEVE essere la PRIMA chiamata nel build.rs!
+    // MUST be the FIRST call in build.rs!
     embuild::espidf::sysenv::output();
 
-    // ... resto del codice di generazione configurazione
+    // ... rest of the configuration generation code
 }
 ```
 
-**Perché è critico:**
-- Senza questa chiamata, cargo non riceve i parametri `--ldproxy-linker`
-- ldproxy non sa quale compilatore GCC ESP-IDF usare
-- Il linking fallisce sempre, anche se tutto il resto è configurato correttamente
+**Why it is critical:**
+- Without this call, cargo does not receive the `--ldproxy-linker` parameters
+- ldproxy does not know which ESP-IDF GCC compiler to use
+- Linking always fails, even if everything else is configured correctly
 
-### Configurazione ESP-IDF Build System
+### ESP-IDF Build System Configuration
 
-**Versioni Critiche:**
+**Critical Versions:**
 - `embuild = "0.33"` in `[build-dependencies]` (Cargo.toml)
 - `ESP_IDF_VERSION = "v5.3.3"` in `.cargo/config.toml`
-- `esp-idf-svc = "0.51.0"` compatibile con ESP-IDF v5.3.x
+- `esp-idf-svc = "0.51.0"` compatible with ESP-IDF v5.3.x
 
-**Perché queste versioni:**
-- embuild 0.33 è compatibile con l'ultimo ldproxy binario precompilato
-- ESP-IDF v5.3.3 è stabile e testato con esp-idf-svc 0.51.0
-- Versioni diverse possono causare incompatibilità nel sistema di build
+**Why these versions:**
+- embuild 0.33 is compatible with the latest precompiled ldproxy binary
+- ESP-IDF v5.3.3 is stable and tested with esp-idf-svc 0.51.0
+- Different versions can cause incompatibilities in the build system
 
 ### DevContainer Setup
 
-**Volume Mounts Critici:**
+**Critical Volume Mounts:**
 ```json
 {
   "mounts": [
@@ -61,144 +61,144 @@ fn main() {
 }
 ```
 
-**Perché sono importanti:**
-- `.embuild/` contiene ESP-IDF scaricato (~500MB)
-- Senza volume mount, ESP-IDF viene riscaricato ad ogni rebuild del container
-- Il primo build dopo container rebuild richiede 10-15 minuti per scaricare ESP-IDF
-- I build successivi sono molto più veloci grazie alla cache
+**Why they matter:**
+- `.embuild/` holds the downloaded ESP-IDF (~500MB)
+- Without a volume mount, ESP-IDF is downloaded again on every container rebuild
+- The first build after a container rebuild takes 10-15 minutes to download ESP-IDF
+- Later builds are much faster thanks to the cache
 
 ### ldproxy Binary
 
-**Fonte:** Binari precompilati da GitHub releases di esp-rs/embuild
+**Source:** Precompiled binaries from the esp-rs/embuild GitHub releases
 
-**⚠️ NON installare ldproxy via `cargo install`:**
-- Le versioni su crates.io potrebbero non essere compatibili
-- I binari precompilati sono testati con il Dockerfile ufficiale esp-rs
-- In caso di problemi, reinstallare da:
+**⚠️ DO NOT install ldproxy via `cargo install`:**
+- The versions on crates.io may not be compatible
+- The precompiled binaries are tested with the official esp-rs Dockerfile
+- If there are problems, reinstall from:
   ```bash
   curl -L "https://github.com/esp-rs/embuild/releases/latest/download/ldproxy-x86_64-unknown-linux-gnu.zip" -o /tmp/ldproxy.zip
   unzip -o /tmp/ldproxy.zip -d ~/.cargo/bin/
   chmod u+x ~/.cargo/bin/ldproxy
   ```
 
-### Multi-Target Support (ESP32-S3 e ESP32-P4)
+### Multi-Target Support (ESP32-S3 and ESP32-P4)
 
-**Configurazione:**
+**Configuration:**
 - Default target: `xtensa-esp32s3-espidf` (Xtensa)
-- Alternative: `riscv32imafc-esp-espidf` (RISC-V per ESP32-P4)
-- Build per ESP32-P4: `cargo build --target riscv32imafc-esp-espidf`
+- Alternative: `riscv32imafc-esp-espidf` (RISC-V for ESP32-P4)
+- Build for ESP32-P4: `cargo build --target riscv32imafc-esp-espidf`
 
 **Toolchain:**
-- Default: `esp` (Xtensa, per ESP32-S3)
-- RISC-V toolchain installato automaticamente da espup
-- Entrambi configurati nel devcontainer con `ESP_BOARD=esp32s3,esp32p4`
+- Default: `esp` (Xtensa, for ESP32-S3)
+- RISC-V toolchain installed automatically by espup
+- Both configured in the devcontainer with `ESP_BOARD=esp32s3,esp32p4`
 
 ---
 
-## Decisioni Architetturali
+## Architectural Decisions
 
 ### Build Script (build.rs)
 
-**Ordine di esecuzione CRITICO:**
-1. `embuild::espidf::sysenv::output()` - SEMPRE PRIMO
-2. Generazione codice da parameters.yaml (Python)
+**CRITICAL execution order:**
+1. `embuild::espidf::sysenv::output()` - ALWAYS FIRST
+2. Code generation from parameters.yaml (Python)
 3. Cargo rerun-if-changed directives
 
-**Razionale:**
-L'output di embuild deve essere emesso PRIMA di qualsiasi altra operazione per garantire che tutte le variabili d'ambiente e configurazioni siano disponibili durante la compilazione del progetto.
+**Rationale:**
+The embuild output must be emitted BEFORE any other operation, to guarantee that all environment variables and configuration are available while the project compiles.
 
 ### DevContainer vs Host Build
 
-**Scelta:** DevContainer con Debian bookworm-slim + espup
+**Choice:** DevContainer with Debian bookworm-slim + espup
 
-**Perché:**
-- Evita conflitti tra toolchain GCC (problema con espressif/idf immagini)
-- Installazione pulita e riproducibile
-- Compatibile con template ufficiale esp-rs
-- Supporto multi-target out-of-the-box
+**Why:**
+- Avoids conflicts between GCC toolchains (problem with the espressif/idf images)
+- Clean and reproducible installation
+- Compatible with the official esp-rs template
+- Multi-target support out of the box
 
-**Alternativa scartata:**
-- Base image `espressif/idf:v5.5.1` causava conflitti tra GCC 14.2 (ESP-IDF) e GCC 15.2 (Rust ESP)
-
----
-
-## Problemi Noti e Soluzioni
-
-### Problema: "GLIBC 2.39 not found"
-**Causa:** Build artifacts da container precedente
-**Soluzione:** `cargo clean` dopo rebuild del container
-
-### Problema: ESP-IDF non scaricato al primo build
-**Causa:** Variabile `ESP_IDF_VERSION` non impostata o formato errato
-**Soluzione:** Usare formato stringa semplice `"v5.3.3"` invece di `{ value = "v5.3", force = true }`
-
-### Problema: Build lento (10-15 minuti) dopo rebuild container
-**Causa:** ESP-IDF viene riscaricato (~500MB)
-**Soluzione:** Volume mounts per `.embuild/` e `target/` (già configurato)
+**Rejected alternative:**
+- Base image `espressif/idf:v5.5.1` caused conflicts between GCC 14.2 (ESP-IDF) and GCC 15.2 (Rust ESP)
 
 ---
 
-## Riferimenti
+## Known Problems and Solutions
 
-### Template Ufficiale
+### Problem: "GLIBC 2.39 not found"
+**Cause:** Build artifacts from a previous container
+**Solution:** `cargo clean` after rebuilding the container
+
+### Problem: ESP-IDF not downloaded on the first build
+**Cause:** `ESP_IDF_VERSION` variable not set or in the wrong format
+**Solution:** Use the plain string format `"v5.3.3"` instead of `{ value = "v5.3", force = true }`
+
+### Problem: Slow build (10-15 minutes) after a container rebuild
+**Cause:** ESP-IDF is downloaded again (~500MB)
+**Solution:** Volume mounts for `.embuild/` and `target/` (already configured)
+
+---
+
+## References
+
+### Official Template
 - Repository: https://github.com/esp-rs/esp-idf-template
-- Usato come riferimento per configurazione build system
+- Used as the reference for the build system configuration
 
-### Documentazione
+### Documentation
 - ESP-RS Book: https://esp-rs.github.io/book/
 - embuild: https://github.com/esp-rs/embuild
 - esp-idf-svc releases: https://github.com/esp-rs/esp-idf-svc/releases
 
-### File di Configurazione Critici
-1. `build.rs` - Build script con embuild setup
-2. `Cargo.toml` - Dipendenze e versioni embuild
-3. `.cargo/config.toml` - Target e ESP_IDF_VERSION
-4. `.devcontainer/Dockerfile` - Installazione toolchain
+### Critical Configuration Files
+1. `build.rs` - Build script with embuild setup
+2. `Cargo.toml` - Dependencies and embuild versions
+3. `.cargo/config.toml` - Target and ESP_IDF_VERSION
+4. `.devcontainer/Dockerfile` - Toolchain installation
 5. `.devcontainer/devcontainer.json` - Volume mounts
 
 ---
 
-## Note per il Futuro
+## Notes for the Future
 
-### Prima di Modificare build.rs
-- ⚠️ NON rimuovere `embuild::espidf::sysenv::output()`
-- ⚠️ DEVE rimanere la prima chiamata in `fn main()`
-- Testare sempre con `cargo clean && cargo build` dopo modifiche
+### Before Modifying build.rs
+- ⚠️ DO NOT remove `embuild::espidf::sysenv::output()`
+- ⚠️ It MUST remain the first call in `fn main()`
+- Always test with `cargo clean && cargo build` after changes
 
-### Prima di Aggiornare Dipendenze
-- Verificare compatibilità tra esp-idf-svc e ESP-IDF version
-- Controllare changelog di embuild per breaking changes
-- Testare build completo prima di committare
+### Before Updating Dependencies
+- Check compatibility between esp-idf-svc and the ESP-IDF version
+- Check the embuild changelog for breaking changes
+- Test a full build before committing
 
-### Prima di Rebuild DevContainer
-- Il primo build dopo rebuild richiederà 10-15 minuti
-- ESP-IDF verrà riscaricato da zero se i volume mounts non funzionano
-- Verificare che i volume Docker siano preservati
+### Before Rebuilding the DevContainer
+- The first build after a rebuild will take 10-15 minutes
+- ESP-IDF will be downloaded again from scratch if the volume mounts do not work
+- Check that the Docker volumes are preserved
 
 ---
 
 ## 2025-12-20: Console Commands Implementation
 
-### Implementato
+### Implemented
 
-Console seriale UART per configurazione e diagnostica:
-- Parser comandi con tokenizzazione
-- History ring buffer (4 entry, 64 byte ciascuna)
-- Tab completion con cycling
-- Line buffer con escape sequences (frecce, backspace, Ctrl+C/U)
-- Comandi: help, set, show, debug, save, reboot, factory-reset, flash, stats
-- Registry parametri generato da parameters.yaml
+UART serial console for configuration and diagnostics:
+- Command parser with tokenization
+- History ring buffer (4 entries, 64 bytes each)
+- Tab completion with cycling
+- Line buffer with escape sequences (arrows, backspace, Ctrl+C/U)
+- Commands: help, set, show, debug, save, reboot, factory-reset, flash, stats
+- Parameter registry generated from parameters.yaml
 
-### Limitazione Nota: Log Level Filtering
+### Known Limitation: Log Level Filtering
 
-Il comando `debug <level>` è un placeholder. Il sistema di logging custom (`rt_log!` macro, `LogStream`) **non supporta ancora il filtraggio per livello**.
+The `debug <level>` command is a placeholder. The custom logging system (`rt_log!` macro, `LogStream`) **does not yet support filtering by level**.
 
-**Per implementare il filtraggio:**
-1. Aggiungere `AtomicU8` globale per il log level corrente in `log_globals.rs`
-2. Modificare le macro `rt_log!`, `rt_info!`, etc. per controllare il livello prima di pushare
-3. Implementare parsing dei livelli in `cmd_debug()`: none, error, warn, info, debug, trace
+**To implement filtering:**
+1. Add a global `AtomicU8` for the current log level in `log_globals.rs`
+2. Change the `rt_log!`, `rt_info!`, etc. macros to check the level before pushing
+3. Implement level parsing in `cmd_debug()`: none, error, warn, info, debug, trace
 
-**Esempio di modifica necessaria in `logging.rs`:**
+**Example of the change needed in `logging.rs`:**
 ```rust
 // In log_globals.rs
 pub static LOG_LEVEL: AtomicU8 = AtomicU8::new(LogLevel::Info as u8);
@@ -214,60 +214,60 @@ macro_rules! rt_log {
 }
 ```
 
-Questo è un task separato perché richiede modifiche al sistema di logging core.
+This is a separate task because it requires changes to the core logging system.
 
 ---
 
-## Checklist: Sintomi di Build System Rotto
+## Checklist: Symptoms of a Broken Build System
 
-- [ ] Errore "Cannot locate argument '--ldproxy-linker'"
-  → Controllare build.rs chiama embuild::espidf::sysenv::output()
+- [ ] Error "Cannot locate argument '--ldproxy-linker'"
+  → Check that build.rs calls embuild::espidf::sysenv::output()
 
-- [ ] Build molto lento (>15 min) anche dopo primo build
-  → Controllare volume mounts in devcontainer.json
+- [ ] Very slow build (>15 min) even after the first build
+  → Check the volume mounts in devcontainer.json
 
-- [ ] "GLIBC not found" o linking errors strani
-  → Fare `cargo clean` dopo rebuild container
+- [ ] "GLIBC not found" or strange linking errors
+  → Run `cargo clean` after rebuilding the container
 
 - [ ] ESP-IDF version mismatch
-  → Verificare ESP_IDF_VERSION in .cargo/config.toml
+  → Check ESP_IDF_VERSION in .cargo/config.toml
 
-- [ ] ldproxy panic anche con configurazione corretta
-  → Reinstallare ldproxy da binari precompilati GitHub
+- [ ] ldproxy panic even with a correct configuration
+  → Reinstall ldproxy from the precompiled GitHub binaries
 
 ---
 
-## 2025-12-21: Migrazione a Pure C (ESP-IDF)
+## 2025-12-21: Migration to Pure C (ESP-IDF)
 
-### Motivazione
+### Motivation
 
-Il progetto è stato migrato da Rust (esp-rs) a pure C (ESP-IDF nativo) per:
-- Eliminare la complessità del build system Rust/ESP-IDF
-- Semplificare il debugging e la manutenzione
-- Usare direttamente le API ESP-IDF senza wrapper
+The project was migrated from Rust (esp-rs) to pure C (native ESP-IDF) to:
+- Remove the complexity of the Rust/ESP-IDF build system
+- Simplify debugging and maintenance
+- Use the ESP-IDF APIs directly, without wrappers
 
-### Struttura Progetto
+### Project Structure
 
 ```
 RemoteCWKeyerV3/
 ├── CMakeLists.txt          # ESP-IDF project root
 ├── sdkconfig.defaults      # ESP-IDF configuration
 ├── partitions.csv          # 16MB flash layout
-├── parameters.yaml         # Parametri configurazione (source of truth)
+├── parameters.yaml         # Configuration parameters (source of truth)
 ├── components/
 │   ├── keyer_core/         # Stream, sample, consumer, fault
 │   ├── keyer_iambic/       # Iambic FSM (Mode A/B)
 │   ├── keyer_audio/        # Sidetone, buffer, PTT
 │   ├── keyer_logging/      # RT-safe logging
 │   ├── keyer_console/      # Serial console
-│   ├── keyer_config/       # Generated config (da parameters.yaml)
+│   ├── keyer_config/       # Generated config (from parameters.yaml)
 │   └── keyer_hal/          # GPIO, I2S, ES8311
 ├── main/
 │   ├── main.c              # Entry point
 │   ├── rt_task.c           # Core 0 RT task
 │   └── bg_task.c           # Core 1 background task
 └── scripts/
-    └── gen_config_c.py     # Generatore config C da parameters.yaml
+    └── gen_config_c.py     # C config generator from parameters.yaml
 ```
 
 ### Build Commands
@@ -285,48 +285,48 @@ idf.py fullclean && idf.py build
 
 ### Code Generator
 
-`scripts/gen_config_c.py` genera da `parameters.yaml`:
-- `components/keyer_config/include/config.h` - Struct atomica con macro accessor
-- `components/keyer_config/include/config_nvs.h` - Chiavi NVS
-- `components/keyer_config/include/config_meta.h` - Metadata GUI
-- `components/keyer_config/include/config_console.h` - Registry console
-- `components/keyer_config/src/config.c` - Inizializzazione defaults
+`scripts/gen_config_c.py` generates from `parameters.yaml`:
+- `components/keyer_config/include/config.h` - Atomic struct with accessor macros
+- `components/keyer_config/include/config_nvs.h` - NVS keys
+- `components/keyer_config/include/config_meta.h` - GUI metadata
+- `components/keyer_config/include/config_console.h` - Console registry
+- `components/keyer_config/src/config.c` - Defaults initialization
 
-**⚠️ NON modificare i file generati** - modifica `parameters.yaml` invece.
+**⚠️ DO NOT modify the generated files** - modify `parameters.yaml` instead.
 
-### Principi Architetturali Preservati
+### Architectural Principles Preserved
 
 1. **Stream-only communication** - `keying_stream_t` SPMC lock-free
 2. **Hard RT path** - Core 0, no malloc, no mutex, no blocking I/O
 3. **FAULT semantics** - Corrupted timing → silence
-4. **Atomic config** - C11 `stdatomic.h` per accesso lock-free
-5. **RT-safe logging** - `RT_*()` macro non-blocking
+4. **Atomic config** - C11 `stdatomic.h` for lock-free access
+5. **RT-safe logging** - `RT_*()` non-blocking macros
 
-### Differenze da Rust
+### Differences from Rust
 
-| Aspetto | Rust | C |
+| Aspect | Rust | C |
 |---------|------|---|
 | Atomics | `std::sync::atomic` | C11 `stdatomic.h` |
 | Logging | `rt_log!` macro | `RT_INFO()` macro |
-| Config | `AtomicConfig` struct | `keyer_config_t` con atomic |
+| Config | `AtomicConfig` struct | `keyer_config_t` with atomics |
 | Build | `cargo build` | `idf.py build` |
-| ESP-IDF | v5.3.3 via embuild | v5.5.1 nativo |
+| ESP-IDF | v5.3.3 via embuild | v5.5.1 native |
 
-### Formato Specifiers su Xtensa
+### Format Specifiers on Xtensa
 
-Su ESP32 (Xtensa), `uint32_t` è `unsigned long`, quindi:
-- Usare `PRIu32` da `<inttypes.h>` invece di `%u`
-- Esempio: `"count=%" PRIu32` invece di `"count=%u"`
+On ESP32 (Xtensa), `uint32_t` is `unsigned long`, so:
+- Use `PRIu32` from `<inttypes.h>` instead of `%u`
+- Example: `"count=%" PRIu32` instead of `"count=%u"`
 
-### File Critici
+### Critical Files
 
-1. **parameters.yaml** - Source of truth per configurazione
-2. **scripts/gen_config_c.py** - Generatore codice
-3. **CMakeLists.txt** (root) - Entry point progetto
-4. **sdkconfig.defaults** - Configurazione ESP-IDF
-5. **components/*/CMakeLists.txt** - Build componenti
+1. **parameters.yaml** - Source of truth for configuration
+2. **scripts/gen_config_c.py** - Code generator
+3. **CMakeLists.txt** (root) - Project entry point
+4. **sdkconfig.defaults** - ESP-IDF configuration
+5. **components/*/CMakeLists.txt** - Component build
 
-### Test
+### Tests
 
 ```bash
 # Host tests (Unity)
@@ -335,6 +335,6 @@ cmake -B build && cmake --build build
 ./build/test_runner
 ```
 
-### Vecchio Codice Rust
+### Old Rust Code
 
-Il codice Rust originale è stato spostato in `old/` per riferimento.
+The original Rust code was moved to `old/` for reference.

@@ -154,7 +154,7 @@ The shape and the caps are fixed by the templates in [.github/ISSUE_TEMPLATE/](.
 
 **An issue closes on evidence, and the sweep happens before the handoff.** An issue is closed when the condition in its *what would make it right* is true in the tree, with a closing comment that says where (`file:line` or commit). Nothing else closes it — not the work seeming done, not the session ending. Before a session handoff, `/issue-sweep` walks every open issue against the tree, closes the ones that hold and flags the ones whose scope has narrowed; the hooks in `.claude/settings.json` remind whoever invokes `ce-handoff`, on both paths. A `blocking` issue is never closed by the sweep: it holds a decision, not a code condition.
 
-When a light debt cannot be fixed right now — wrong moment, unrelated to what you are doing — it goes as one line under **Da sistemare** in [.claude/code-quality.md](.claude/code-quality.md), never on the tracker. A session handoff carries only the subset the next session actually needs; it is not the backlog either.
+When a light debt cannot be fixed right now — wrong moment, unrelated to what you are doing — it goes as one line under **To fix** in [.claude/code-quality.md](.claude/code-quality.md), never on the tracker. A session handoff carries only the subset the next session actually needs; it is not the backlog either.
 
 That file also keeps *context* — what was tried, what was learnt. Context and light debt, not the work queue.
 
@@ -214,6 +214,14 @@ The hard RT path has a **100µs latency ceiling**. The following are **forbidden
 | 1 | bg_task | IDLE+2 | Remote, decoder, diagnostics |
 | 1 | uart_log | IDLE+1 | Log drain to UART |
 | 1 | console | IDLE+1 | Serial console |
+
+---
+
+## Language
+
+Every document in this repository is written in English: the CLAUDE.md files, STRATEGY.md, CONCEPTS.md, plans, handoffs, the notes under `.claude/`, `docs/solutions/`, READMEs and issue bodies. An agent writes its artifacts in English even when its conversation with the maintainer is in Italian.
+
+Two things are not prose and stay as they are: code identifiers, and the daemon's status-line vocabulary (`stato ascolto`, `stato chiave ...`), which is a protocol between `cwnetd` and whatever reads it. Files named in Italian before this rule keep their names, because issues and other files link to them.
 
 ---
 

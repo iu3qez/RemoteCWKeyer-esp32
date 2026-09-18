@@ -1,195 +1,197 @@
-# cwnetd — daemon di stazione CWNet
+# cwnetd - CWNet station daemon
 
-Server CWNet per PC (Linux o Mac): la manipolazione dell'OM remoto entra dal
-client (la scatola, o `tools/cwnet/cwnet_send.py` per un client di prova),
-esce con i tempi che il client ha mandato, il PTT segue la manipolazione
-riprodotta. Il core (`components/keyer_cwnet/src/cwnet_server.c`,
-`cwnet_play.c`) è lo stesso codec host-testato dalla suite `test_host`; qui
-intorno c'è solo il layer POSIX (`host/platform/`), l'uscita virtuale
-(`key_output.c`) e le righe di stato su stdout. Stato e fronti escono da due
-descrittori diversi, e per un buon motivo: vedi *Due uscite* qui sotto.
+CWNet server for PC (Linux or Mac): the remote OM's keying comes in from
+the client (the box, or `tools/cwnet/cwnet_send.py` for a test client),
+goes out with the timing the client sent, PTT follows the replayed
+keying. The core (`components/keyer_cwnet/src/cwnet_server.c`,
+`cwnet_play.c`) is the same codec host-tested by the `test_host` suite; around
+it here there is only the POSIX layer (`host/platform/`), the virtual output
+(`key_output.c`) and the status lines on stdout. Status and edges come out of
+two different descriptors, for a good reason: see *Two outputs* below.
 
-Per l'architettura, vedi [components/keyer_cwnet/CLAUDE.md](../../components/keyer_cwnet/CLAUDE.md)
-e il piano [docs/plans/2026-09-08-2158-feat-station-daemon-plan.md](../../docs/plans/2026-09-08-2158-feat-station-daemon-plan.md).
+For the architecture, see [components/keyer_cwnet/CLAUDE.md](../../components/keyer_cwnet/CLAUDE.md)
+and the plan [docs/plans/2026-09-08-2158-feat-station-daemon-plan.md](../../docs/plans/2026-09-08-2158-feat-station-daemon-plan.md).
 
 ## Build
 
 ```sh
 cmake -S host -B host/build
 cmake --build host/build
-# eseguibile: host/build/cwnetd
-# test (solo loopback dei socket, non il server): ctest --test-dir host/build
+# executable: host/build/cwnetd
+# test (socket loopback only, not the server): ctest --test-dir host/build
 ```
 
-Stesse flag rigide di `test_host` (`-Wall -Wextra -Werror -Wconversion
--Wsign-conversion ...`, vedi `host/CMakeLists.txt`): un bar solo, Linux e
+Same strict flags as `test_host` (`-Wall -Wextra -Werror -Wconversion
+-Wsign-conversion ...`, see `host/CMakeLists.txt`): one bar, Linux and
 macOS.
 
-## Avvio
+## Running
 
 ```sh
 host/build/cwnetd --listen 0.0.0.0 --port 7355
 ```
 
-`--listen 0.0.0.0` ascolta su tutte le interfacce: il confine di fiducia è
-la LAN o la VPN (WireGuard, `components/keyer_vpn`), non il processo — CWNet
-non ha autenticazione. La porta di default, 7355, è la stessa del
-riferimento e della scatola (`parameters.yaml`, `remote.server_port`).
+`--listen 0.0.0.0` listens on all interfaces: the trust boundary is
+the LAN or the VPN (WireGuard, `components/keyer_vpn`), not the process - CWNet
+has no authentication. The default port, 7355, is the same as the
+reference and the box (`parameters.yaml`, `remote.server_port`).
 
-Ctrl-C (SIGINT) o SIGTERM chiudono i client e riportano l'uscita a riposo
-(tasto su, PTT spento) prima di uscire.
+Ctrl-C (SIGINT) or SIGTERM close the clients and return the output to rest
+(key up, PTT off) before exiting.
 
-## Flag
+## Flags
 
 ```
---listen ADDR       indirizzo IPv4 di ascolto (default 0.0.0.0)
---port N            porta TCP (default 7355)
---max-clients N     client serviti insieme, max 8 (default 4)
---play-floor MS     pavimento del buffer B (default 100)
---link-ceiling MS   peak-hold oltre cui il link non e' idoneo (default 1000)
---ptt-tail MS       coda del PTT dopo l'ultimo key-up (default 100)
---ptt-lead MS       anticipo del PTT sul primo key-down, mai oltre B (default 0)
---idle MS           silenzio del titolare col tasto su che rilascia la chiave
-                    (default 5000; col tasto giu' decide il PING)
---over-max MS       tetto di un over (default 120000)
---handshake MS      tempo per completare il CONNECT (default 5000)
---out-cap BYTE      byte non inviati per client oltre i quali lo chiudo
+--listen ADDR       IPv4 address to listen on (default 0.0.0.0)
+--port N            TCP port (default 7355)
+--max-clients N     clients served together, max 8 (default 4)
+--play-floor MS     buffer floor B (default 100)
+--link-ceiling MS   peak-hold beyond which the link is not eligible (default 1000)
+--ptt-tail MS       PTT tail after the last key-up (default 100)
+--ptt-lead MS       PTT lead on the first key-down, never beyond B (default 0)
+--idle MS           silence from the key holder with the key up that releases the key
+                    (default 5000; with the key down the PING decides)
+--over-max MS       ceiling of an over (default 120000)
+--handshake MS      time to complete the CONNECT (default 5000)
+--out-cap BYTE      unsent bytes per client beyond which I close it
                     (default 16384, min 256, max 16777216)
---output BACKEND    uscita di tasto e PTT: virtual (default virtual)
---edges DEST        descrittore dei fronti: 'stderr' o un file (default stderr)
+--output BACKEND    key and PTT output: virtual (default virtual)
+--edges DEST        edges descriptor: 'stderr' or a file (default stderr)
 ```
 
-(`host/build/cwnetd --help` è la fonte, questa tabella è solo per
-consultazione rapida — se divergono, fidati di `--help`. `--help` stampa i
-default leggendoli dalla stessa struttura che il programma usa, quindi non
-può divergere dal comportamento.)
+(`host/build/cwnetd --help` is the source, this table is only for
+quick reference - if they diverge, trust `--help`. `--help` prints the
+defaults by reading them from the same struct the program uses, so it
+cannot diverge from the behaviour.)
 
-I default sono quelli del riferimento e della scatola (R13): `--ptt-tail
-100` è "il valore della scatola" (R9), `--play-floor 100` il B minimo scelto
-per assorbire il jitter della LAN/VPN senza un ritardo percepibile.
+The defaults are those of the reference and the box (R13): `--ptt-tail
+100` is "the box's value" (R9), `--play-floor 100` the minimum B chosen
+to absorb LAN/VPN jitter without a perceptible delay.
 
-**`--idle` non tocca un tasto giù.** Fra un elemento e l'altro e fra un over
-e l'altro libera una chiave che nessuno sta usando; sotto un tasto tenuto
-giù non ha voce, altrimenti taglierebbe l'accordatura dopo cinque secondi.
-Chi decide lì è il PING: risponde il programma, non la mano dell'operatore,
-quindi continua a rispondere per tutta l'accordatura e smette quando il
-client muore. Tre PING senza risposta chiudono quel client e la chiave si
-rilascia con tasto su e PTT giù alla coda (R8, R16).
+**`--idle` does not touch a key held down.** Between one element and the
+next and between one over and the next it frees a key that nobody is using;
+under a key held down it has no say, otherwise it would cut off tuning
+after five seconds. The PING decides there: the program answers, not the
+operator's hand, so it keeps answering through the whole tuning and stops
+when the client dies. Three PINGs without an answer close that client and
+the key releases with key up and PTT down at the tail (R8, R16).
 
-**`--out-cap` è una rete di sicurezza, non una prestazione.** Il server manda
-a un client qualche decina di byte ogni due secondi: 16 KiB sono minuti di
-arretrato. Un peer che non legge da tanto non torna, e tenergli i byte costa
-solo agli altri, che aspettano il loro PING dietro di lui. Superato il tetto
-quel client si chiude, il loop non rallenta.
+**`--out-cap` is a safety net, not a performance feature.** The server sends
+a client a few dozen bytes every two seconds: 16 KiB is minutes of
+backlog. A peer that has not read in a long time is not coming back, and
+holding its bytes only costs the others, who wait for their PING behind it.
+Past the cap that client closes, the loop does not slow down.
 
-`--output` ha oggi un solo backend, `virtual`: il trasporto fisico (seriale
-o GPIO verso il rig) è dietro una Decision non ancora aperta (KTD9); quando
-lo sarà, un backend nuovo riempie gli stessi due puntatori a funzione di
-`key_output.h` e niente sopra cambia.
+`--output` has only one backend today, `virtual`: the physical transport
+(serial or GPIO to the rig) is behind a Decision not yet opened (KTD9); once
+it is, a new backend fills the same two function pointers in
+`key_output.h` and nothing above changes.
 
-## Due uscite, e perché
+## Two outputs, and why
 
-Lo **stato** esce su stdout, non bloccante: se il lettore non tiene il passo
-la riga si scarta e la prossima che passa lo confessa. È la regola giusta per
-una diagnostica, perché una riga persa costa una riga.
+**Status** goes out on stdout, non-blocking: if the reader does not keep up
+the line is dropped and the next one that gets through confesses it. It's
+the right rule for a diagnostic, because a lost line costs a line.
 
-I **fronti** no. Escono sul descrittore di `--edges` (`stderr`, o un file),
-che non ne scarta mai uno (R11, KTD9). Il motivo è cosa sono quelle righe:
-sono la misura del jitter. Una traccia che perde in silenzio proprio i fronti
-che sta misurando non è una misura peggiore, è una misura sbagliata — e la
-perderebbe esattamente quando il sistema è carico, cioè quando il numero
-conta.
+**Edges** do not. They go out on the `--edges` descriptor (`stderr`, or a
+file), which never drops one (R11, KTD9). The reason is what those lines
+are: they are the jitter measurement. A trace that silently loses exactly
+the edges it is measuring is not a worse measurement, it is a wrong
+measurement - and it would lose them exactly when the system is loaded,
+which is when the number matters.
 
-Le due regole — «non scarta mai» e «il loop non si ferma mai» — non possono
-valere entrambe contro un lettore che ha smesso di drenare. Qui vince R11, e
-il costo si rende visibile invece di nasconderlo:
+The two rules - "never drops" and "the loop never stops" - cannot both
+hold against a reader that has stopped draining. R11 wins here, and the
+cost is made visible instead of hidden:
 
-- **Un file non può fermare il loop.** `write(2)` su un file regolare non
-  restituisce mai `EAGAIN` e non ha un lettore da aspettare. È il descrittore
-  da usare quando i numeri contano: `--edges fronti.log` (apertura in
-  append, così un riavvio aggiunge alla traccia invece di cancellarla).
-- **Una pipe o un terminale sì.** La scrittura viene ritentata attraverso
-  `EINTR`, le scritture parziali e `EAGAIN` (`poll()` per `POLLOUT`), quindi
-  la riga arriva comunque; ma ogni millisecondo di attesa ferma il loop. Una
-  pipe che nessuno legge non costa niente finché il suo buffer non si riempie
-  (16-64 KiB, qualche migliaio di fronti) e da lì in poi ferma la stazione.
-  Il daemon lo dice mentre succede — `stato uscita fronti (...) non drena: N
-  ms e aspetto` — e a fine sessione stampa il totale delle attese.
-- **Le flag del descrittore non si toccano mai.** `stderr` può condividere la
-  open file description con il nostro stdout non bloccante (la `2>&1` della
-  shell fa esattamente questo): togliere `O_NONBLOCK` da uno lo toglierebbe
-  all'altro, rendendo bloccanti le righe di stato senza che si veda. Gestire
-  `EAGAIN` funziona qualunque cosa si sia ereditato.
-- **L'unica eccezione è l'arresto.** Dopo SIGINT o SIGTERM l'attesa per
-  fronte è limitata a un secondo: un descrittore che nessuno drena non deve
-  rendere il daemon impossibile da chiudere se non con SIGKILL. I fronti
-  lasciati indietro finiscono nel conteggio `persi` dell'ultima riga.
+- **A file cannot stop the loop.** `write(2)` on a regular file never
+  returns `EAGAIN` and has no reader to wait for. It's the descriptor
+  to use when the numbers matter: `--edges fronti.log` (opened in
+  append mode, so a restart adds to the trace instead of erasing it).
+- **A pipe or a terminal does.** The write is retried across `EINTR`,
+  partial writes, and `EAGAIN` (`poll()` for `POLLOUT`), so the line does
+  arrive; but every millisecond of waiting stops the loop. A pipe that
+  nobody reads costs nothing until its buffer fills up (16-64 KiB, a few
+  thousand edges) and from there on it stops the station. The daemon says
+  so while it happens - `stato uscita fronti (...) non drena: N
+  ms e aspetto` - and at the end of the session it prints the total wait.
+- **The descriptor's flags are never touched.** `stderr` can share the
+  open file description with our non-blocking stdout (the shell's `2>&1`
+  does exactly this): removing `O_NONBLOCK` from one would remove it from
+  the other, making the status lines blocking without it being visible.
+  Handling `EAGAIN` works whatever was inherited.
+- **The only exception is shutdown.** After SIGINT or SIGTERM the wait per
+  edge is capped at one second: a descriptor that nobody drains must not
+  make the daemon impossible to close except with SIGKILL. The edges left
+  behind end up in the `persi` count of the last line.
 
-`--edges stdout` viene rifiutato all'avvio: è l'unico descrittore che non può
-dare ai fronti la separazione che R11 chiede.
+`--edges stdout` is rejected at startup: it's the only descriptor that
+cannot give edges the separation R11 requires.
 
-## Come si legge una riga di stato
+## Reading a status line
 
-Lo stato esce su stdout, una riga per evento, mai bloccante: se stdout non
-tiene il passo la riga si scarta e la prossima che passa lo confessa
-(`stato stdout N righe scartate`) — "niente" e "non stavi leggendo" restano
-distinguibili. I fronti non sono qui: sono su `--edges` (vedi *Due uscite*).
+Status goes out on stdout, one line per event, never blocking: if stdout
+does not keep up the line is dropped and the next one that gets through
+confesses it (`stato stdout N righe scartate`) - "nothing" and "you weren't
+reading" stay distinguishable. Edges are not here: they are on `--edges`
+(see *Two outputs*).
 
-Vocabolario (client, connessioni):
+Vocabulary (clients, connections):
 
-| Riga | Significato |
+| Line | Meaning |
 |---|---|
-| `stato ascolto ADDR:PORTA max-clients N B>=X ms tetto Y ms coda Z ms lead W ms out-cap C byte` | il daemon e' pronto, con la configurazione che ha davvero |
-| `stato uscita BACKEND fronti DEST` | dove finiscono i fronti (riga a parte: un path lungo non deve troncare la configurazione) |
-| `stato accettato client N da IP:PORTA` | TCP accettata, in attesa del CONNECT |
-| `stato rifiutato da IP:PORTA: nessuno slot libero` | oltre `--max-clients`, chiusa subito (R1: l'accept non blocca mai) |
-| `stato connesso client N NOME da IP:PORTA` | CONNECT completato, il client e' READY |
-| `stato disconnesso client N NOME da IP:PORTA: MOTIVO` | TCP chiusa (dal peer, per timeout, per un lettore troppo lento, ...) |
+| `stato ascolto ADDR:PORTA max-clients N B>=X ms tetto Y ms coda Z ms lead W ms out-cap C byte` | the daemon is ready, with the configuration it actually has |
+| `stato uscita BACKEND fronti DEST` | where the edges end up (a separate line: a long path must not truncate the configuration) |
+| `stato accettato client N da IP:PORTA` | TCP accepted, waiting for the CONNECT |
+| `stato rifiutato da IP:PORTA: nessuno slot libero` | beyond `--max-clients`, closed immediately (R1: accept never blocks) |
+| `stato connesso client N NOME da IP:PORTA` | CONNECT complete, the client is READY |
+| `stato disconnesso client N NOME da IP:PORTA: MOTIVO` | TCP closed (by the peer, on timeout, by a reader too slow, ...) |
 
-Vocabolario (chiave, link, over):
+Vocabulary (key, link, over):
 
-| Riga | Significato |
+| Line | Meaning |
 |---|---|
-| `stato chiave client N NOME` / `stato chiave libera` | chi tiene la chiave adesso (arbitrato, un titolare alla volta) |
-| `stato latenza client N X ms peak Y ms` | RTT dell'ultimo PING e il suo peak-hold |
-| `stato link non idoneo client N NOME: peak Y ms` | il peak-hold ha superato `--link-ceiling`: quel client non prende la chiave |
-| `stato over client N NOME B X ms` | un over e' iniziato, con il B calcolato per quella sessione |
-| `stato byte in ritardo client N NOME: B byte, M ms in totale` | un byte e' arrivato dopo la scadenza del fronte che portava: l'elemento e' uscito piu' lungo di quanto e' stato manipolato, e il link sta scivolando. Cumulativi, quindi due righe a distanza dicono *quanto in fretta* |
-| `stato fault [client N NOME:] MOTIVO` | FAULT philosophy: tasto su e si ferma (titolare sparito a meta' over — TCP chiuso o tre PING senza risposta —, over troppo lungo, titolare muto oltre `--idle` col tasto su) |
-| `stato eventi persi N` | il core ha prodotto piu' eventi di quanti il buffer di lettura ne tenesse: nessun fronte si perde, solo la riga descrittiva |
-| `stato uscita fronti (DEST) non drena: N ms e aspetto` | il descrittore dei fronti ha smesso di prendere byte e il loop e' fermo li' da N ms (vedi *Due uscite*) |
-| `stato uscita fronti (DEST): A attese per M ms, E errori, P persi` | il consuntivo a fine sessione: `P` diverso da zero e' l'unico caso in cui un fronte non e' stato scritto, e succede solo dopo un SIGINT |
+| `stato chiave client N NOME` / `stato chiave libera` | who holds the key now (arbitrated, one holder at a time) |
+| `stato latenza client N X ms peak Y ms` | RTT of the last PING and its peak-hold |
+| `stato link non idoneo client N NOME: peak Y ms` | the peak-hold has exceeded `--link-ceiling`: that client does not take the key |
+| `stato over client N NOME B X ms` | an over has started, with the B computed for that session |
+| `stato byte in ritardo client N NOME: B byte, M ms in totale` | a byte arrived after the deadline of the edge it carried: the element came out longer than it was keyed, and the link is slipping. Cumulative, so two lines apart say *how fast* |
+| `stato fault [client N NOME:] MOTIVO` | FAULT philosophy: key up and it stops (holder vanished mid-over - TCP closed or three PINGs without an answer -, over too long, holder silent past `--idle` with the key up) |
+| `stato eventi persi N` | the core produced more events than the read buffer could hold: no edge is lost, only the descriptive line |
+| `stato uscita fronti (DEST) non drena: N ms e aspetto` | the edges descriptor has stopped taking bytes and the loop has been stuck there for N ms (see *Two outputs*) |
+| `stato uscita fronti (DEST): A attese per M ms, E errori, P persi` | the summary at the end of the session: `P` other than zero is the only case where an edge was not written, and it only happens after a SIGINT |
 
-**Ne' una FIFO vuota ne' un tasto tenuto giu' sono un guasto.** La FIFO vuota
-e' lo stato normale di un over dal vivo (R8): ogni byte arriva circa B ms
-prima della propria scadenza, e ogni elemento piu' lungo di B la svuota. Un
-tasto giu' con niente che arriva e' l'accordatura, che a bassa potenza e'
-procedura: il motore non lo solleva mai da se', perche' il silenzio del
-keying non distingue chi tiene giu' da chi e' caduto. Quella distinzione la
-fa il PING, e il fault che si vede col tasto giu' e' il titolare dichiarato
-morto. Il segnale che arriva *prima*, quando il link comincia a scivolare ma
-i byte ancora arrivano, e' `stato byte in ritardo`.
+**Neither an empty FIFO nor a key held down is a fault.** An empty FIFO is
+the normal state of a live over (R8): every byte arrives about B ms before
+its own deadline, and every element longer than B empties it. A key down
+with nothing arriving is tuning, which at low power is standard procedure:
+the engine never lifts it on its own, because keying silence does not
+distinguish who is holding down from who has dropped. That distinction is
+made by the PING, and the fault seen with the key down is the holder
+declared dead. The signal that arrives *before* that, when the link starts
+slipping but the bytes are still arriving, is `stato byte in ritardo`.
 
-Uscita di tasto e PTT (`key_output.h`, backend `virtual`) — **non su stdout**:
-sul descrittore di `--edges`, che di default e' `stderr`:
+Key and PTT output (`key_output.h`, `virtual` backend) - **not on stdout**:
+on the `--edges` descriptor, which defaults to `stderr`:
 
 ```
-key 1 431839006        <- tasto giu', programmato per l'istante 431839006 (ms monotoni del processo)
-key 0 431839102        <- tasto su
-ptt 1 431838958         <- PTT acceso
-ptt 0 431839786         <- PTT spento
+key 1 431839006        <- key down, scheduled for instant 431839006 (process monotonic ms)
+key 0 431839102        <- key up
+ptt 1 431838958         <- PTT on
+ptt 0 431839786         <- PTT off
 ```
 
-L'istante e' quello *programmato* (B piu' la somma delle attese decodificate
-dal filo), non quello in cui la riga e' stata scritta: cosi' un over si
-ricostruisce dalle righe da solo, ed e' il numero che la misura del jitter
-guarda dal di fuori (vedi sotto). Un fronte che non cambia stato non e' un
-fronte: non genera una riga (`key_output.h`). Nessuna di queste righe viene
-mai scartata — e' l'intero motivo per cui hanno un descrittore loro.
+The instant is the *scheduled* one (B plus the sum of the waits decoded
+from the wire), not the one at which the line was written: this way an
+over reconstructs itself from the lines alone, and it's the number the
+jitter measurement looks at from the outside (see below). An edge that
+does not change state is not an edge: it does not generate a line
+(`key_output.h`). None of these lines is ever dropped - that's the entire
+reason they have a descriptor of their own.
 
-## Loop senza scatola
+## Loop without the box
 
-Prova rapida, senza hardware: un client Python al posto della scatola.
+Quick test, no hardware: a Python client in place of the box.
 
 ```sh
 host/build/cwnetd --listen 127.0.0.1 --port 17355 --edges /tmp/fronti.log &
@@ -197,183 +199,188 @@ python3 tools/cwnet/cwnet_send.py --host 127.0.0.1 --port 17355 --fixture first_
 cat /tmp/fronti.log
 ```
 
-Atteso sull'uscita virtuale (AE2, `ref_first_over`, B=100 ms di default):
-quattro fronti di tasto (giu' a +100, su a +148, giu' a +196, su a +340
-dall'arrivo del primo byte) e due di PTT (acceso col primo key-down, spento
-100 ms dopo l'ultimo key-up). Senza `--edges` finiscono su stderr, cioe' sul
-terminale insieme allo stato. Dettagli e altri scenari:
+Expected on the virtual output (AE2, `ref_first_over`, B=100 ms by
+default): four key edges (down at +100, up at +148, down at +196, up at
++340 from the arrival of the first byte) and two PTT edges (on with the
+first key-down, off 100 ms after the last key-up). Without `--edges` they
+end up on stderr, i.e. on the terminal together with the status. Details
+and other scenarios:
 [tools/cwnet/README.md](../../tools/cwnet/README.md).
 
-## Banco con la scatola (R18)
+## Bench with the box (R18)
 
-Questo e' il passo che la CI non fa: lo esegue il maintainer, con la
-scatola vera (il keyer ESP32, con un tasto o un paddle collegato) come
-client. `tools/cwnet/keyer_sim.c` da' lo stimolo di riferimento —
-i byte che il *client ufficiale* manderebbe per una manipolazione nota —
-cosi' c'e' qualcosa di codificato contro cui confrontare i fronti veri.
+This is the step CI does not do: the maintainer runs it, with the real
+box (the ESP32 keyer, with a key or a paddle attached) as the client.
+`tools/cwnet/keyer_sim.c` gives the reference stimulus -
+the bytes the *official client* would send for a known keying -
+so there's something encoded to compare the real edges against.
 
-### 1. Compila e avvia il daemon sul PC
+### 1. Build and start the daemon on the PC
 
 ```sh
 cmake -S host -B host/build && cmake --build host/build
 host/build/cwnetd --listen 0.0.0.0 --port 7355 --edges /tmp/fronti.log
 ```
 
-(`--edges` su un file: cosi' i fronti restano leggibili anche quando lo
-stato scorre, e un file non puo' fermare il loop di temporizzazione.)
+(`--edges` to a file: this way the edges stay readable even while the
+status scrolls, and a file cannot stop the timing loop.)
 
-Annota l'indirizzo IP del PC sulla stessa rete/VPN della scatola (LAN o
-WireGuard — non esporre `cwnetd` su Internet, CWNet non si autentica).
+Note the IP address of the PC on the same network/VPN as the box (LAN or
+WireGuard - do not expose `cwnetd` on the Internet, CWNet does not
+authenticate).
 
-### 2. Punta la scatola al daemon
+### 2. Point the box at the daemon
 
-Dalla console seriale della scatola (USB-CDC, `components/keyer_usb`) o
-dalla sua web UI, sezione **Remote**:
+From the box's serial console (USB-CDC, `components/keyer_usb`) or from
+its web UI, **Remote** section:
 
 ```
-set remote.server_host <IP del PC>
+set remote.server_host <PC IP>
 set remote.server_port 7355
-set remote.username <un nome qualsiasi>
+set remote.username <any name>
 set remote.cwnet_enabled true
 ```
 
-`system.callsign` e' il nominativo che finisce nel CONNECT (il campo che
-`cwnet_echo.py` adesso annuncia — vedi `tools/cwnet/README.md`); se non
-l'hai gia' impostato:
+`system.callsign` is the callsign that ends up in the CONNECT (the field
+that `cwnet_echo.py` now announces - see `tools/cwnet/README.md`); if you
+haven't already set it:
 
 ```
-set system.callsign <il tuo nominativo>
+set system.callsign <your callsign>
 ```
 
-Questi parametri sono `runtime_change: reboot` (`parameters.yaml`): riavvia
-la scatola perche' si connetta con i nuovi valori.
+These parameters are `runtime_change: reboot` (`parameters.yaml`): restart
+the box so it connects with the new values.
 
-### 3. Conferma la connessione
+### 3. Confirm the connection
 
-Sullo stdout di `cwnetd` deve comparire:
+On `cwnetd`'s stdout this should appear:
 
 ```
 stato accettato client 1 da <IP scatola>:<porta>
 stato connesso client 1 <il tuo nominativo> da <IP scatola>:<porta>
 ```
 
-Se non compare: verifica che la scatola e il PC si vedano sulla rete
-(ping), che la porta sia la stessa da entrambi i lati, e che
-`remote.cwnet_enabled` sia effettivamente `true` dopo il riavvio (`show
-remote.*` in console).
+If it does not appear: check that the box and the PC can see each other
+on the network (ping), that the port is the same on both sides, and that
+`remote.cwnet_enabled` is actually `true` after the restart (`show
+remote.*` in the console).
 
-### 4. Manipola e leggi i fronti
+### 4. Key and read the edges
 
-Imposta la scatola a 25 WPM (`set keyer.wpm 25`, dot = 48 ms) e manda la
-lettera "A" (di-dah) con il paddle, poi lascia il tasto fermo.
+Set the box to 25 WPM (`set keyer.wpm 25`, dot = 48 ms) and send the
+letter "A" (di-dah) with the paddle, then leave the key still.
 
-Nel file di `--edges` deve comparire, nell'ordine, la stessa forma di
-AE2/`ref_first_over` (gia' pinnata da `test_cwnet_play.c`):
+In the `--edges` file this should appear, in order, the same shape as
+AE2/`ref_first_over` (already pinned by `test_cwnet_play.c`):
 
 ```
-ptt 1 <t0>          <- PTT su col primo key-down
-key 1 <t0>          <- tasto giu' (il "di")
-key 0 <t0+48>        <- tasto su, ~48 ms dopo (un dot a 25 WPM)
-key 1 <t0+96>        <- tasto giu' (il "dah")
-key 0 <t0+240>        <- tasto su, ~144 ms dopo (un dash a 25 WPM)
-ptt 0 <t0+340>        <- PTT giu', 100 ms (--ptt-tail) dopo l'ultimo key-up
+ptt 1 <t0>          <- PTT on with the first key-down
+key 1 <t0>          <- key down (the "di")
+key 0 <t0+48>        <- key up, ~48 ms later (a dot at 25 WPM)
+key 1 <t0+96>        <- key down (the "dah")
+key 0 <t0+240>        <- key up, ~144 ms later (a dash at 25 WPM)
+ptt 0 <t0+340>        <- PTT off, 100 ms (--ptt-tail) after the last key-up
 ```
 
-`keyer_sim.c` genera lo stesso stimolo in forma di byte (scenario A del suo
-`main()`: `run("A primo over, dot 48", ...)`, che stampa `80 24 A4 3C 60`);
-`decode7()` di quei byte da' le stesse attese, 48/48/144 ms. La mano non
-riproduce 48.000 ms esatti come `keyer_sim.c` — il confronto e' sulla
-*forma* (quattro fronti, gli intervalli vicini a 48/48/144 ms, PTT su col
-primo giu' e giu' 100 ms dopo l'ultimo su), non su uno scarto in
-millisecimi: quello lo fa la misura del jitter qui sotto, senza mano di
-mezzo.
+`keyer_sim.c` generates the same stimulus in byte form (scenario A of its
+`main()`: `run("A primo over, dot 48", ...)`, which prints `80 24 A4 3C
+60`); `decode7()` on those bytes gives the same waits, 48/48/144 ms. The
+hand does not reproduce exact 48.000 ms like `keyer_sim.c` - the
+comparison is on *shape* (four edges, the intervals close to 48/48/144 ms,
+PTT on with the first down and off 100 ms after the last up), not on a
+millisecond-level deviation: that is what the jitter measurement below
+does, with no hand in between.
 
-Per un confronto byte-esatto (non solo la forma), cattura il traffico
-grezzo mentre manipoli con `tools/cwnet/cwnet_tap.py` (o un pcap con
-`tools/cwnet/pcap_to_stream.py`) e decodificalo con `tools/cwnet/cwnet_dump.c`:
-i byte MORSE catturati devono decodificare alle stesse attese che
-`keyer_sim.c` scrive per lo scenario che hai riprodotto.
+For a byte-exact comparison (not just the shape), capture the raw traffic
+while you key with `tools/cwnet/cwnet_tap.py` (or a pcap with
+`tools/cwnet/pcap_to_stream.py`) and decode it with
+`tools/cwnet/cwnet_dump.c`: the captured MORSE bytes must decode to the
+same waits that `keyer_sim.c` writes for the scenario you reproduced.
 
-### 5. Scrivi il risultato
+### 5. Write up the result
 
-Il passo di banco chiude solo quando è scritto su
-[#64](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/64): un
-commento con cosa è stato manipolato, le righe di stdout osservate (o uno
-snippet), e se la forma attesa regge.
+The bench step closes only once it's written up on
+[#64](https://github.com/iu3qez/RemoteCWKeyer-esp32/issues/64): a comment
+with what was keyed, the stdout lines observed (or a snippet), and
+whether the expected shape holds.
 
-## Misura del jitter e del tempo di scambio
+## Measuring jitter and turnaround time
 
-`tools/cwnet/cwnet_jitter.py` fa il loop senza scatola con una sequenza
-lunga (`cwnet_send.py --fixture long`, 104 elementi, la lettera "V"
-ripetuta) e confronta ogni riga `key` con l'istante che porta scritto
-sopra — vedi la docstring dello script per il metodo esatto e perché serve
-una calibrazione fra i due orologi di processo. Non è una misura con
-l'oscilloscopio sul tasto vero (quella è il passo con la scatola sopra):
-è uno scarto misurato su una macchina, non una garanzia RT.
+`tools/cwnet/cwnet_jitter.py` runs the loop without the box with a long
+sequence (`cwnet_send.py --fixture long`, 104 elements, the letter "V"
+repeated) and compares every `key` line against the instant it carries
+written above - see the script's docstring for the exact method and why a
+calibration is needed between the two processes' clocks. This is not a
+measurement with an oscilloscope on the real key (that's the step with the
+box above): it's a deviation measured on one machine, not an RT
+guarantee.
 
 ```sh
 python3 tools/cwnet/cwnet_jitter.py --cwnetd host/build/cwnetd
 python3 tools/cwnet/cwnet_jitter.py --cwnetd host/build/cwnetd --handover
 ```
 
-(Lo script legge i fronti da `stderr` del daemon, che unisce alla stessa
-pipe dello stato: è il default di `--edges`, e le due epoche monotone dei
-due processi vengono calibrate sul primo fronte — vedi la docstring.)
+(The script reads the edges from the daemon's `stderr`, which merges into
+the same pipe as the status: that's the default of `--edges`, and the two
+processes' monotonic epochs are calibrated on the first edge - see the
+docstring.)
 
-### Numeri misurati
+### Measured numbers
 
-**macOS, Apple Silicon** — MacBook Pro 18,2 (Apple M1 Max), macOS 26.6.2
-(Darwin 25.6.0, arm64), Python 3 di sistema, 2026-09-10, `--play-floor 100
---ptt-tail 100` (i default):
+**macOS, Apple Silicon** - MacBook Pro 18,2 (Apple M1 Max), macOS 26.6.2
+(Darwin 25.6.0, arm64), system Python 3, 2026-09-10, `--play-floor 100
+--ptt-tail 100` (the defaults):
 
-| Misura | Valore |
+| Measure | Value |
 |---|---|
-| Scarto medio (jitter), 9 run da 104 fronti | fra 0.39 e 0.64 ms |
-| Scarto massimo, stesse 9 run | fra 1.2 e 4.7 ms |
-| Fronti ricevuti | 104/104 in ogni run |
-| Intervallo stazione: ultimo key-up -> PTT giu' (`--handover`) | 100 ms (= `--ptt-tail`, misurato su 5 run) |
-| Tempo di scambio dopo la TX (client -> PTT giu' in stazione) | B + coda = 100 + 100 = **200 ms** |
+| Average deviation (jitter), 9 runs of 104 edges | between 0.39 and 0.64 ms |
+| Maximum deviation, same 9 runs | between 1.2 and 4.7 ms |
+| Edges received | 104/104 in every run |
+| Station interval: last key-up -> PTT down (`--handover`) | 100 ms (= `--ptt-tail`, measured over 5 runs) |
+| Turnaround time after TX (client -> PTT down at the station) | B + tail = 100 + 100 = **200 ms** |
 
-Il tempo di scambio è la grandezza che interessa a chi usa il programma
-originale (il ritardo fra "l'operatore remoto lascia il tasto" e "il PTT di
-stazione scende"): è una somma di configurazione (B, il pavimento del
-buffer, più la coda del PTT), confermata sul loop misurando esattamente
-l'intervallo fra l'ultimo key-up e il PTT giù di una sessione che chiude
-l'over correttamente (`ref_first_over`).
+Turnaround time is the quantity that matters to whoever uses the original
+program (the delay between "the remote operator releases the key" and
+"the station's PTT drops"): it's a sum of configuration (B, the buffer
+floor, plus the PTT tail), confirmed on the loop by measuring exactly the
+interval between the last key-up and the PTT down of a session that closes
+the over correctly (`ref_first_over`).
 
-**Erano 150 ms, adesso sono 200.** Il pavimento di B è passato da 50 a
-100 ms, e questo numero lo segue: sono i 100 ms in più che si pagano per non
-tagliare un elemento quando la rete fa un salto. Chi ha un link stabile —
-LAN, o una VPN su fibra — lo riporta dov'era con `--play-floor 50`, e riavrà
-150 ms; è una scelta di configurazione, non un limite del programma. Il
-pavimento non è il ritardo: se il peak-hold del titolare è più alto, B è
-quello, e il tempo di scambio sale di conseguenza.
+**It used to be 150 ms, now it's 200.** The floor of B went from 50 to
+100 ms, and this number follows it: it's the extra 100 ms paid for not
+cutting off an element when the network jumps. Whoever has a stable link -
+LAN, or a VPN over fibre - brings it back to where it was with
+`--play-floor 50`, and gets back 150 ms; it's a configuration choice, not a
+limit of the program. The floor is not the delay: if the holder's
+peak-hold is higher, B is that, and turnaround time rises accordingly.
 
-**Linux, x86-64 su metallo** — `sf-B450M-DS3H-V2` (AMD Ryzen 7 5700G),
-Linux 7.0.0-31-generic x86_64, 2026-09-12, gli stessi default. E' la
-macchina di stazione, avviata da un disco Ubuntu:
+**Linux, x86-64 on bare metal** - `sf-B450M-DS3H-V2` (AMD Ryzen 7 5700G),
+Linux 7.0.0-31-generic x86_64, 2026-09-12, the same defaults. It's the
+station machine, booted from an Ubuntu disk:
 
-| Misura | Valore |
+| Measure | Value |
 |---|---|
-| Scarto medio (jitter), 3 run da 104 fronti | fra 0.25 e 0.47 ms |
-| Scarto massimo, stesse 3 run | fra 0.62 e 1.07 ms |
-| Fronti ricevuti | 104/104 in ogni run |
-| Intervallo stazione: ultimo key-up -> PTT giu' (`--handover`) | 100 ms (= `--ptt-tail`) |
-| Tempo di scambio dopo la TX | B + coda = 100 + 100 = **200 ms** |
+| Average deviation (jitter), 3 runs of 104 edges | between 0.25 and 0.47 ms |
+| Maximum deviation, same 3 runs | between 0.62 and 1.07 ms |
+| Edges received | 104/104 in every run |
+| Station interval: last key-up -> PTT down (`--handover`) | 100 ms (= `--ptt-tail`) |
+| Turnaround time after TX | B + tail = 100 + 100 = **200 ms** |
 
-**Misurati a macchina scarica**, senza altro carico in esecuzione. Nessuno
-ha misurato cosa succede sotto carico, e quello e' il caso che conta per una
-stazione che fa anche altro: chi ci mette sopra un browser, una cattura o un
-backup rifaccia la misura invece di fidarsi di questa riga.
+**Measured on an idle machine**, with no other load running. Nobody has
+measured what happens under load, and that's the case that matters for a
+station that also does other things: whoever puts a browser, a capture, or
+a backup on it should redo the measurement instead of trusting this line.
 
-Con quella riserva: piu' fedele del Mac, e non di poco, perche' il massimo
-peggiore qui sta sotto il migliore di la'. Due macchine sole non fanno una
-legge, e nessuna delle due e' una misura all'oscilloscopio sul tasto vero —
-quella resta il passo di banco con la scatola.
+With that reservation: more faithful than the Mac, and not by a little,
+because the worst maximum here sits below the best of that one. Two
+machines alone don't make a law, and neither is a measurement with an
+oscilloscope on the real key - that remains the bench step with the box.
 
-Una nota sul metodo, perche' cambia fra i due sistemi: lo script si calibra
-sul primo fronte e misura la deriva da li'. Su macOS **deve** farlo, perche'
-`time.monotonic()` di Python e `CLOCK_MONOTONIC` del daemon non condividono
-l'epoca; su Linux la condividono, quindi li' la calibrazione non serve e non
-nasconde niente. I numeri delle due tabelle restano confrontabili perche'
-misurano la stessa cosa, la deriva fronte per fronte.
+A note on the method, because it differs between the two systems: the
+script calibrates on the first edge and measures the drift from there. On
+macOS it **must** do this, because Python's `time.monotonic()` and the
+daemon's `CLOCK_MONOTONIC` do not share the epoch; on Linux they do, so
+there the calibration is not needed and hides nothing. The numbers in the
+two tables remain comparable because they measure the same thing, the
+drift edge by edge.

@@ -1,69 +1,69 @@
-# Code Quality Notes — 2026-09-01
+# Code Quality Notes - 2026-09-01
 
 ## Recent Fixes (2026-09-01, branch claude/remote-environment-setup-vdjx7v)
-- Host tests: 8 failures pre-esistenti risolti, suite 189/189 verde anche con ASan/UBSan.
-  - `iambic.c`: release debounce si autoattivava a t=0 (`now - release_time(0) < 5ms`); i timestamp di rilascio partono ora a `-IAMBIC_DEBOUNCE_RELEASE_US`.
-  - `iambic.c`: `progress_pct` calcolato in int64, non più troncato a uint8 (un rilascio oltre 255% wrappava sotto la finestra).
-  - `cwnet_frame.c`: cast esplicito su `payload_len` (`-Wconversion` sotto UBSan).
-  - `test_stream.c`: il test di lag usa `stream_push_raw()` (era scritto prima della silence compression).
-  - `test_fault.c`: `fault_clear()` non azzera `count` — è un contatore lifetime (`fault.h`), il test si aspettava il reset.
-- CI: `.github/workflows/host-tests.yml` (plain + asan-ubsan). Prima non esisteva alcuna CI di build/test.
+- Host tests: 8 pre-existing failures fixed, suite 189/189 green with ASan/UBSan too.
+  - `iambic.c`: release debounce triggered itself at t=0 (`now - release_time(0) < 5ms`); release timestamps now start at `-IAMBIC_DEBOUNCE_RELEASE_US`.
+  - `iambic.c`: `progress_pct` computed in int64, no longer truncated to uint8 (a release beyond 255% wrapped below the window).
+  - `cwnet_frame.c`: explicit cast on `payload_len` (`-Wconversion` under UBSan).
+  - `test_stream.c`: the lag test uses `stream_push_raw()` (it was written before silence compression).
+  - `test_fault.c`: `fault_clear()` does not reset `count` - it is a lifetime counter (`fault.h`), the test expected the reset.
+- CI: `.github/workflows/host-tests.yml` (plain + asan-ubsan). Before, no build/test CI existed.
 
-## Da sistemare
-- `consumer_resync()` (`components/keyer_core/src/stream.c`) atterra a `capacity - 1` indietro, cioè sull'ultimo slot leggibile: al push successivo il consumer è di nuovo in overrun se non legge prima. Nessun chiamante di produzione oggi; da #70.
-- `main/rt_task.c`, re-read della config: il `continue` sul torn read salta anche `vTaskDelayUntil()` in fondo al loop, quindi il retry gira subito invece di aspettare il tick. Innocuo (un giro in più), ma il tick non è più periodico in quel caso; da #71.
-- `.devcontainer/Dockerfile`: `ARG DOCKER_TAG=v5.5.1` e path `idf5.5_py3.12_env` hardcoded — non aggiornati dopo la migrazione a IDF v6. Da verificare su un'immagine `espressif/idf:v6.x` prima di cambiare.
-- `test_host/CLAUDE.md` (blocco `treecode` auto) nomina ancora `keyer_iambic` come dipendenza in-tree: dal 2026-09-06 è il submodule `Esp32KeyerTest`. `components/keyer_cwnet/CLAUDE.md` dice ancora che è `bg_task` a passare gli eventi di keying: dal 2026-09-07 il modulo consuma lo stream da sé (`cwnet_feed`, #55); e che la config viene solo da `g_config.remote`: dal 2026-09-08 il CONNECT porta `g_config.system.callsign` (#25). Si risincronizzano con `map-tree`, non a mano (`keyer_core` rigenerato col cartographer il 2026-09-08, #57).
-- `sample_silence()` clampa il marker a `UINT16_MAX`: oltre 65,5 s di stream immutato i tick in eccesso spariscono dal marker e il tempo di stream ricostruito da un consumer (`cwnet_feed`) resta indietro. Innocuo finché il fine over chiude l'over; il rimedio è che `stream_push` scarichi il marker quando `idle_ticks` arriva a `UINT16_MAX` (RT path, un confronto per tick, test host possibile).
-- Ramo remoto `k8-differential-bench` (`fae2f57`), senza PR: lo scheletro del banco è migrato in Esp32KeyerTest, `FINDINGS.md` (numeri superati) vive solo lì. Da cancellare quando nessuno lo cita più.
+## To fix
+- `consumer_resync()` (`components/keyer_core/src/stream.c`) lands `capacity - 1` behind, that is on the last readable slot: on the next push the consumer is in overrun again unless it reads first. No production caller today; from #70.
+- `main/rt_task.c`, config re-read: the `continue` on a torn read also skips `vTaskDelayUntil()` at the bottom of the loop, so the retry runs immediately instead of waiting for the tick. Harmless (one extra iteration), but the tick is no longer periodic in that case; from #71.
+- `.devcontainer/Dockerfile`: `ARG DOCKER_TAG=v5.5.1` and path `idf5.5_py3.12_env` hardcoded - not updated after the migration to IDF v6. To be verified on an `espressif/idf:v6.x` image before changing.
+- `test_host/CLAUDE.md` (auto `treecode` block) still names `keyer_iambic` as an in-tree dependency: since 2026-09-06 it is the `Esp32KeyerTest` submodule. `components/keyer_cwnet/CLAUDE.md` still says that it is `bg_task` that passes the keying events: since 2026-09-07 the module consumes the stream itself (`cwnet_feed`, #55); and that the config comes only from `g_config.remote`: since 2026-09-08 the CONNECT carries `g_config.system.callsign` (#25). They are resynced with `map-tree`, not by hand (`keyer_core` regenerated with the cartographer on 2026-09-08, #57).
+- `sample_silence()` clamps the marker to `UINT16_MAX`: beyond 65.5 s of unchanged stream the excess ticks vanish from the marker and the stream time rebuilt by a consumer (`cwnet_feed`) falls behind. Harmless as long as the end of over closes the over; the remedy is for `stream_push` to flush the marker when `idle_ticks` reaches `UINT16_MAX` (RT path, one comparison per tick, host test possible).
+- Remote branch `k8-differential-bench` (`fae2f57`), with no PR: the bench skeleton moved to Esp32KeyerTest, `FINDINGS.md` (superseded numbers) lives only there. To be deleted when nobody cites it any more.
 
 
-## Contesto: PING CWNet, cosa c'e' nei tre timestamp
+## Context: CWNet PING, what is in the three timestamps
 
-Il client DL4YHF risponde alla REQUEST copiando i tre timestamp del suo array (`CwNet.c:1478`): slot 0 = `t0` del server, slot 1 = il suo orologio locale grezzo (`:1403`), slot 2 = il `t2` del giro precedente, mai azzerato. Il nostro mette nello slot 1 l'ora sincronizzata e 0 nello slot 2. Il server copia lo slot 1 nella RESPONSE_2 e sovrascrive lo slot 2; nessuno legge lo slot 1 dall'altra parte. Byte diversi, nessun effetto. Osservato costruendo `cwnet_echo.py` (#14).
+The DL4YHF client answers the REQUEST by copying the three timestamps of its array (`CwNet.c:1478`): slot 0 = the server's `t0`, slot 1 = its raw local clock (`:1403`), slot 2 = the `t2` of the previous round, never cleared. Ours puts the synchronized time in slot 1 and 0 in slot 2. The server copies slot 1 into RESPONSE_2 and overwrites slot 2; nobody reads slot 1 on the other side. Different bytes, no effect. Observed while building `cwnet_echo.py` (#14).
 
 ## Cleanup Items
 
-### Vendored esp_wireguard — GCC 15 / ESP-IDF v6 patches
-- `components/esp_wireguard/` è un fork in-tree di `trombik/esp_wireguard 0.9.0` (l'unica versione sul registry, non aggiornata per v6).
-- Patch applicate:
-  - `wireguard-platform.c`: rimosso il giro `mbedtls_entropy/ctr_drbg`, ora usa `esp_fill_random()` (le API standalone non sono più linkate in mbedtls 4).
-  - `CMakeLists.txt`: `-Wno-error=stringop-overread` (già nell'upstream solo per IDF v5) esteso a v6, più `-Wno-error=unterminated-string-initialization` per `wireguard.c` (costanti del protocollo come byte array da 8/34/37).
-- Da fare: monitorare se upstream pubblica una versione v6-compatible per dewirevendorare.
+### Vendored esp_wireguard - GCC 15 / ESP-IDF v6 patches
+- `components/esp_wireguard/` is an in-tree fork of `trombik/esp_wireguard 0.9.0` (the only version on the registry, not updated for v6).
+- Patches applied:
+  - `wireguard-platform.c`: removed the `mbedtls_entropy/ctr_drbg` path, now uses `esp_fill_random()` (the standalone APIs are no longer linked in mbedtls 4).
+  - `CMakeLists.txt`: `-Wno-error=stringop-overread` (already upstream, for IDF v5 only) extended to v6, plus `-Wno-error=unterminated-string-initialization` for `wireguard.c` (protocol constants as byte arrays of 8/34/37).
+- To do: watch whether upstream publishes a v6-compatible version, so it can be un-vendored.
 
-### Risolti (commit a67bc73)
-- ~~`line_buffer.c` stub orfano~~ — cancellato
-- ~~Docs stale in `console.h`~~ — aggiornati
+### Resolved (commit a67bc73)
+- ~~`line_buffer.c` orphan stub~~ - deleted
+- ~~Stale docs in `console.h`~~ - updated
 
-### Parser scaffolding (non dead code)
-- `parser.c`: `skip_whitespace()` e `find_token_end()` marcati `__attribute__((unused))` — riservati per uso futuro, intenzionali
+### Parser scaffolding (not dead code)
+- `parser.c`: `skip_whitespace()` and `find_token_end()` marked `__attribute__((unused))` - reserved for future use, intentional
 
-### Stubs attivi (da implementare o rimuovere)
-- `keyer_usb/src/usb_winkeyer.c` — stub completo, `usb_winkeyer_is_enabled()` ritorna sempre false
-- `keyer_usb/src/usb_uf2.c` — solo `esp_restart()`, no UF2 reale (conflitto esp_tinyuf2/esp_tinyusb)
-- `config_nvs.c:551,557` — `config_load_param()`/`config_save_param()` ritornano `ESP_ERR_NOT_SUPPORTED`
+### Active stubs (to implement or remove)
+- `keyer_usb/src/usb_winkeyer.c` - complete stub, `usb_winkeyer_is_enabled()` always returns false
+- `keyer_usb/src/usb_uf2.c` - only `esp_restart()`, no real UF2 (esp_tinyuf2/esp_tinyusb conflict)
+- `config_nvs.c:551,557` - `config_load_param()`/`config_save_param()` return `ESP_ERR_NOT_SUPPORTED`
 
-## Recent Fixes (2026-02-15, su main)
-- WebSocket: buffer statico 256B (rimosso malloc illimitato)
+## Recent Fixes (2026-02-15, on main)
+- WebSocket: static 256B buffer (removed unbounded malloc)
 - NVS: rate limiting 10s per save
 - Config hot-reload: optimistic generation re-check in rt_task.c
-- fade_duration_ms: clamp prima del cast uint16_t
-- log_stream_push: memory ordering rilassato per read_idx
+- fade_duration_ms: clamp before the uint16_t cast
+- log_stream_push: relaxed memory ordering for read_idx
 
-## Daemon di stazione (2026-09-10, #64)
+## Station daemon (2026-09-10, #64)
 
-- **L'archivio DL4YHF è incompleto solo delle librerie personali dell'autore.**
-  I file del protocollo ci sono tutti: `HamlibResultCodes.h`, dato per mancante
-  dal piano del daemon, è nell'archivio (2051 byte). Prima di scrivere «X non
-  c'è», `unzip -l ~/Downloads/Remote_CW_Keyer_Sources.zip | grep -i <nome>`.
-- **Un'attesa spezzata e una fine over sono identiche sul filo**: byte
-  consecutivi con lo stesso stato del tasto. `cwnet_play` le distingue con la
-  convenzione dell'encoder (`CwStreamEnc.c:135-146`): ogni pezzo tranne l'ultimo
-  porta il campo a 7 bit al massimo. Il costo, scritto in `cwnet_play.h`, è che
-  un'attesa lunga esattamente il massimo codificabile perde il suo fronte e
-  suona come silenzio. Il ricevitore del riferimento invece lo applica subito e
-  manipola fino a 830 ms in anticipo: quello è timing corrotto, e non si copia.
-- **Su macOS `time.monotonic()` di Python e `CLOCK_MONOTONIC` del daemon non
-  condividono l'epoca**, su Linux sì. `tools/cwnet/cwnet_jitter.py` si calibra
-  sul primo fronte per questo; su Linux quella calibrazione nasconde un
-  controllo che lì sarebbe vero. Vedi #76.
+- **The DL4YHF archive is missing only the author's personal libraries.**
+  The protocol files are all there: `HamlibResultCodes.h`, given as missing
+  by the daemon plan, is in the archive (2051 bytes). Before writing "X is
+  not there", `unzip -l ~/Downloads/Remote_CW_Keyer_Sources.zip | grep -i <nome>`.
+- **A split wait and an end of over are identical on the wire**: consecutive
+  bytes with the same key state. `cwnet_play` tells them apart with the
+  encoder's convention (`CwStreamEnc.c:135-146`): every piece except the last
+  carries the 7-bit field at its maximum. The cost, written in `cwnet_play.h`, is that
+  a wait exactly as long as the maximum encodable value loses its edge and
+  sounds like silence. The reference's receiver instead applies it at once and
+  keys up to 830 ms early: that is corrupted timing, and it is not copied.
+- **On macOS, Python's `time.monotonic()` and the daemon's `CLOCK_MONOTONIC` do not
+  share the epoch**, on Linux they do. `tools/cwnet/cwnet_jitter.py` calibrates
+  on the first edge for this reason; on Linux that calibration hides a
+  check that would be genuine there. See #76.
