@@ -33,6 +33,17 @@ Uso
     python3 cwnet_jitter.py                         # misura di jitter (fixture 'long')
     python3 cwnet_jitter.py --handover               # tempo di scambio (fixture 'first_over')
     python3 cwnet_jitter.py --cwnetd ../../host/build/cwnetd --port 17400
+
+A/B against a previous binary
+-----------------------------
+--snapshot-ms is passed to the daemon only when given, so the same command
+drives a cwnetd built before that flag existed. --extra-clients N connects N
+more clients before the measured one keys: they complete the CONNECT and
+answer the PINGs without sending MORSE, so every snapshot carries N more
+client lines while the edges are being measured.
+
+    python3 cwnet_jitter.py --cwnetd OLD --extra-clients 1
+    python3 cwnet_jitter.py --cwnetd NEW --extra-clients 1 --snapshot-ms 50
 """
 import argparse
 import os
@@ -89,12 +100,15 @@ class DaemonReader:
             return list(self.lines)
 
 
-def start_daemon(cwnetd, host, port, play_floor, ptt_tail, idle_ms=None, timeout=5.0):
+def start_daemon(cwnetd, host, port, play_floor, ptt_tail, idle_ms=None, snapshot_ms=None,
+                 timeout=5.0):
     args = [cwnetd, "--listen", host, "--port", str(port),
             "--play-floor", str(play_floor), "--ptt-tail", str(ptt_tail),
             "--output", "virtual"]
     if idle_ms is not None:
         args += ["--idle", str(idle_ms)]
+    if snapshot_ms is not None:
+        args += ["--snapshot-ms", str(snapshot_ms)]
     proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                              text=True, bufsize=1)
     reader = DaemonReader(proc)
@@ -122,6 +136,40 @@ def run_client(host, port, fixture, hold, call="Moritz"):
                     timeout=hold + 10)
 
 
+def start_extra_clients(host, port, n, hold, reader, timeout=5.0):
+    """N clients that stay connected and answer the PINGs, keying nothing.
+
+    An empty file is an empty payload: cwnet_send.py sends it (nothing) and
+    goes on answering the PINGs until --hold. They must all be READY before
+    the measured client keys, or the load they add would start mid-series."""
+    procs = [subprocess.Popen([sys.executable, SEND_PY, "--host", host, "--port", str(port),
+                               "--file", os.devnull, "--call", "Extra%d" % (i + 1),
+                               "--hold", str(hold)],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+             for i in range(n)]
+    deadline = time.monotonic() + timeout
+    while sum(1 for _w, line in reader.snapshot()
+              if line.startswith("stato connesso client")) < n:
+        if time.monotonic() > deadline:
+            stop_extra_clients(procs)
+            raise RuntimeError("%d client in piu' non sono diventati READY entro %.1f s" %
+                               (n, timeout))
+        time.sleep(0.02)
+    return procs
+
+
+def stop_extra_clients(procs):
+    for p in procs:
+        if p.poll() is None:
+            p.terminate()
+    for p in procs:
+        try:
+            p.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            p.wait(timeout=2)
+
+
 def edges(lines, what):
     out = []
     for wall_ms, line in lines:
@@ -131,7 +179,8 @@ def edges(lines, what):
     return out
 
 
-def measure_jitter(cwnetd, host, port, play_floor, ptt_tail, verbose):
+def measure_jitter(cwnetd, host, port, play_floor, ptt_tail, verbose, snapshot_ms=None,
+                   extra_clients=0):
     events = long_fixture_events()
     span_ms = sum(d for _state, d in events[1:])  # dal primo fronte all'ultimo
 
@@ -144,12 +193,16 @@ def measure_jitter(cwnetd, host, port, play_floor, ptt_tail, verbose):
     idle_ms = int(span_ms + 5000)
     hold = (span_ms + play_floor + ptt_tail) / 1000.0 + 3.0
 
-    proc, reader = start_daemon(cwnetd, host, port, play_floor, ptt_tail, idle_ms=idle_ms)
+    proc, reader = start_daemon(cwnetd, host, port, play_floor, ptt_tail, idle_ms=idle_ms,
+                                snapshot_ms=snapshot_ms)
+    extra = []
     try:
+        extra = start_extra_clients(host, port, extra_clients, hold + 5.0, reader)
         run_client(host, port, "long", hold)
         time.sleep(0.3)  # lascia arrivare le ultime righe prima di leggere
     finally:
         lines = reader.snapshot()
+        stop_extra_clients(extra)
         stop_daemon(proc, reader)
 
     key_edges = edges(lines, "key")
@@ -178,16 +231,21 @@ def measure_jitter(cwnetd, host, port, play_floor, ptt_tail, verbose):
     }
 
 
-def measure_handover(cwnetd, host, port, play_floor, ptt_tail, verbose):
+def measure_handover(cwnetd, host, port, play_floor, ptt_tail, verbose, snapshot_ms=None,
+                     extra_clients=0):
     """Tempo di scambio dopo la TX: B + coda, confermato sul loop con
     ref_first_over (che chiude l'over correttamente, doppio key-up finale)."""
-    proc, reader = start_daemon(cwnetd, host, port, play_floor, ptt_tail)
+    proc, reader = start_daemon(cwnetd, host, port, play_floor, ptt_tail,
+                                snapshot_ms=snapshot_ms)
+    extra = []
     try:
         hold = (play_floor + ptt_tail) / 1000.0 + 3.0
+        extra = start_extra_clients(host, port, extra_clients, hold + 5.0, reader)
         run_client(host, port, "first_over", hold)
         time.sleep(0.3)
     finally:
         lines = reader.snapshot()
+        stop_extra_clients(extra)
         stop_daemon(proc, reader)
 
     key_edges = edges(lines, "key")
@@ -226,7 +284,15 @@ def main():
     ap.add_argument("--handover", action="store_true",
                     help="misura il tempo di scambio (B + coda) invece del jitter")
     ap.add_argument("--verbose", action="store_true", help="stampa ogni fronte")
+    ap.add_argument("--snapshot-ms", type=int, default=None,
+                    help="passed to cwnetd as --snapshot-ms; omitted when not given, "
+                         "so a binary without the flag still runs")
+    ap.add_argument("--extra-clients", type=int, default=0,
+                    help="clients connected before the measured one, answering the "
+                         "PINGs without keying (0 to 3: cwnetd serves 4 by default)")
     cfg = ap.parse_args()
+    if not 0 <= cfg.extra_clients <= 3:
+        ap.error("--extra-clients va da 0 a 3: il client misurato e' il quarto")
 
     cwnetd = os.path.abspath(cfg.cwnetd)
     if not os.path.isfile(cwnetd):
@@ -236,7 +302,8 @@ def main():
 
     try:
         if cfg.handover:
-            r = measure_handover(cwnetd, cfg.host, cfg.port, cfg.play_floor, cfg.ptt_tail, cfg.verbose)
+            r = measure_handover(cwnetd, cfg.host, cfg.port, cfg.play_floor, cfg.ptt_tail, cfg.verbose,
+                                 cfg.snapshot_ms, cfg.extra_clients)
             print("ultimo key-up (stazione, programmato): %d ms" % r["last_key_up_ms"])
             print("PTT giu' (stazione, programmato):       %d ms" % r["ptt_off_ms"])
             print("intervallo stazione ultimo key-up -> PTT giu': %d ms "
@@ -246,7 +313,7 @@ def main():
                   (cfg.play_floor, cfg.ptt_tail, r["formula_ms"]))
         else:
             r = measure_jitter(cwnetd, cfg.host, cfg.port, cfg.play_floor, cfg.ptt_tail,
-                               cfg.verbose)
+                               cfg.verbose, cfg.snapshot_ms, cfg.extra_clients)
             print("fronti 'key' ricevuti: %d/%d attesi" % (r["n"], r["expected_n"]))
             print("scarto medio:   %.3f ms" % r["mean_abs_ms"])
             print("scarto massimo: %.3f ms" % r["max_abs_ms"])

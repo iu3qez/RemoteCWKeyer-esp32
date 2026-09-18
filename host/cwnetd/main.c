@@ -43,6 +43,11 @@
  * corrupted timing is worse than silence, and a key stuck down is worse than
  * both (ARCHITECTURE.md 8.1).
  *
+ * The same holds for whoever reads stdout: the status lines are events, and
+ * some of them are dropped. So every --snapshot-ms the whole state goes out
+ * as well (snapshot_write()), and a reader that lost a line is right again
+ * at the next one.
+ *
  * SIGINT and SIGTERM close the clients and put the output back to rest. The
  * key is never left down on the way out.
  */
@@ -69,6 +74,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
 
 /*===========================================================================*/
@@ -136,6 +142,27 @@
 /** A sanitised name: worst case four characters ("\xNN") per source byte */
 #define CWNETD_SAFE_NAME_LEN (CWNET_SERVER_NAME_LEN * 4u)
 
+/**
+ * Version of the status-line vocabulary, carried by every snapshot. The
+ * tables in cwnetd/README.md, "Reading a status line", are what it names:
+ * change the shape of a line there and this changes with it.
+ */
+#define CWNETD_VOCABULARY "v1"
+
+/** --snapshot-ms: how often the whole state goes to stdout */
+#define CWNETD_DEFAULT_SNAPSHOT_MS 5000u
+#define CWNETD_MIN_SNAPSHOT_MS 50u
+#define CWNETD_MAX_SNAPSHOT_MS 3600000u
+
+/**
+ * A snapshot due this close to a core deadline waits for it.
+ *
+ * A snapshot is up to eleven write(2) calls (opening, settings, eight
+ * clients, closing). Put in front of an edge that is due, they would move
+ * it; put right after it, they cost nothing anybody measures.
+ */
+#define CWNETD_SNAPSHOT_GIVE_WAY_MS 2
+
 /*===========================================================================*/
 /* State                                                                     */
 /*===========================================================================*/
@@ -168,6 +195,24 @@ static volatile sig_atomic_t g_stop = 0;
 /** Status lines stdout would not take, and how many of those we have said. */
 static unsigned long g_lines_dropped = 0;
 static unsigned long g_lines_reported = 0;
+
+/** The PTT level the last "stato ptt" line gave. The output starts at rest. */
+static bool g_ptt_reported = false;
+
+/**
+ * @brief The periodic snapshot of the whole state on stdout
+ *
+ * The event lines can be dropped, and a reader that lost "stato chiave
+ * libera" would show the previous key holder for ever. The snapshot is what
+ * corrects it, within one period.
+ */
+static struct {
+    int64_t period_ms;
+    int64_t due_ms;          /**< Absolute: the last snapshot plus the period */
+    unsigned long seq;       /**< Of the last one written; 0 before the first */
+    long long start_s;       /**< The instance: wall-clock start, in seconds, */
+    long pid;                /**< and the pid, which alone repeats in a container */
+} g_snap;
 
 /*===========================================================================*/
 /* stdout: never block the timing loop                                       */
@@ -562,6 +607,23 @@ static void reconcile_output(int64_t now_ms) {
 }
 
 /**
+ * @brief Say the output PTT level when it has changed
+ *
+ * From the output, not from the core's events: a PTT event can be one of
+ * the dropped ones, and neither the correction in reconcile_output() nor
+ * the release at shutdown goes through an event at all. g_out.ptt_on moves
+ * only in handle_events() and in key_output_close(), so a comparison at the
+ * end of each covers every path.
+ */
+static void report_ptt(void) {
+    if (g_out.ptt_on == g_ptt_reported) {
+        return;
+    }
+    g_ptt_reported = g_out.ptt_on;
+    status_line("stato ptt %d", g_ptt_reported ? 1 : 0);
+}
+
+/**
  * @brief Print what the core did, and put its keying edges on the output
  *
  * The core reports; the daemon decides what that looks like (KTD10). Every
@@ -660,6 +722,7 @@ static void handle_events(const cwnet_server_result_t *res, int64_t now_ms) {
         status_line("stato eventi persi %zu", res->dropped);
     }
     reconcile_output(now_ms);
+    report_ptt();
 }
 
 /*===========================================================================*/
@@ -817,6 +880,7 @@ typedef struct {
     unsigned long out_cap;
     const char *output;
     const char *edges;
+    unsigned long snapshot_ms;
 } args_t;
 
 static void usage(const char *argv0, const args_t *d) {
@@ -842,20 +906,25 @@ static void usage(const char *argv0, const args_t *d) {
         "  --output BACKEND    uscita di tasto e PTT: %s (default %s)\n"
         "  --edges DEST        descrittore dei fronti: 'stderr' o un file, mai stdout\n"
         "                      (default %s; il file si apre in append)\n"
+        "  --snapshot-ms MS    periodo dell'istantanea dello stato su stdout\n"
+        "                      (default %lu, min %lu, max %lu)\n"
         "  --help              questo testo\n"
         "\n"
         "Lo stato esce su stdout a righe, non bloccante: una riga che non entra si\n"
-        "scarta e la successiva lo confessa. I fronti NO: escono sul descrittore di\n"
-        "--edges, che non ne scarta mai uno, come \"key 1 <ms>\" / \"ptt 0 <ms>\" con\n"
-        "l'istante per cui il fronte era programmato. Un file non puo' fermare il\n"
-        "loop; una pipe che nessuno legge si', quando il suo buffer si riempie, e\n"
-        "allora una riga di stato dice per quanto. SIGINT e SIGTERM chiudono i\n"
-        "client e rilasciano l'uscita.\n",
+        "scarta e la successiva lo confessa. Ogni --snapshot-ms esce anche lo stato\n"
+        "intero, su piu' righe, cosi' chi ha perso una riga si riallinea. I fronti\n"
+        "NO: escono sul descrittore di --edges, che non ne scarta mai uno, come\n"
+        "\"key 1 <ms>\" / \"ptt 0 <ms>\" con l'istante per cui il fronte era\n"
+        "programmato. Un file non puo' fermare il loop; una pipe che nessuno legge\n"
+        "si', quando il suo buffer si riempie, e allora una riga di stato dice per\n"
+        "quanto. SIGINT e SIGTERM chiudono i client e rilasciano l'uscita.\n",
         argv0, d->listen_addr, d->port, CWNET_SERVER_MAX_CLIENTS, d->max_clients,
         d->play_floor_ms, d->link_ceiling_ms, d->ptt_tail_ms, d->ptt_lead_ms,
         d->idle_ms, d->over_max_ms, d->handshake_ms,
         d->out_cap, (unsigned long)CWNETD_MIN_OUT_CAP, (unsigned long)CWNETD_MAX_OUT_CAP,
-        key_output_backends(), d->output, d->edges);
+        key_output_backends(), d->output, d->edges,
+        d->snapshot_ms, (unsigned long)CWNETD_MIN_SNAPSHOT_MS,
+        (unsigned long)CWNETD_MAX_SNAPSHOT_MS);
 }
 
 static bool parse_ulong(const char *s, unsigned long max, unsigned long *out) {
@@ -872,7 +941,7 @@ static bool parse_ulong(const char *s, unsigned long max, unsigned long *out) {
 enum {
     OPT_LISTEN = 1000, OPT_PORT, OPT_MAX_CLIENTS, OPT_PLAY_FLOOR, OPT_LINK_CEILING,
     OPT_PTT_TAIL, OPT_PTT_LEAD, OPT_IDLE, OPT_OVER_MAX, OPT_HANDSHAKE,
-    OPT_OUT_CAP, OPT_OUTPUT, OPT_EDGES,
+    OPT_OUT_CAP, OPT_OUTPUT, OPT_EDGES, OPT_SNAPSHOT_MS,
     OPT_HELP
 };
 
@@ -891,6 +960,7 @@ static bool parse_args(int argc, char **argv, args_t *a, bool *want_help) {
         { "out-cap",      required_argument, NULL, OPT_OUT_CAP },
         { "output",       required_argument, NULL, OPT_OUTPUT },
         { "edges",        required_argument, NULL, OPT_EDGES },
+        { "snapshot-ms",  required_argument, NULL, OPT_SNAPSHOT_MS },
         { "help",         no_argument,       NULL, OPT_HELP },
         { NULL, 0, NULL, 0 },
     };
@@ -923,6 +993,11 @@ static bool parse_args(int argc, char **argv, args_t *a, bool *want_help) {
                 break;
             case OPT_OUTPUT:       a->output = optarg; break;
             case OPT_EDGES:        a->edges = optarg; break;
+            case OPT_SNAPSHOT_MS:
+                ok = parse_ulong(optarg, (unsigned long)CWNETD_MAX_SNAPSHOT_MS,
+                                 &a->snapshot_ms) &&
+                     a->snapshot_ms >= (unsigned long)CWNETD_MIN_SNAPSHOT_MS;
+                break;
             case OPT_HELP:
             case 'h':              *want_help = true; return true;
             default:               return false;
@@ -939,6 +1014,97 @@ static bool parse_args(int argc, char **argv, args_t *a, bool *want_help) {
         return false;
     }
     return true;
+}
+
+/*===========================================================================*/
+/* The snapshot                                                              */
+/*===========================================================================*/
+
+/**
+ * @brief The whole state, over several lines, in one go
+ *
+ * 256 bytes do not hold eight clients and their names, so a snapshot is an
+ * opening, a settings line, one line per connection and a closing, tied by
+ * a sequence number (cwnetd/README.md, "The periodic snapshot"). Nothing
+ * else is written between them: this runs on the loop's only thread.
+ *
+ * The opening's count and the client lines come from one enumeration, the
+ * connections with an open socket, taken before anything is written. Two
+ * sources — a count from the core and lines from g_conn — could disagree by
+ * a lost event, and a snapshot missing a line would then read as complete.
+ * The rest comes from the core's accessors; the PTT is the output's level,
+ * the same as the "stato ptt" lines. The name goes last with its length, so
+ * a reader can tell a name cut by the line cap, and a name that contains
+ * "stato stdout", from a confession glued to half a line.
+ */
+static void snapshot_write(const args_t *a) {
+    int idx[CWNET_SERVER_MAX_CLIENTS];
+    int k = 0;
+    for (int i = 0; i < CWNET_SERVER_MAX_CLIENTS; i++) {
+        if (g_conn[i].in_use) {
+            idx[k] = CWNET_SERVER_FIRST_CLIENT + i;
+            k++;
+        }
+    }
+
+    g_snap.seq++;
+
+    char holder[16];
+    int h = cwnet_server_key_holder(&g_srv);
+    if (h == CWNET_SERVER_NOBODY) {
+        (void)snprintf(holder, sizeof(holder), "libera");
+    } else {
+        (void)snprintf(holder, sizeof(holder), "%d", h);
+    }
+
+    status_line("stato snap inizio %s istanza %lld-%ld seq %lu client %d chiave %s "
+                "ptt %d periodo %lld",
+                CWNETD_VOCABULARY, g_snap.start_s, g_snap.pid, g_snap.seq, k, holder,
+                g_out.ptt_on ? 1 : 0, (long long)g_snap.period_ms);
+    status_line("stato snap manopole max-clients %lu B>= %lu tetto %lu coda %lu lead %lu "
+                "idle %lu over-max %lu handshake %lu out-cap %lu",
+                a->max_clients, a->play_floor_ms, a->link_ceiling_ms, a->ptt_tail_ms,
+                a->ptt_lead_ms, a->idle_ms, a->over_max_ms, a->handshake_ms, a->out_cap);
+
+    for (int j = 0; j < k; j++) {
+        const conn_t *c = conn_of(idx[j]);
+        char name[CWNETD_SAFE_NAME_LEN];
+        sanitize(name, sizeof(name), cwnet_server_client_name(&g_srv, idx[j]));
+        status_line("stato snap client %d/%d %d %s %s lat %" PRId32 " peak %" PRId32
+                    " nome %zu %s",
+                    j + 1, k, idx[j],
+                    cwnet_server_client_ready(&g_srv, idx[j]) ? "pronto" : "attesa",
+                    (c != NULL) ? c->peer : "?",
+                    cwnet_server_client_latency_ms(&g_srv, idx[j]),
+                    cwnet_server_client_peak_ms(&g_srv, idx[j]),
+                    strlen(name), name);
+    }
+
+    status_line("stato snap fine seq %lu", g_snap.seq);
+}
+
+/**
+ * @brief Write the snapshot if it is due, unless an edge is about to be
+ *
+ * Called once per pass, after the core's work of that pass, so no event
+ * line can land inside a snapshot. Deferred while the core's next deadline
+ * is within CWNETD_SNAPSHOT_GIVE_WAY_MS, but never by more than one period.
+ * When late, one snapshot is written, not the ones missed, and the next is
+ * due one period from now.
+ */
+static void snapshot_maybe(const args_t *a) {
+    int64_t now_ms = (int64_t)clock_now_ms();
+    if (now_ms < g_snap.due_ms) {
+        return;
+    }
+    int64_t next_ms = 0;
+    if (now_ms - g_snap.due_ms < g_snap.period_ms &&
+        cwnet_server_next_deadline(&g_srv, &next_ms) &&
+        next_ms - now_ms <= CWNETD_SNAPSHOT_GIVE_WAY_MS) {
+        return;
+    }
+    snapshot_write(a);
+    g_snap.due_ms = now_ms + g_snap.period_ms;
 }
 
 /*===========================================================================*/
@@ -973,6 +1139,7 @@ int main(int argc, char **argv) {
         .out_cap         = CWNETD_DEFAULT_OUT_CAP,
         .output          = "virtual",
         .edges           = "stderr",
+        .snapshot_ms     = CWNETD_DEFAULT_SNAPSHOT_MS,
     };
     const args_t defaults = args;
 
@@ -1056,6 +1223,14 @@ int main(int argc, char **argv) {
      * configuration with it. */
     status_line("stato uscita %s fronti %s", g_out.name, g_edge_name);
 
+    /* The first snapshot goes out on the first pass, so a reader has the
+     * whole state from the start rather than one period later. */
+    g_snap.period_ms = (int64_t)args.snapshot_ms;
+    g_snap.due_ms = (int64_t)clock_now_ms();
+    g_snap.seq = 0;
+    g_snap.start_s = (long long)time(NULL);
+    g_snap.pid = (long)getpid();
+
     while (g_stop == 0) {
         int64_t now_ms = (int64_t)clock_now_ms();
 
@@ -1082,19 +1257,29 @@ int main(int argc, char **argv) {
             nfds++;
         }
 
-        /* The timeout is the next deadline the core names, never a tick */
-        int timeout = -1;
+        /* The timeout is the next deadline, the core's or the snapshot's,
+         * never a tick. Idle, the snapshot is the only one: there is no
+         * wait without end any more, and that loses nothing, because a
+         * signal already interrupts poll() (install_signals()). */
+        int64_t wake_ms = g_snap.due_ms;
         int64_t deadline = 0;
-        if (cwnet_server_next_deadline(&g_srv, &deadline)) {
-            int64_t d = deadline - now_ms;
-            if (d < 0) {
-                d = 0;
-            }
-            if (d > (int64_t)INT_MAX) {
-                d = (int64_t)INT_MAX;
-            }
-            timeout = (int)d;
+        if (cwnet_server_next_deadline(&g_srv, &deadline) &&
+            (deadline < wake_ms || wake_ms <= now_ms)) {
+            /* The core's deadline comes first; or a snapshot already due
+             * has given way to it (snapshot_maybe()), and then it is the
+             * deadline to wait for too, with the snapshot right after.
+             * Waiting for the snapshot's own instant, already past, would
+             * spin until the edge. */
+            wake_ms = deadline;
         }
+        int64_t d = wake_ms - now_ms;
+        if (d < 0) {
+            d = 0;
+        }
+        if (d > (int64_t)INT_MAX) {
+            d = (int64_t)INT_MAX;
+        }
+        int timeout = (int)d;
 
         int ready = sock_poll(fds, nfds, timeout);
         if (ready < 0 && !sock_would_block(sock_last_error()) &&
@@ -1131,12 +1316,15 @@ int main(int argc, char **argv) {
         cwnet_server_result_t res;
         cwnet_server_poll(&g_srv, now_ms, &res);
         handle_events(&res, now_ms);
+
+        snapshot_maybe(&args);
     }
 
     int64_t now_ms = (int64_t)clock_now_ms();
     status_line("stato arresto");
     shutdown_clients();
     key_output_close(&g_out, now_ms);
+    report_ptt();
     sock_close(&listener);
     sock_cleanup();
     if (g_lines_dropped > 0u) {
