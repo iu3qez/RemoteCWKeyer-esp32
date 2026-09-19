@@ -1,6 +1,6 @@
 ---
 name: RemoteCWKeyer-esp32
-last_updated: 2026-09-08
+last_updated: 2026-09-19
 ---
 
 # RemoteCWKeyer-esp32 Strategy
@@ -39,8 +39,9 @@ hardware or on two, is the test bench: nothing is done until it passes there.
 **Primary:** the IO4A contest team OM who takes part remotely with their own
 paddle - hires the box to sit at the team's CW operating position without
 wiring an RS-232, without configuring VPN and audio redirect, without a
-Windows PC in between. Station side: Orion MkII + Thetis, and our server on
-a Linux or Mac PC in place of the DL4YHF program.
+Windows PC in between. Station side: Orion MkII + Thetis on Windows today,
+with multi-arch alternatives developing; our server runs on the station PC,
+whatever it runs, in place of the DL4YHF program.
 
 **Primary, client on PC:** the OM who keys from a Windows PC with the paddle
 on the control lines of a serial port, without the box. Same client core,
@@ -67,6 +68,9 @@ proven. Their tool is the serial console, not the WebUI.
   at 16 ms. No metric, no investment.
 - K8 feel on the PC client: no metric until the jitter of the 1 ms tick on
   Windows is measured. The metric stays with the box.
+- Station on Windows: not claimed until CWNet conformance passes there and
+  the daemon's jitter is measured there, as the jitter already is on Linux
+  and macOS.
 - Audio, CI-V and spectrum inside CWNet: no commitment. Our server
   implements the commands that keying requires; the rest of the station
   goes through wherever it goes today.
@@ -126,8 +130,8 @@ the project has already stalled twice for lack of it.
 ### CWNet, both ends
 
 Client on the box: TX, then RX, against the DL4YHF server. Our server as a
-daemon on a station PC, Linux or Mac, against the DL4YHF client, with
-station policies decided by us. The daemon is in C, in this repo, on the
+daemon on the station PC, Windows, Linux or Mac, against the DL4YHF client,
+with station policies decided by us. The daemon is in C, in this repo, on the
 same `keyer_cwnet` codec compiled for host: one wire, one test. The bench's
 echo server stays the RX end of the test loop and is the seed of the
 daemon. The client also exists as a portable host program, Windows first
