@@ -1036,7 +1036,7 @@ static bool parse_args(int argc, char **argv, args_t *a, bool *want_help) {
  *
  * The opening's count and the client lines come from one enumeration, the
  * connections with an open socket, taken before anything is written. Two
- * sources — a count from the core and lines from g_conn — could disagree by
+ * sources, a count from the core and lines from g_conn, could disagree by
  * a lost event, and a snapshot missing a line would then read as complete.
  * The rest comes from the core's accessors; the PTT is the output's level,
  * the same as the "stato ptt" lines. The name goes last with its length, so
