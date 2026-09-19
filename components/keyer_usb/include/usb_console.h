@@ -33,7 +33,18 @@ esp_err_t usb_console_init(void);
 void usb_console_print(const char *str);
 
 /**
+ * @brief Size of the buffer usb_console_printf() formats into
+ *
+ * The longest console output today is `help show`, 398 bytes.
+ */
+#define USB_CONSOLE_PRINTF_BUF_SIZE 1024
+
+/**
  * @brief Print formatted string to console (CDC0)
+ *
+ * Output longer than USB_CONSOLE_PRINTF_BUF_SIZE - 1 bytes is truncated to
+ * that length; nothing past the formatted text is sent. What reaches the
+ * host is further limited by the free space in the CDC0 TX FIFO.
  *
  * @param fmt Format string
  * @param ... Arguments
