@@ -121,6 +121,14 @@ the whole over. The PTT shows the real output level, and with the default
 100 ms tail it drops at every word gap, and below about 36 WPM between
 letters too.
 
+The Link column says whether a client may take the key: `idoneo` when its
+peak latency is at most the link ceiling, `non idoneo` when it is over, as
+the daemon decides. It shows `-` until both the peak and the link ceiling
+are known: the ceiling arrives with `stato ascolto` or the first snapshot.
+A client that answered PINGs but never inside the 2 s measurement window
+also shows `-`, although the daemon refuses it the key: when it tries, the
+events show `link non idoneo` with `peak -1 ms`.
+
 Key holder and PTT are shown as certain only when the daemon is alive and
 the state is guaranteed. Otherwise they stay on the page, greyed, as the
 last known values. The banners stack, the ones that say "do not trust"
@@ -172,3 +180,34 @@ python3 host/panel/tests/record_stream.py --cwnetd host/build/cwnetd
 
 Regenerate it when the vocabulary changes: the test fails when the
 fixture's vocabulary version is not the panel's.
+
+### The page, by hand
+
+No test runs `panel.js`. What the page shows is decided in
+`Model.to_dict()`, where the tests above run, and `tests/test_web.py` reads
+the script to check that it only copies those values or looks up their
+text. The page computes four things by itself:
+
+- `-` or `?` for a value that is not there;
+- event times, in the browser's time zone;
+- the "In attesa della prima riga dal vivo" banner before the first
+  message from the panel;
+- the "Pannello irraggiungibile" banner when `/events` has sent nothing for
+  about 10.5 s (`WATCHDOG_MS`: two keepalives and half a second).
+
+Anything else in `panel.js` that chooses what to show is a decision in the
+wrong place: it belongs in `Model.to_dict()`, with a test.
+
+The last two have no automatic test. Check them by hand, with the panel
+following a daemon, for example the one in
+[Loop without the box](../cwnetd/README.md#loop-without-the-box):
+
+1. In the browser's developer tools, block the request to `/events`
+   (Network, request blocking) and reload. Only "In attesa della prima riga
+   dal vivo" shows, and after about 10.5 s "Pannello irraggiungibile" joins
+   it. The block is needed: the panel sends the whole state as soon as the
+   page connects, so without it the page's own "no message yet" is never
+   on screen.
+2. Remove the block and reload: the state appears. Stop the panel. Within
+   about 10.5 s "Pannello irraggiungibile" shows and the rest of the page
+   greys. Start the panel again: the banner goes and the state comes back.

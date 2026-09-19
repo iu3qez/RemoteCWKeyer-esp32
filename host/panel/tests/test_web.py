@@ -41,6 +41,79 @@ def panel_js():
         return fh.read()
 
 
+# A table keyed by a boolean: JavaScript turns the key into this string.
+BOOLEAN_KEYS = frozenset({"true", "false"})
+
+# The page's text tables and the ids each one needs an entry for: the sets
+# state.py exports, and "unreachable", which the page adds itself (KTD5).
+PAGE_TABLES = {
+    "BANNER_TEXT": state.BANNER_IDS | {"unreachable"},
+    "BANNER_CLASS": state.BANNER_IDS | {"unreachable"},
+    "LIVENESS_TEXT": state.LIVENESS_VALUES,
+    "KEY_TEXT": state.KEY_STATES,
+    "PTT_TEXT": state.PTT_STATES,
+    "FITNESS_TEXT": state.FITNESS_VALUES,
+    "EDGES_TEXT": state.EDGES_DESTINATIONS,
+    "READY_TEXT": BOOLEAN_KEYS,
+    "STALE_TEXT": BOOLEAN_KEYS,
+}
+
+# Model fields that carry a decision the page must not take again, and the
+# view values it reads instead (#90).
+DECISION_FIELDS = ("key_known", "key_holder", "key_holder_name", "certain", "guaranteed",
+                   "unfit", "ptt")
+VIEW_FIELDS = ("key_view", "ptt_view", "stale", "fitness", "from_file")
+
+_JS_TOKEN = re.compile(r'"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'|//[^\n]*|/\*.*?\*/', re.S)
+
+
+def js_code(source, keep_strings=True):
+    """The script with its comments blanked, and its strings emptied unless
+    `keep_strings`: what is left is what runs."""
+    def one(m):
+        token = m.group(0)
+        if token.startswith("/"):
+            return " "
+        return token if keep_strings else token[0] * 2
+    return _JS_TOKEN.sub(one, source)
+
+
+def table_keys(source):
+    """{name: its keys} for every `const NAME = { ... };` object literal."""
+    code = js_code(source, keep_strings=False)
+    return {name: set(re.findall(r"(\w+)\s*:", body))
+            for name, body in re.findall(r"const (\w+) = \{(.*?)\};", code, re.S)}
+
+
+def missing_entries(source):
+    """One line per id with no entry in its table, naming both."""
+    keys = table_keys(source)
+    out = []
+    for table, ids in sorted(PAGE_TABLES.items()):
+        if table not in keys:
+            out.append("%s: no such table" % table)
+            continue
+        out += ["%s has no entry for %r" % (table, i) for i in sorted(ids - keys[table])]
+    return out
+
+
+def reads(code, field):
+    """Whether `code`, from js_code(), reads `field` as a property: .field or
+    ["field"]."""
+    rx = r"""(?:\.\s*%s|\[\s*(["'])%s\1\s*\])(?![\w$])""" % (field, field)
+    return re.search(rx, code) is not None
+
+
+def field_problems(source):
+    """What the script reads that the model decided, or does not read that it
+    should, as one line each."""
+    code = js_code(source)
+    out = ["reads .%s" % f for f in DECISION_FIELDS if reads(code, f)]
+    if re.search(r"\bBANNER_ORDER\b", code):
+        out.append("names BANNER_ORDER")
+    return out + ["does not read .%s" % f for f in VIEW_FIELDS if not reads(code, f)]
+
+
 class FakeClock:
     def __init__(self):
         self.now = 1000.0
@@ -354,19 +427,58 @@ class EventsTest(ServerTest):
         for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
             self.assertNotIn(sink, source)
 
-    def test_three_banners_together_and_silent_above_the_warnings_in_panel_js(self):
+    def test_three_banners_together_reach_the_browser_in_the_order_the_page_shows(self):
         self.feed(*snap(1, version="v2"), "key 1 123")
         self.clock.advance(16.0)
         self.state.tick()
         d = self.sse().state()
-        for banner in ("silent", "mixed_edges", "vocabulary"):
-            self.assertIn(banner, d["banners"])
+        self.assertEqual(d["banners"], ["silent", "mixed_edges", "vocabulary"])
+
+    def test_the_browser_gets_fitness_and_stale_and_no_longer_unfit_and_certain(self):
+        self.feed(*snap(1, [(1, "pronto", "10.0.0.1:50001", 12, 1200, "IU3QEZ")]))
+        d = self.sse().state()
+        self.assertEqual(d["clients"][0]["fitness"], "unfit")
+        self.assertNotIn("unfit", d["clients"][0])
+        self.assertFalse(d["stale"])
+        self.assertNotIn("certain", d)
+
+
+class PageSourceTest(unittest.TestCase):
+    """panel.js as text: it has a text for every id the model can send, and
+    reads the view values, never the fields they were decided from (#90)."""
+
+    def test_every_id_the_model_can_send_has_an_entry_in_its_page_table(self):
+        self.assertEqual(missing_entries(panel_js()), [])
+
+    def test_a_missing_entry_is_reported_with_its_table_and_its_id(self):
         source = panel_js()
-        order = re.findall(r'"(\w+)"', re.search(r"BANNER_ORDER = \[(.*?)\];", source, re.S).group(1))
-        self.assertLess(order.index("silent"), order.index("mixed_edges"))
-        self.assertLess(order.index("silent"), order.index("vocabulary"))
-        self.assertEqual(order[0], "unreachable")
-        self.assertEqual(set(d["banners"]) - set(order), set())
+        cut = re.sub(r"\n\s*vocabulary: \"warning\",", "\n", source)
+        self.assertTrue(cut != source, "setup: BANNER_CLASS must have a vocabulary line")
+        self.assertEqual(missing_entries(cut), ["BANNER_CLASS has no entry for 'vocabulary'"])
+
+    def test_panel_js_reads_the_view_values_and_none_of_the_decision_fields(self):
+        self.assertEqual(field_problems(panel_js()), [])
+
+    def test_field_check_allows_unfit_as_a_table_key_and_a_class_and_ptt_as_an_element_id(self):
+        source = """
+            // s.ptt and c.unfit in a comment are not reads.
+            const EVENT_TEXT = {unfit: "link non idoneo"};
+            const FITNESS_TEXT = {unfit: "non idoneo"};
+            const BANNER_TEXT = {not_guaranteed: "Stato non garantito"};
+            const ptt = $("ptt");
+            el("tr", "unfit");
+            use(s.key_view, s.ptt_view, s.stale, c.fitness, e.from_file);
+        """
+        self.assertEqual(field_problems(source), [])
+
+    def test_field_check_catches_a_decision_field_read_with_a_dot_or_brackets(self):
+        source = """
+            use(s.key_view, s.ptt_view, s.stale, c.fitness, e.from_file);
+            use(c.unfit, s["certain"], s.ptt);
+            const BANNER_ORDER = [];
+        """
+        self.assertEqual(field_problems(source),
+                         ["reads .certain", "reads .unfit", "reads .ptt", "names BANNER_ORDER"])
 
 
 class ConnectionCapTest(ServerTest):
