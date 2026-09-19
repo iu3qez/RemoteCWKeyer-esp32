@@ -763,7 +763,8 @@ class ViewTest(unittest.TestCase):
         self.assertEqual(f.d["clients"][0]["fitness"], "unknown")
 
     def test_fitness_is_fit_below_and_at_the_ceiling_and_unfit_one_millisecond_over(self):
-        # take_key() in cwnet_server.c refuses only a peak over the ceiling.
+        # take_key() in cwnet_server.c refuses a peak over the ceiling, not
+        # one equal to it.
         f = guaranteed_with(*[(idx, "pronto", "10.0.0.%d:5000" % idx, 10, peak, "C%d" % idx)
                               for idx, peak in ((1, 999), (2, 1000), (3, 1001))])
         self.assertEqual(f.d["settings"]["link_ceiling_ms"], 1000)

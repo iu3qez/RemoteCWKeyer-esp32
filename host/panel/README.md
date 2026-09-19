@@ -125,6 +125,9 @@ The Link column says whether a client may take the key: `idoneo` when its
 peak latency is at most the link ceiling, `non idoneo` when it is over, as
 the daemon decides. It shows `-` until both the peak and the link ceiling
 are known: the ceiling arrives with `stato ascolto` or the first snapshot.
+A client that answered PINGs but never inside the 2 s measurement window
+also shows `-`, although the daemon refuses it the key: when it tries, the
+events show `link non idoneo` with `peak -1 ms`.
 
 Key holder and PTT are shown as certain only when the daemon is alive and
 the state is guaranteed. Otherwise they stay on the page, greyed, as the

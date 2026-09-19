@@ -254,7 +254,9 @@ def _body(text):
 def _fitness(peak, ceiling):
     # KTD4 of the station panel plan (#91, option A): the core does not
     # expose "unfit", so the peak against the ceiling decides it, as in
-    # take_key(), which refuses only a peak over the ceiling.
+    # take_key(): over the ceiling is unfit, equal is fit. take_key() also
+    # refuses a link that answered PINGs but was never measured; its peak
+    # stays -1 and no line says it answered, so here it stays unknown.
     if peak is None or ceiling is None:
         return "unknown"
     return "unfit" if peak > ceiling else "fit"
