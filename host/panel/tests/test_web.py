@@ -320,13 +320,17 @@ class EventsTest(ServerTest):
     def test_messages_are_at_most_ten_a_second_and_the_last_one_is_current(self):
         s = self.sse()
         s.state()
+        changes = 200
         started = time.monotonic()
-        stop = started + 1.0
-        i = 0
-        while time.monotonic() < stop:
+        for i in range(changes):
             self.feed("stato latenza client 1 %d ms peak %d ms" % (i, i))
-            i += 1
-            time.sleep(0.002)
+            # Paced on the clock, not by sleep() alone: a loaded runner
+            # oversleeps (17 ms for a 2 ms sleep on a macOS CI machine), and
+            # a fixed count of changes keeps the test about the cap.
+            delay = started + (i + 1) * 0.005 - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+        fed_s = time.monotonic() - started
         self.feed("stato chiave client 2 END")
         count = 0
         d = None
@@ -334,7 +338,10 @@ class EventsTest(ServerTest):
             d = s.state()
             count += 1
         elapsed = time.monotonic() - started
-        self.assertGreater(i, 100, "the model must change far faster than ten a second")
+        # Without the cap the stream would carry about one message per change,
+        # so the check below proves something only if they come well faster.
+        self.assertGreater(changes / fed_s, 2 / web.MIN_SEND_INTERVAL_S,
+                           "the model must change well faster than ten a second")
         self.assertLessEqual(count, elapsed / web.MIN_SEND_INTERVAL_S + 1)
 
     def test_ae5_callsign_markup_reaches_the_json_as_the_same_string(self):
