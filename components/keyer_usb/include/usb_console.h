@@ -1,9 +1,9 @@
 /**
  * @file usb_console.h
- * @brief CDC0 console with immediate echo
+ * @brief CDC0 console transport
  *
- * Uses TinyUSB callback for character-by-character processing
- * with immediate echo before pushing to console state machine.
+ * The TinyUSB RX callback feeds each byte to console_push_char(), which
+ * repaints the line. This module does not echo.
  */
 
 #ifndef KEYER_USB_CONSOLE_H
@@ -19,7 +19,7 @@ extern "C" {
 /**
  * @brief Initialize USB console on CDC0
  *
- * Registers RX callback for immediate echo and character processing.
+ * Registers the RX and line-state callbacks on CDC0.
  *
  * @return ESP_OK on success
  */

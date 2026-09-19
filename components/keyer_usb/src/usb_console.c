@@ -1,6 +1,6 @@
 /**
  * @file usb_console.c
- * @brief CDC0 console with immediate echo
+ * @brief CDC0 console transport
  */
 
 #include "usb_console.h"
