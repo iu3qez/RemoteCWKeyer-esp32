@@ -263,9 +263,15 @@ static void status_line(const char *fmt, ...) {
         char note[CWNETD_LINE_MAX];
         int m = snprintf(note, sizeof(note),
                          "stato stdout %lu righe scartate\n", g_lines_dropped);
-        if (m > 0 && write_line(note, (size_t)m)) {
-            g_lines_reported = g_lines_dropped;
+        if (m <= 0 || !write_line(note, (size_t)m)) {
+            /* The confession did not fit, and a shorter line might: it
+             * must not go out without it, or a reader sees a line after a
+             * loss with nothing saying one happened. Dropped and counted
+             * too; the next line tries again. */
+            g_lines_dropped++;
+            return;
         }
+        g_lines_reported = g_lines_dropped;
     }
 
     if (!write_line(line, len)) {
