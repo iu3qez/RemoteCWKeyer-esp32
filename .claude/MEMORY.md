@@ -1,10 +1,10 @@
 # RemoteCWKeyer-esp32 - Memory Index
 
-## Strategy (2026-09-08)
+## Strategy (2026-09-19)
 [STRATEGY.md](../STRATEGY.md) is the anchor: every behaviour that matters is proven
 against a real reference (CWNet protocol → DL4YHF client/server; keyer feel
 → the executed K1EL K8), not "made similar". Both ends are ours: the box on the
-operator side, and `cwnetd`, a station daemon on a Linux or Mac PC, on the station side.
+operator side, and `cwnetd`, a station daemon on the station PC (Windows, Linux or Mac), on the station side.
 
 Active tracks: **Test bench**, **CWNet, both ends**, **Keyer** (logic in the
 `Esp32KeyerTest` submodule), **Frictionless operating position**. Before proposing work, read the Boundaries:
