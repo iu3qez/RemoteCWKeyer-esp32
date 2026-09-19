@@ -6,6 +6,7 @@
   import Home from './pages/Home.svelte';
   import Keyer from './pages/Keyer.svelte';
   import Timeline from './pages/Timeline.svelte';
+  import Firmware from './pages/Firmware.svelte';
   import { initTheme } from './lib/stores/theme';
 
   let currentPage = $state('/');
@@ -44,6 +45,7 @@
     { path: '/keyer', label: 'KEYER', key: 'F4' },
     { path: '/decoder', label: 'DECODER', key: 'F5' },
     { path: '/timeline', label: 'TIMELINE', key: 'F6' },
+    { path: '/firmware', label: 'FIRMWARE', key: 'F7' },
   ];
 </script>
 
@@ -93,6 +95,8 @@
       <Decoder />
     {:else if currentPage === '/timeline'}
       <Timeline />
+    {:else if currentPage === '/firmware'}
+      <Firmware />
     {:else}
       <Home />
     {/if}
