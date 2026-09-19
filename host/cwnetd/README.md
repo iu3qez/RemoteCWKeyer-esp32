@@ -57,6 +57,8 @@ Ctrl-C (SIGINT) or SIGTERM close the clients and return the output to rest
                     (default 16384, min 256, max 16777216)
 --output BACKEND    key and PTT output: virtual (default virtual)
 --edges DEST        edges descriptor: 'stderr' or a file (default stderr)
+--snapshot-ms MS    period of the state snapshot on stdout
+                    (default 5000, min 50, max 3600000)
 ```
 
 (`host/build/cwnetd --help` is the source, this table is only for
@@ -136,30 +138,102 @@ confesses it (`stato stdout N righe scartate`) - "nothing" and "you weren't
 reading" stay distinguishable. Edges are not here: they are on `--edges`
 (see *Two outputs*).
 
+**These tables are the contract** with every program that reads the lines,
+the station panel ([host/panel/](../panel/)) first of all: a line they do
+not describe is a defect, in the daemon or in the tables. Every line starts
+with `stato `, is at most 254 characters before its newline (a longer one is
+cut there), and is recognised whole, not by prefix. `NOME` is the name the
+client announced, escaped: printable ASCII stays, a backslash is doubled,
+any other byte becomes `\xNN`. It can contain spaces, ` da `, `:` and `#`,
+so a reader finds the fields after it by anchoring on the right. Before the
+CONNECT a client has no name, and the lines say `(senza nome)`.
+
 Vocabulary (clients, connections):
 
 | Line | Meaning |
 |---|---|
-| `stato ascolto ADDR:PORTA max-clients N B>=X ms tetto Y ms coda Z ms lead W ms out-cap C byte` | the daemon is ready, with the configuration it actually has |
+| `stato ascolto ADDR:PORTA max-clients N B>=X ms tetto Y ms coda Z ms lead W ms out-cap C byte` | the daemon is ready, with the configuration it actually has. A reader treats it as a new daemon: what it knew before belongs to another process |
 | `stato uscita BACKEND fronti DEST` | where the edges end up (a separate line: a long path must not truncate the configuration) |
 | `stato accettato client N da IP:PORTA` | TCP accepted, waiting for the CONNECT |
 | `stato rifiutato da IP:PORTA: nessuno slot libero` | beyond `--max-clients`, closed immediately (R1: accept never blocks) |
 | `stato connesso client N NOME da IP:PORTA` | CONNECT complete, the client is READY |
-| `stato disconnesso client N NOME da IP:PORTA: MOTIVO` | TCP closed (by the peer, on timeout, by a reader too slow, ...) |
+| `stato disconnesso client N NOME da IP:PORTA: MOTIVO` | TCP closed. `MOTIVO` is one of `nessuno slot libero`, `CONNECT di lunghezza sbagliata`, `errore di parse`, `stringa 0x06 senza NUL`, `CONNECT non arrivato in tempo`, `tre PING senza risposta`, `invio fallito`, `chiuso dal peer`, `arresto` (the daemon is stopping) |
+| `stato client N lettore fermo: B byte non inviati, chiudo` | that client stopped reading and its unsent bytes reached `--out-cap`: it is closed, and a `disconnesso` line follows |
+| `stato slot client N ancora in uso da IP:PORTA: chiudo la connessione precedente` | the core handed out a slot the daemon still had open, because the event that closed it was among the lost ones: the old connection is closed before the new one takes the slot |
+| `stato accept fallita: ERRORE` | accepting a connection failed for a reason other than "nothing pending"; `ERRORE` is the system's text |
 
-Vocabulary (key, link, over):
+Vocabulary (key, PTT, link, over):
 
 | Line | Meaning |
 |---|---|
 | `stato chiave client N NOME` / `stato chiave libera` | who holds the key now (arbitrated, one holder at a time) |
+| `stato ptt 1` / `stato ptt 0` | the level of the output PTT, written every time it changes: after each batch of core events, once the output is aligned to the core, and after the release at shutdown. It is a level, not an edge: the instant the edge was scheduled for is on `--edges`. With the default tail the PTT drops at every word gap, and below about 36 WPM between letters too: the key holder, not the PTT, says who is transmitting |
 | `stato latenza client N X ms peak Y ms` | RTT of the last PING and its peak-hold |
 | `stato link non idoneo client N NOME: peak Y ms` | the peak-hold has exceeded `--link-ceiling`: that client does not take the key |
 | `stato over client N NOME B X ms` | an over has started, with the B computed for that session |
 | `stato byte in ritardo client N NOME: B byte, M ms in totale` | a byte arrived after the deadline of the edge it carried: the element came out longer than it was keyed, and the link is slipping. Cumulative, so two lines apart say *how fast* |
-| `stato fault [client N NOME:] MOTIVO` | FAULT philosophy: key up and it stops (holder vanished mid-over - TCP closed or three PINGs without an answer -, over too long, holder silent past `--idle` with the key up) |
-| `stato eventi persi N` | the core produced more events than the read buffer could hold: no edge is lost, only the descriptive line |
+| `stato fault [client N NOME:] MOTIVO` | FAULT philosophy: key up and it stops (holder vanished mid-over - TCP closed or three PINGs without an answer -, over too long, holder silent past `--idle` with the key up). A fault says nothing about who holds the key: a `chiave` line says that |
+| `stato eventi persi N` | the core produced more events than the read buffer could hold, `N` in that batch: no edge is lost, only the descriptive lines, so a reader rebuilding the state from the lines is wrong until the next snapshot |
+
+Vocabulary (the daemon itself):
+
+| Line | Meaning |
+|---|---|
+| `stato stdout N righe scartate` | the confession: `N` status lines, counted since start, that stdout did not take. It is written right before the next line that gets through, and only when `N` has grown since the last confession |
+| `stato arresto` | SIGINT or SIGTERM: the daemon is stopping. What follows belongs to the shutdown: the `disconnesso ...: arresto` lines, `stato ptt 0` if the PTT was on, the two totals below |
+| `stato stdout N righe scartate in totale` | at shutdown, if any line was dropped: the same count as the last confession, not a new one |
+| `stato uscita fronti (DEST): A attese per M ms, E errori, P persi` | at shutdown, if the edges descriptor ever waited or failed: `P` other than zero is the only case where an edge was not written, and it only happens after a SIGINT |
 | `stato uscita fronti (DEST) non drena: N ms e aspetto` | the edges descriptor has stopped taking bytes and the loop has been stuck there for N ms (see *Two outputs*) |
-| `stato uscita fronti (DEST): A attese per M ms, E errori, P persi` | the summary at the end of the session: `P` other than zero is the only case where an edge was not written, and it only happens after a SIGINT |
+| `stato uscita fronti (DEST) rifiuta: ERRORE` | the edges descriptor refused a write (a closed pipe, a full disk): that edge counts as an error, and the next one tries again |
+| `stato poll fallita: ERRORE` | waiting on the sockets failed for a reason other than a signal: the daemon stops |
+
+### The periodic snapshot
+
+The lines above describe events, and any of them can be dropped. A reader
+that lost `stato chiave libera` would keep showing the previous key holder
+with nothing to tell it otherwise. So every `--snapshot-ms` (default 5000)
+the daemon also writes the whole state, over several lines, because 8
+clients with their names do not fit in one:
+
+```
+stato snap inizio v1 istanza S-P seq N client K chiave C ptt L periodo MS
+stato snap manopole max-clients N B>= MS tetto MS coda MS lead MS idle MS over-max MS handshake MS out-cap BYTE
+stato snap client I/K IDX STATO ADDR lat MS peak MS nome LEN NOME      (K lines)
+stato snap fine seq N
+```
+
+| Field | Meaning |
+|---|---|
+| `v1` | the version of this vocabulary. It changes when a line in these tables changes shape, so a reader can say it no longer knows what it is reading |
+| `istanza S-P` | which daemon wrote it: `S` its start instant in seconds since the Unix epoch, `P` its pid. The pid alone repeats in a container. Another value means another process, even when its `stato ascolto` line was lost |
+| `seq N` | counts snapshots from 1. It grows for every snapshot the daemon writes, taken by stdout or not, so a gap between two complete snapshots means some were lost; `fine` carries the same `N` |
+| `client K` | how many `stato snap client` lines follow: the connections with an open socket |
+| `chiave C` | the key holder's index, or `libera` |
+| `ptt L` | the output PTT level, the same as the last `stato ptt` line and the last `ptt` edge on `--edges` |
+| `periodo MS` | the snapshot period: a reader that sees nothing for three periods can say the daemon is silent |
+| `manopole ...` | the settings in force, in the same units as the flags: `max-clients`, `B>=` (`--play-floor`), `tetto` (`--link-ceiling`), `coda` (`--ptt-tail`), `lead`, `idle`, `over-max`, `handshake` in ms, `out-cap` in bytes |
+| `I/K` | the position of this line among the `K` |
+| `IDX` | the client index, the `N` of the event lines |
+| `STATO` | `pronto` when the client has completed the CONNECT; `attesa` when the socket is open and it has not, which includes a client the core has already closed while the event that said so was lost |
+| `ADDR` | `IP:PORTA`, or `?` when the system could not say |
+| `lat`, `peak` | the RTT of the last PING and its peak-hold, in ms; `-1` until a PING has come back |
+| `nome LEN NOME` | the name, escaped as above and empty before the CONNECT, last on the line, preceded by its length in characters. A name shorter than `LEN` was cut by the 254-character limit |
+
+The lines of one snapshot are written in one go, with no other line between
+them. A reader applies a snapshot only when it has all of it: the opening,
+`manopole`, exactly `K` client lines with positions `1/K` to `K/K` in order,
+and `fine` with the same `seq`. With anything else between them, or a line
+missing, it discards the snapshot and waits for the next one. The name's
+declared length is what lets a reader tell a name containing `stato stdout`
+from a confession glued after half a line, which is what stdout does when
+it is a socket that takes part of a write (journald).
+
+The snapshot is one more deadline of the loop, not a tick: when idle it is
+the only thing that wakes the daemon, and at most one is written per period.
+It is written after the core's work of that pass, and never in the 2 ms
+before a key or PTT edge is due: then it waits for that edge, never longer
+than one period. At the default period, an idle daemon writes three lines
+every 5 s, about 4 MB a day into a file.
 
 **Neither an empty FIFO nor a key held down is a fault.** An empty FIFO is
 the normal state of a live over (R8): every byte arrives about B ms before
@@ -188,6 +262,18 @@ jitter measurement looks at from the outside (see below). An edge that
 does not change state is not an edge: it does not generate a line
 (`key_output.h`). None of these lines is ever dropped - that's the entire
 reason they have a descriptor of their own.
+
+## The station panel
+
+To see the state in a browser instead of following the lines as they
+scroll: [host/panel/](../panel/README.md). It reads these lines from a file,
+the journal or a pipe, and never talks to the daemon. Run the daemon with
+its stdout appended to a file (`>> cwnetd.log`) and `--edges` to another
+file, and point the panel at the first.
+
+Whoever reads stdout by eye sees the snapshot lines every 5 s among the
+events; `--snapshot-ms` spaces them out, at the price of a page that takes
+longer to correct itself after a lost line.
 
 ## Loop without the box
 

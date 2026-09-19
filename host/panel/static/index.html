@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cwnetd - stazione</title>
+<link rel="stylesheet" href="/panel.css">
+<script src="/panel.js" defer></script>
+</head>
+<body>
+<header>
+  <h1>cwnetd</h1>
+  <p id="liveness" class="liveness">in attesa del pannello</p>
+</header>
+
+<section id="banners" aria-live="polite"></section>
+
+<main>
+  <section class="now" aria-label="Chiave e PTT">
+    <div class="card">
+      <p class="label">Chiave</p>
+      <p id="key" class="big">?</p>
+      <p class="hint">Chi tiene la chiave e' chi sta trasmettendo: resta lo stesso per tutto l'over.</p>
+    </div>
+    <div class="card">
+      <p class="label">PTT in uscita</p>
+      <p id="ptt" class="big">?</p>
+      <p class="hint">Il livello reale: con la coda di default cade tra le parole, e sotto i 36 WPM anche tra le lettere.</p>
+    </div>
+  </section>
+
+  <section aria-label="Client">
+    <h2>Client</h2>
+    <div class="scroll">
+      <table id="clients">
+        <thead>
+          <tr><th>#</th><th>Nominativo</th><th>Indirizzo</th><th>CONNECT</th><th>Latenza</th><th>Peak</th><th>Link</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p id="no-clients" class="muted">Nessun client connesso.</p>
+  </section>
+
+  <section aria-label="Impostazioni">
+    <h2>Impostazioni del daemon</h2>
+    <dl id="settings" class="settings"></dl>
+    <p id="daemon" class="muted"></p>
+  </section>
+
+  <section aria-label="Eventi recenti">
+    <h2>Eventi recenti <span id="events-max" class="muted"></span></h2>
+    <ol id="events" class="events"></ol>
+    <p id="no-events" class="muted">Nessun evento.</p>
+  </section>
+</main>
+
+<noscript><p class="banner danger">Il pannello ha bisogno di JavaScript per aggiornarsi.</p></noscript>
+</body>
+</html>

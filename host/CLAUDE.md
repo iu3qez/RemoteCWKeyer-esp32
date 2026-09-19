@@ -1,69 +1,55 @@
 <!-- BEGIN treecode (auto) — do not edit inside this block -->
-# host — POSIX platform layer and the station daemon (`cwnetd`)
+# host — POSIX platform layer, the station daemon (`cwnetd`) and its panel
 
 Responsibility: Everything the CWNet server side needs that is not the pure protocol
-core. Owns a small POSIX platform layer (non-blocking TCP sockets, a monotonic clock)
-and `cwnetd`, the daemon that drives `components/keyer_cwnet`'s host-only server core
-(`cwnet_server.c`, `cwnet_play.c`, KTD1/KTD2) against a real socket and a real clock. It
-must NOT duplicate protocol knowledge — the wire format, the state machine and the
-playback timing live in `keyer_cwnet` and are only linked in here, by path, in
-`host/CMakeLists.txt`.
+core: a small POSIX platform layer; `cwnetd`, which drives `components/keyer_cwnet`'s
+host-only server core against a real socket and clock; and `panel/`, a separate Python
+program that shows the daemon's state in a browser. It must NOT duplicate protocol
+knowledge: wire format, state machine and playback timing live in `keyer_cwnet` and are
+only linked in, by path, in `host/CMakeLists.txt`.
 
 Key abstractions:
-- `platform/sock.h` / `sock.c` — non-blocking TCP sockets (`listen`/`accept`/`connect`/
-  `send`/`recv`/`poll`), POSIX today, written with a winsock seam in its names
-  (`sock_valid`, `sock_would_block`, ...) so a Windows port can implement the same
-  functions later without touching a caller.
-- `platform/clock.h` / `clock.c` — monotonic milliseconds as 64 bits
-  (`CLOCK_MONOTONIC`), plus the 31-bit wire width the ping timestamps carry.
-  Independent of `esp_timer` and of the `test_host` stubs.
-- `cwnetd/main.c` — the daemon: flag parsing, one thread with a `sock_poll()` loop that
-  waits for the *next* deadline the core names (not a fixed tick), wiring the server
-  core to the platform layer and to `key_output`, status lines on non-blocking stdout.
-- `cwnetd/key_output.h` / `key_output.c` — the seam behind which key and PTT edges
-  leave the daemon (R11): a struct of function pointers with one backend today,
-  `virtual`, which prints `key <0|1> <at_ms>` / `ptt <0|1> <at_ms>` lines. They go to
-  the `--edges` descriptor (`stderr` or a file), never to stdout, and are never
-  dropped — see *Two outputs, and why* in `cwnetd/README.md` for what that costs.
-- `tests/loopback_test.c` — exercises `platform/` and nothing else: a real loopback
-  connection, a short write resumed, a remote close seen through the poll, the clock's
-  monotonicity and unit. The server core is proven in `test_host/`, against the
-  capture; the daemon end to end is proven by hand (`cwnetd/README.md`).
+- `platform/sock.h`, `platform/clock.h` — non-blocking TCP with a winsock seam in its
+  names, and 64-bit monotonic milliseconds; independent of `esp_timer`.
+- `cwnetd/main.c` — one thread, a `sock_poll()` loop that waits for the next deadline
+  (the core's or the snapshot's), never a tick. Owns stdout: droppable status lines with
+  each loss confessed, `stato ptt` when the output PTT changes, and every `--snapshot-ms`
+  the whole state over several lines. The tables in `cwnetd/README.md` are the contract
+  with every reader, versioned (`v1`).
+- `cwnetd/key_output.[ch]` — the seam key and PTT edges leave through (one backend,
+  `virtual`), to the `--edges` descriptor, which never drops a line.
+- `panel/cwnetd_panel.py` — joins `follow.py` (stdin, or a file followed like `tail -F`),
+  `state.py` (pure model; the guarantee and liveness kept apart) and `web.py` (fixed
+  routes, `/events` SSE, Host allow-list). Read-only; never talks to the daemon.
 
-Depends on: `components/keyer_cwnet`'s host-safe sources (`cwnet_frame.c`,
-`cwnet_ping.c`, `cwnet_timestamp.c`, `cwnet_play.c`, `cwnet_server.c`), listed by hand in
-`host/CMakeLists.txt` because they are deliberately absent from the ESP-IDF component's
-`SRCS` (KTD2: host-only). Nothing here is part of the firmware build.
+Depends on: `components/keyer_cwnet`'s host-safe sources, listed by hand in
+`host/CMakeLists.txt` and absent from the ESP-IDF component's `SRCS`. Nothing here is
+part of the firmware build. `panel/` depends only on the status-line vocabulary.
 
-Used by: the maintainer's own station PC, run by hand or (later) under systemd/launchd
-— no unit files yet, that is Deferred work. `tools/cwnet/` (a separate module) exercises
-`cwnetd` as a client over the loop, without a box.
+Used by: the maintainer's station PC, run by hand (no systemd or launchd units yet).
+`tools/cwnet/` drives `cwnetd` as a client; `cwnet_jitter.py` measures its edges.
 
 What is NOT here, and why:
-- **No GUI.** How the operator sees daemon state is Decision #65, labelled `blocking`
-  for the GUI only. State goes to stdout as lines so that option stays open; do not add
-  a TUI, a served page, or a native window here until #65 is decided.
-- **No physical key/PTT backend.** `key_output` has one backend, `virtual`, writing
-  lines to the `--edges` descriptor.
-  A serial-line or GPIO backend behind the same two function pointers needs its own
-  Decision (KTD9) — not filed yet — because the rest-state and key-down-ceiling
-  guarantees on a real transmitter have to be decided before code claims them.
-- **No Windows build of the daemon.** `platform/sock.c`'s winsock seam is written to
-  make one possible, but nothing here builds it; the host Windows client is separate
-  work (issue #68).
+- **No GUI in the daemon.** Decision #65, closed 2026-09-18: the loop is the timing, so
+  the page is `panel/`, another process that reads the lines and commands nothing.
+- **No physical key/PTT backend.** A serial or GPIO one needs its own Decision (KTD9),
+  not filed yet: rest state and key-down ceiling on a real transmitter come first.
+- **No Windows build.** The winsock seam makes one possible; the client is #68.
 
-Conventions: Same strict flags as `test_host/CMakeLists.txt` (`-Wall -Wextra -Werror
--Wconversion -Wsign-conversion -Wdouble-promotion -Wformat=2 -Wnull-dereference`), one
-bar for Linux and macOS both. `cwnetd/main.c` owns stdout and protocol knowledge stays
-out of it (KTD10: the core does not log) — it carries bytes in, edges out, and prints
-what the core reports.
+Conventions: C under the same strict flags as `test_host`, Linux and macOS. `main.c`
+owns stdout and the core does not log. A status line changes in the `cwnetd/README.md`
+tables first, and the vocabulary version moves when a line changes shape. `panel/` is
+Python 3.9+, standard library only; its page text is Italian, everything else English.
 
 Gotchas:
-- `cwnet_client.c` is intentionally NOT linked into `cwnetd`: the daemon is the other
-  end of the wire (KTD10), not another client.
-- CI's `host-build` job (`.github/workflows/host-tests.yml`) builds and runs only this
-  tree; it needs neither the `keyer_iambic` submodule nor its deploy key, which is why
-  it is a job of its own rather than more steps on the existing `host-tests` job.
-- Build and test locally: `cmake -S host -B host/build && cmake --build host/build &&
-  ctest --test-dir host/build --output-on-failure`.
+- `cwnet_client.c` is NOT linked into `cwnetd`: the daemon is the other end of the wire.
+- The snapshot gives way to a core deadline within 2 ms, never for more than a period:
+  its eleven writes must not come before a due edge.
+- A status line holds 254 characters. Callsigns are escaped (`\xNN`), and a snapshot
+  client line declares the name's length, so a reader tells a cut name from a
+  confession glued to half a line.
+- `2>&1` into a pipe the panel reads lets a slow panel stall `edge_write()`.
+- Tests: `tests/loopback_test.c` covers `platform/` only; `panel/tests/` include a real
+  recorded stream with lines removed and a live run against the built `cwnetd`
+  (`CWNETD=host/build/cwnetd`). CI jobs `host-build` and `panel-tests` need no submodule.
 <!-- END treecode (auto) -->
