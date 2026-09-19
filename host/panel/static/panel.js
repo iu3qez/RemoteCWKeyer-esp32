@@ -262,8 +262,13 @@ function start() {
       setTimeout(start, 2000);
     }
   };
-  arm();
-  render();
 }
 
-document.addEventListener("DOMContentLoaded", start);
+document.addEventListener("DOMContentLoaded", function () {
+  // Armed once here, and after that only by what arrives on /events: a
+  // retry is no sign of life, and arming on each one kept the watchdog
+  // from ever firing while the panel refused the page.
+  arm();
+  render();
+  start();
+});
