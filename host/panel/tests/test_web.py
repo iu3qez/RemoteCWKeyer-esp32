@@ -41,6 +41,9 @@ def panel_js():
         return fh.read()
 
 
+# A table keyed by a boolean: JavaScript turns the key into this string.
+BOOLEAN_KEYS = frozenset({"true", "false"})
+
 # The page's text tables and the ids each one needs an entry for: the sets
 # state.py exports, and "unreachable", which the page adds itself (KTD5).
 PAGE_TABLES = {
@@ -51,8 +54,8 @@ PAGE_TABLES = {
     "PTT_TEXT": state.PTT_STATES,
     "FITNESS_TEXT": state.FITNESS_VALUES,
     "EDGES_TEXT": state.EDGES_DESTINATIONS,
-    "READY_TEXT": {"true", "false"},
-    "STALE_TEXT": {"true", "false"},
+    "READY_TEXT": BOOLEAN_KEYS,
+    "STALE_TEXT": BOOLEAN_KEYS,
 }
 
 # Model fields that carry a decision the page must not take again, and the
@@ -94,19 +97,21 @@ def missing_entries(source):
     return out
 
 
-def reads(source, field):
-    """Whether the script reads `field` as a property: .field or ["field"]."""
+def reads(code, field):
+    """Whether `code`, from js_code(), reads `field` as a property: .field or
+    ["field"]."""
     rx = r"""(?:\.\s*%s|\[\s*(["'])%s\1\s*\])(?![\w$])""" % (field, field)
-    return re.search(rx, js_code(source)) is not None
+    return re.search(rx, code) is not None
 
 
 def field_problems(source):
     """What the script reads that the model decided, or does not read that it
     should, as one line each."""
-    out = ["reads .%s" % f for f in DECISION_FIELDS if reads(source, f)]
-    if re.search(r"\bBANNER_ORDER\b", js_code(source)):
+    code = js_code(source)
+    out = ["reads .%s" % f for f in DECISION_FIELDS if reads(code, f)]
+    if re.search(r"\bBANNER_ORDER\b", code):
         out.append("names BANNER_ORDER")
-    return out + ["does not read .%s" % f for f in VIEW_FIELDS if not reads(source, f)]
+    return out + ["does not read .%s" % f for f in VIEW_FIELDS if not reads(code, f)]
 
 
 class FakeClock:
