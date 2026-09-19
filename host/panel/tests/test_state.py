@@ -464,8 +464,8 @@ class LineTest(unittest.TestCase):
         f.live("stato latenza client 1 300 ms peak 1200 ms",
                "stato latenza client 2 300 ms peak 900 ms")
         c1, c2 = f.d["clients"]
-        self.assertTrue(c1["unfit"])
-        self.assertFalse(c2["unfit"])
+        self.assertEqual(c1["fitness"], "unfit")
+        self.assertEqual(c2["fitness"], "fit")
 
     def test_edges_path_never_reaches_state_events_or_json(self):
         path = "/Users/x/fronti.log"
@@ -586,7 +586,7 @@ class LivenessTest(unittest.TestCase):
         self.assertEqual(d["liveness"], "waiting")
         self.assertEqual(d["key_holder"], 1)
         self.assertTrue(d["guaranteed"])
-        self.assertFalse(d["certain"])
+        self.assertTrue(d["stale"])
         f.tick(60)
         self.assertEqual(f.d["liveness"], "waiting")
 
@@ -598,7 +598,7 @@ class LivenessTest(unittest.TestCase):
         d = f.d
         self.assertEqual(d["liveness"], "silent")
         self.assertIn("silent", d["banners"])
-        self.assertFalse(d["certain"])
+        self.assertTrue(d["stale"])
         self.assertEqual(d["key_holder"], 1)
         self.assertTrue(d["ptt"])
         f.live("stato ptt 1")
@@ -661,11 +661,11 @@ class LivenessTest(unittest.TestCase):
         self.assertEqual(d["key_holder"], 1)
         self.assertGreater(f.m.version, v)
 
-    def test_certain_only_when_alive_and_guaranteed(self):
+    def test_lost_events_make_the_state_of_a_live_daemon_stale(self):
         f = guaranteed_with(C1)
-        self.assertTrue(f.d["certain"])
+        self.assertFalse(f.d["stale"])
         f.live("stato eventi persi 1")
-        self.assertFalse(f.d["certain"])
+        self.assertTrue(f.d["stale"])
 
     def test_banners_come_in_the_order_of_trust(self):
         f = Feed().live(*snap(1, [C1], version="v2"), "stato eventi persi 1", "key 1 5")

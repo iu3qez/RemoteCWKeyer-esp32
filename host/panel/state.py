@@ -20,8 +20,8 @@ does not keep up. So the model keeps two things apart:
   events, a discarded snapshot, an unreadable line, a new daemon.
 
 Liveness (waiting, alive, silent, stopped, input closed) is a third thing: a
-state can be guaranteed and the daemon silent. The page is certain only when
-the daemon is alive and the state guaranteed.
+state can be guaranteed and the daemon silent. Key and PTT are current, not
+stale, only when the daemon is alive and the state guaranteed.
 
 A short write to a socket (journald) lets half a line out, counts the line
 as dropped, and glues the confession that follows to the half: the split in
@@ -320,9 +320,6 @@ class Model:
                 "ready": c["ready"],
                 "lat_ms": c["lat"] if c["lat"] >= 0 else None,
                 "peak_ms": peak,
-                # KTD4: the core does not expose "unfit"; the peak over the
-                # ceiling is what makes it so.
-                "unfit": peak is not None and ceiling is not None and peak > ceiling,
                 "fitness": _fitness(peak, ceiling),
             })
         return {
@@ -330,8 +327,8 @@ class Model:
             "version": self.version,
             "liveness": self.liveness,
             "guaranteed": self.guaranteed,
-            "certain": self.liveness == "alive" and self.guaranteed,
-            # Any other time key and PTT are the last known values.
+            # Unless the daemon is alive and the state guaranteed, key and
+            # PTT are the last known values.
             "stale": not (self.liveness == "alive" and self.guaranteed),
             "banners": self._banners(),
             "daemon_vocabulary": self.daemon_vocabulary,

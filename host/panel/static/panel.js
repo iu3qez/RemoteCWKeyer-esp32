@@ -3,15 +3,17 @@
 // Every text that came from the daemon - callsigns, addresses, event lines -
 // goes in with textContent and is never parsed as HTML (R14). The page
 // commands nothing: it only listens.
+//
+// It decides nothing either (#90): state.py decides, where the tests run,
+// and the page copies the values or looks up their text in the tables
+// below. It computes four things only: "-" or "?" for an absent value,
+// event times in this browser's time zone, "waiting" before the first
+// message and "unreachable" when /events goes quiet.
 "use strict";
 
-// KTD9: the banners that say "do not trust" first, in this order; then the
-// configuration warnings. They stack and none hides another.
-const BANNER_ORDER = [
-  "unreachable", "stopped", "silent", "input_closed", "waiting", "not_guaranteed",
-  "mixed_edges", "vocabulary",
-];
-const WARNINGS = new Set(["mixed_edges", "vocabulary"]);
+// One table per kind of id the model sends, each an object literal with
+// bare keys: test_web reads the keys and requires one for every id that
+// state.py exports.
 
 const BANNER_TEXT = {
   unreachable: "Pannello irraggiungibile: quello che vedi e' fermo all'ultimo aggiornamento.",
@@ -27,6 +29,19 @@ const BANNER_TEXT = {
     + "quello che il pannello riconosce.",
 };
 
+// A banner's look belongs to its id: the ones that say "do not trust" are
+// danger, the configuration warnings are warning.
+const BANNER_CLASS = {
+  unreachable: "danger",
+  stopped: "danger",
+  silent: "danger",
+  input_closed: "danger",
+  waiting: "danger",
+  not_guaranteed: "danger",
+  mixed_edges: "warning",
+  vocabulary: "warning",
+};
+
 const LIVENESS_TEXT = {
   waiting: "in attesa",
   alive: "vivo",
@@ -34,6 +49,20 @@ const LIVENESS_TEXT = {
   stopped: "fermo",
   input_closed: "ingresso chiuso",
 };
+
+// Stale: key and PTT are the last known values, not the current ones.
+const STALE_TEXT = {true: " - stato da verificare", false: ""};
+
+// A held key reads "client", the holder's index and its name when known.
+const KEY_TEXT = {unknown: "?", free: "libera", held: "client"};
+
+const PTT_TEXT = {unknown: "?", on: "acceso", off: "spento"};
+
+const READY_TEXT = {true: "fatto", false: "in attesa"};
+
+const FITNESS_TEXT = {unknown: "-", fit: "idoneo", unfit: "non idoneo"};
+
+const EDGES_TEXT = {file: "su file", stderr: "su stderr"};
 
 const EVENT_TEXT = {
   fault: "fault", late_bytes: "byte in ritardo", over: "over", unfit: "link non idoneo",
@@ -93,37 +122,30 @@ function ms(v) {
 }
 
 function renderBanners(s) {
-  const ids = new Set(s ? s.banners : ["waiting"]);
-  if (unreachable) {
-    ids.add("unreachable");
-  }
+  // In the order the model sends them; before its first message there is
+  // no model yet, only "waiting". The watchdog's "unreachable" goes first.
+  const ids = (unreachable ? ["unreachable"] : []).concat(s ? s.banners : ["waiting"]);
   const box = $("banners");
   clear(box);
-  for (const id of BANNER_ORDER) {
-    if (ids.has(id)) {
-      box.appendChild(el("p", "banner " + (WARNINGS.has(id) ? "warning" : "danger"),
-                         BANNER_TEXT[id]));
-    }
+  for (const id of ids) {
+    box.appendChild(el("p", "banner " + BANNER_CLASS[id], BANNER_TEXT[id]));
   }
 }
 
 function renderKey(s) {
+  const view = s.key_view;
   const key = $("key");
-  if (!s.key_known) {
-    key.textContent = "?";
-  } else if (s.key_holder === null) {
-    key.textContent = "libera";
-  } else {
-    const name = s.key_holder_name === null ? "" : " " + s.key_holder_name;
-    key.textContent = "client " + s.key_holder + name;
-  }
+  // The model sends null for a part that is not there: no index while the
+  // key is free or unknown, no name when the holder has none.
+  key.textContent = [KEY_TEXT[view.state], view.idx, view.name].filter(function (part) {
+    return part !== null;
+  }).join(" ");
   const ptt = $("ptt");
-  ptt.textContent = s.ptt === null ? "?" : (s.ptt ? "acceso" : "spento");
-  ptt.classList.toggle("on", s.ptt === true);
-  // Certain only when the daemon is alive and the state guaranteed; any
-  // other time these are the last known values, and look it.
+  ptt.textContent = PTT_TEXT[s.ptt_view];
+  // The PTT state is the class: panel.css lights #ptt.on.
+  ptt.className = "big " + s.ptt_view;
   for (const node of [key, ptt]) {
-    node.classList.toggle("stale", !s.certain);
+    node.classList.toggle("stale", s.stale);
   }
 }
 
@@ -131,7 +153,8 @@ function renderClients(s) {
   const body = $("clients").querySelector("tbody");
   clear(body);
   for (const c of s.clients) {
-    const tr = el("tr", c.unfit ? "unfit" : "");
+    // The fitness is the row's class: panel.css marks tr.unfit.
+    const tr = el("tr", c.fitness);
     tr.appendChild(el("td", "num", c.idx));
     const name = el("td", "call", c.name === "" ? "-" : c.name);
     if (c.name_truncated) {
@@ -139,10 +162,10 @@ function renderClients(s) {
     }
     tr.appendChild(name);
     tr.appendChild(el("td", "addr", c.addr));
-    tr.appendChild(el("td", "", c.ready ? "fatto" : "in attesa"));
+    tr.appendChild(el("td", "", READY_TEXT[c.ready]));
     tr.appendChild(el("td", "num", ms(c.lat_ms)));
     tr.appendChild(el("td", "num", ms(c.peak_ms)));
-    tr.appendChild(el("td", "", c.unfit ? "non idoneo" : (c.peak_ms === null ? "-" : "idoneo")));
+    tr.appendChild(el("td", "", FITNESS_TEXT[c.fitness]));
     body.appendChild(tr);
   }
   $("no-clients").hidden = s.clients.length > 0;
@@ -162,8 +185,7 @@ function renderSettings(s) {
     parts.push("in ascolto su " + s.listen);
   }
   if (s.output.backend) {
-    const edges = s.output.edges === "file" ? "su file" : "su stderr";
-    parts.push("uscita " + s.output.backend + ", fronti " + edges);
+    parts.push("uscita " + s.output.backend + ", fronti " + EDGES_TEXT[s.output.edges]);
   }
   parts.push("istantanea ogni " + s.period_ms + " ms");
   if (s.instance) {
@@ -178,9 +200,9 @@ function renderEvents(s) {
   const events = s.events.slice().reverse();
   for (const e of events) {
     const li = el("li", "event " + e.kind);
-    // e.t is null for a line re-read from the backlog at panel start: its
-    // real time is unknown, so say that instead of formatting a time.
-    const t = e.t === null ? "dal file" : new Date(e.t * 1000).toLocaleTimeString("it-IT");
+    // An event read back from the file at panel start has no time of its
+    // own: say so instead of formatting one.
+    const t = e.from_file ? "dal file" : new Date(e.t * 1000).toLocaleTimeString("it-IT");
     li.appendChild(el("time", "muted", t));
     li.appendChild(el("span", "kind", EVENT_TEXT[e.kind] || e.kind));
     li.appendChild(el("span", "text", e.text));
@@ -197,7 +219,7 @@ function render() {
     return;
   }
   const lv = LIVENESS_TEXT[last.liveness] || last.liveness;
-  $("liveness").textContent = "daemon " + lv + (last.certain ? "" : " - stato da verificare");
+  $("liveness").textContent = "daemon " + lv + STALE_TEXT[last.stale];
   renderKey(last);
   renderClients(last);
   renderSettings(last);
