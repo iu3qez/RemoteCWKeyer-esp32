@@ -206,6 +206,37 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(f.d["clients"], [])
         self.assertIn("dropped_lines", f.kinds())
 
+    def test_name_whose_trailing_spaces_journald_trimmed_is_restored_and_applied(self):
+        # journald strips a line's trailing whitespace, and sanitize() lets a
+        # space through as it is: "nome 8 IU3QEZ  " arrives as "nome 8 IU3QEZ".
+        for name in ("IU3QEZ  ", "  "):
+            with self.subTest(name=name):
+                lines = snap(1, [(1, "pronto", "10.0.0.1:50001", 12, 15, name)], holder="1")
+                lines[2] = lines[2].rstrip(" ")
+                self.assertLess(len(lines[2]), state.LINE_MAX)
+                d = Feed().live(*lines).d
+                self.assertTrue(d["guaranteed"])
+                self.assertEqual(d["clients"][0]["name"], name)
+                self.assertFalse(d["clients"][0]["name_truncated"])
+                self.assertEqual(d["key_holder_name"], name)
+
+    def test_line_cut_at_the_cap_on_a_space_journald_trimmed_is_a_cut_name(self):
+        # The daemon cut the line at 254 characters, the last of them a space,
+        # and journald stripped it: only that space is restored, and the name
+        # is marked cut, not padded to the declared length.
+        head = "stato snap client 1/1 1 pronto 10.0.0.1:50001 lat 12 peak 15 nome 191 "
+        room = state.LINE_MAX - len(head)
+        name = "A" * (room - 1) + " " + "B" * (191 - room)
+        cut = (head + name)[:state.LINE_MAX]
+        self.assertEqual(cut[-2:], "A ")
+        lines = snap(1, [], holder="1")
+        lines[0] = lines[0].replace("client 0", "client 1")
+        lines.insert(2, cut.rstrip(" "))
+        d = Feed().live(*lines).d
+        self.assertTrue(d["guaranteed"])
+        self.assertEqual(d["clients"][0]["name"], cut[len(head):])
+        self.assertTrue(d["clients"][0]["name_truncated"])
+
     def test_name_containing_stato_stdout_is_read_whole_in_a_snapshot(self):
         tricky = (1, "pronto", "10.0.0.1:50001", 12, 15, "x stato stdout 9 righe scartate")
         f = Feed().live(*snap(1, [tricky], holder="1"))
@@ -243,6 +274,25 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(d["key_holder"], 1)
         f.live("stato chiave libera")
         self.assertIsNone(f.d["key_holder"])
+
+    def test_opening_of_a_vocabulary_this_panel_cannot_read_raises_the_banner(self):
+        # The shape of the opening changed with the version: the panel cannot
+        # read the snapshot, and says why instead of only "unreadable".
+        f = guaranteed_with(C1)
+        f.live(snap(2, [C1])[0], "stato snap inizio v2 istanza 1-2 seq 1 nuovo-campo 3")
+        d = f.d
+        self.assertIn("vocabulary", d["banners"])
+        self.assertEqual(d["daemon_vocabulary"], "v2")
+        self.assertFalse(d["guaranteed"])
+        self.assertIn("discarded_snapshot", f.kinds())
+
+    def test_opening_of_this_vocabulary_in_another_shape_stays_unreadable(self):
+        f = guaranteed_with(C1)
+        f.live("stato snap inizio v1 istanza 1-2 seq 1 nuovo-campo 3")
+        d = f.d
+        self.assertNotIn("vocabulary", d["banners"])
+        self.assertFalse(d["guaranteed"])
+        self.assertIn("unreadable", f.kinds())
 
     def test_period_comes_from_the_last_applied_snapshot(self):
         f = Feed().live(*snap(1, [], period=250))
@@ -428,6 +478,21 @@ class LineTest(unittest.TestCase):
         self.assertTrue(d["guaranteed"])
         self.assertIn("mixed_edges", d["banners"])
 
+    def test_edge_line_read_from_a_regular_file_raises_no_banner(self):
+        # 2>&1 into a regular file cannot stall edge_write(): the panel is told
+        # it reads one, and the edge line changes nothing.
+        m = state.Model(wall=lambda: 1789769762.0, warn_mixed_edges=False)
+        m.apply("ptt 1 123", False, 1000.0)
+        self.assertNotIn("mixed_edges", m.to_dict()["banners"])
+
+    def test_event_of_a_backlog_line_has_no_time_and_of_a_live_line_the_wall_clock(self):
+        # A backlog line can be hours old, and carries no time of its own.
+        line = "stato fault: over oltre il tetto"
+        f = Feed().backlog(line)
+        self.assertIsNone(f.d["events"][-1]["t"])
+        f.live(line)
+        self.assertEqual(f.d["events"][-1]["t"], 1789769762.0)
+
     def test_startup_message_and_other_non_status_lines_are_ignored(self):
         f = guaranteed_with(C1)
         before = f.d
@@ -524,8 +589,19 @@ class LivenessTest(unittest.TestCase):
         self.assertEqual(f.d["liveness"], "alive")
 
     def test_silence_threshold_follows_the_snapshot_period(self):
-        f = Feed().live(*snap(1, [], period=250))
-        f.tick(0.8)
+        # Three periods of 500 ms: above the one-second floor.
+        f = Feed().live(*snap(1, [], period=500))
+        f.tick(1.4)
+        self.assertEqual(f.d["liveness"], "alive")
+        f.tick(0.2)
+        self.assertEqual(f.d["liveness"], "silent")
+
+    def test_silence_threshold_never_goes_below_one_second(self):
+        # --snapshot-ms 50 gives 150 ms, less than follow.py's 200 ms poll.
+        f = Feed().live(*snap(1, [], period=50))
+        f.tick(0.5)
+        self.assertEqual(f.d["liveness"], "alive")
+        f.tick(0.6)
         self.assertEqual(f.d["liveness"], "silent")
 
     def test_liveness_change_on_tick_increments_the_version(self):

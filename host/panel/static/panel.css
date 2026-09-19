@@ -117,7 +117,9 @@ h2 {
   margin: 0.3rem 0 !important;
 }
 
-#ptt.on {
+/* Not .stale: a stale PTT stays grey/italic (see .big.stale below) even
+   when its last known value was "on" (#7). */
+#ptt.on:not(.stale) {
   color: var(--on);
 }
 

@@ -36,6 +36,11 @@ PANEL_PY = os.path.join(PANEL_DIR, "cwnetd_panel.py")
 PANEL_JS = os.path.join(PANEL_DIR, "static", "panel.js")
 
 
+def panel_js():
+    with open(PANEL_JS, encoding="utf-8") as fh:
+        return fh.read()
+
+
 class FakeClock:
     def __init__(self):
         self.now = 1000.0
@@ -338,7 +343,7 @@ class EventsTest(ServerTest):
         d = self.sse().state()
         self.assertEqual(d["clients"][0]["name"], name)
         self.assertEqual(d["key_holder_name"], name)
-        source = open(PANEL_JS, encoding="utf-8").read()
+        source = panel_js()
         for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
             self.assertNotIn(sink, source)
 
@@ -349,7 +354,7 @@ class EventsTest(ServerTest):
         d = self.sse().state()
         for banner in ("silent", "mixed_edges", "vocabulary"):
             self.assertIn(banner, d["banners"])
-        source = open(PANEL_JS, encoding="utf-8").read()
+        source = panel_js()
         order = re.findall(r'"(\w+)"', re.search(r"BANNER_ORDER = \[(.*?)\];", source, re.S).group(1))
         self.assertLess(order.index("silent"), order.index("mixed_edges"))
         self.assertLess(order.index("silent"), order.index("vocabulary"))
@@ -377,6 +382,62 @@ class ConnectionCapTest(ServerTest):
         self.assertEqual(closed[web.MAX_CONNECTIONS:], [True] * (40 - web.MAX_CONNECTIONS))
         self.wait_for(lambda: self.server.open_connections == 0, timeout=5.0)
         self.assertEqual(get(self.port, "/")[0], 200)
+
+
+def closed_by_server(sock):
+    """True once the server has closed `sock`: EOF, or a reset."""
+    readable, _w, _x = select.select([sock], [], [], 0)
+    if not readable:
+        return False
+    try:
+        return sock.recv(65536) == b""
+    except OSError:
+        return True
+
+
+class RequestDeadlineTest(ServerTest):
+    """The request line and headers share one deadline, not one per read."""
+
+    server_options = {"handler_timeout": 0.5, "max_connections": 2}
+
+    def test_a_request_trickled_a_byte_at_a_time_is_cut_after_one_handler_timeout(self):
+        timeout = self.server_options["handler_timeout"]
+        # A header line that never ends, one byte every half timeout: each
+        # read gets data in time, only a deadline on the whole request ends it.
+        trickle = b"GET / HTTP/1.0\r\nX-Slow: " + b"a" * 200
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            socks = []
+            for _i in range(self.server_options["max_connections"]):
+                s = socket.create_connection(("127.0.0.1", self.port), timeout=5)
+                self.addCleanup(s.close)
+                socks.append(s)
+            started = time.monotonic()
+            next_byte = started
+            sent = 0
+            cut_after = {}
+            while len(cut_after) < len(socks) and time.monotonic() - started < 4 * timeout:
+                now = time.monotonic()
+                for n, s in enumerate(socks):
+                    if n not in cut_after and closed_by_server(s):
+                        cut_after[n] = now - started
+                if now >= next_byte:
+                    for n, s in enumerate(socks):
+                        if n not in cut_after:
+                            try:
+                                s.sendall(trickle[sent:sent + 1])
+                            except OSError:
+                                cut_after[n] = now - started
+                    sent += 1
+                    next_byte += timeout / 2
+                time.sleep(0.02)
+            self.assertEqual(sorted(cut_after), list(range(len(socks))),
+                             "still open after %.1f s of trickling" % (4 * timeout))
+            for n, after in cut_after.items():
+                self.assertLess(after, 2 * timeout, "connection %d" % n)
+            self.wait_for(lambda: self.server.open_connections == 0)
+            self.assertEqual(get(self.port, "/")[0], 200)
+        self.assertEqual(err.getvalue(), "")
 
 
 class PanelProcessTest(unittest.TestCase):
@@ -425,6 +486,22 @@ class PanelProcessTest(unittest.TestCase):
         proc.stdin.close()
         d = s.state_until(lambda d: d["liveness"] == "input_closed", timeout=4.0)
         self.assertIn("input_closed", d["banners"])
+
+
+class PanelWiringTest(unittest.TestCase):
+
+    def test_mixed_edges_banner_only_when_the_panel_reads_stdin(self):
+        # Edges merged into a pipe or the journal can stall the daemon behind
+        # a slow panel; into a followed regular file they cannot (KTD6).
+        with tempfile.TemporaryDirectory() as tmp:
+            for follow_path, banner in ((os.path.join(tmp, "cwnetd.log"), False), (None, True)):
+                panel = cwnetd_panel.Panel(port=0, follow_path=follow_path, stdin=io.BytesIO())
+                try:
+                    panel.state.apply_lines([Line("ptt 1 123", False)])
+                    banners = panel.state.current()[1]["banners"]
+                finally:
+                    panel.server.server_close()
+                self.assertEqual("mixed_edges" in banners, banner, follow_path)
 
 
 class ReaderFailureTest(unittest.TestCase):

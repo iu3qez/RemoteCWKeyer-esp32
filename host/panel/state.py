@@ -49,6 +49,11 @@ DEFAULT_PERIOD_MS = 5000
 # No line for more than this many periods: the daemon is silent.
 SILENT_PERIODS = 3
 
+# ...and never less than this: follow.py polls a file every 200 ms and the
+# clock ticks every second, so a shorter threshold (--snapshot-ms 50 gives
+# 150 ms) would call a live daemon silent between two polls.
+SILENT_MIN_S = 1.0
+
 SETTINGS = ("max_clients", "play_floor_ms", "link_ceiling_ms", "ptt_tail_ms", "ptt_lead_ms",
             "idle_ms", "over_max_ms", "handshake_ms", "out_cap_bytes")
 
@@ -123,6 +128,10 @@ _SNAP_CLIENT = re.compile(
     r"(?P<addr>" + _ADDR + r") lat (?P<lat>-?\d+) peak (?P<peak>-?\d+) "
     r"nome (?P<length>\d+)(?: (?P<name>.*))?", re.DOTALL)
 
+# Only the version of an opening that does not match: when a later vocabulary
+# changes that line's shape, this is what says why it cannot be read.
+_SNAP_VOCABULARY = re.compile(r"stato snap inizio (v\d+) ")
+
 _CONFESSION_AT = "stato stdout "
 _CONFESSION = _GRAMMAR[[k for k, _ in _GRAMMAR].index("confession")][1]
 _EDGE = re.compile(r"(?:key|ptt) [01] -?\d+")
@@ -155,11 +164,19 @@ def _parse_snap_client(text):
     if len(name) == declared:
         truncated = False
     elif len(name) < declared and len(text) == LINE_MAX:
-        # Cut by the daemon's line cap. Shorter than declared on a line
-        # below the cap is something else: half a line with a confession
-        # glued after it, left to the split below.
+        # Cut by the daemon's line cap.
         truncated = True
+    elif len(name) < declared and len(text) < LINE_MAX and _CONFESSION_AT not in text:
+        # journald strips a line's trailing whitespace, and sanitize() lets
+        # a space through as it is: the missing characters were spaces. If
+        # the whole line was longer than the cap, the daemon cut it there
+        # and only the spaces up to the cap were stripped.
+        missing = declared - len(name)
+        truncated = len(text) + missing > LINE_MAX
+        name += " " * min(missing, LINE_MAX - len(text))
     else:
+        # Not a whole client line: usually half of one with the confession
+        # glued after it, left to the split below.
         return None
     fields["name"] = name
     fields["name_truncated"] = truncated
@@ -175,6 +192,9 @@ def _parse_whole(text):
         m = rx.fullmatch(text)
         if m is not None:
             return Parsed(kind, _fields(m.groupdict()), text)
+    v = _SNAP_VOCABULARY.match(text)
+    if v is not None and v.group(1) != VOCABULARY:
+        return Parsed("vocabulary_mismatch", {"vocabulary": v.group(1)}, text)
     word = _WORD.match(text)
     if word is not None and word.group(1) in _KNOWN_WORDS:
         return Parsed("unreadable", {}, text)
@@ -213,9 +233,9 @@ _EVENT_ONLY = {"refused", "reader_stalled", "slot_in_use", "accept_failed", "unf
 _EDGES_EVENTS = {"edges_stall", "edges_refused", "edges_summary"}
 
 
-def _new_client(idx, addr):
-    return {"idx": idx, "addr": addr, "name": "", "name_truncated": False, "ready": False,
-            "lat": -1, "peak": -1}
+def _new_client(idx, addr, name="", name_truncated=False, ready=False, lat=-1, peak=-1):
+    return {"idx": idx, "addr": addr, "name": name, "name_truncated": name_truncated,
+            "ready": ready, "lat": lat, "peak": peak}
 
 
 def _body(text):
@@ -226,14 +246,17 @@ class Model:
     """The state the page shows, built from the lines. Not thread-safe: the
     caller holds a lock around every call."""
 
-    def __init__(self, wall: Callable[[], float] = time.time):
+    def __init__(self, wall: Callable[[], float] = time.time, warn_mixed_edges: bool = True):
         self._wall = wall
+        # False when the input is a regular file: see _on_edge.
+        self._warn_mixed_edges = warn_mixed_edges
         # Grows at every change the page must see; /events sends on a change.
         self.version = 0
         self.events = collections.deque(maxlen=EVENTS_MAX)
         # Survive a daemon restart: they describe the input, not the daemon.
         self.mixed_edges = False
         self._eof = False
+        self._backlog = False
         self._last_live = None
         self.liveness = "waiting"
         self._reset_instance()
@@ -243,6 +266,7 @@ class Model:
     def apply(self, text: str, backlog: bool, now: float) -> None:
         """One line, as it arrived at `now` (monotonic seconds). Backlog lines
         count for the state, not for liveness."""
+        self._backlog = backlog
         for p in parse(text):
             self._apply(p)
         if not backlog:
@@ -326,7 +350,10 @@ class Model:
         self._snap = None
 
     def _event(self, kind, text):
-        self.events.append({"t": self._wall(), "kind": kind, "text": text})
+        # A line carries no time. A backlog line can be hours old, and the
+        # panel's clock would date it now: its event has no time instead.
+        t = None if self._backlog else self._wall()
+        self.events.append({"t": t, "kind": kind, "text": text})
 
     def _not_guaranteed(self):
         self.guaranteed = False
@@ -352,7 +379,7 @@ class Model:
             lv = "input_closed"
         elif self._last_live is None:
             lv = "waiting"
-        elif now - self._last_live > SILENT_PERIODS * self.period_ms / 1000.0:
+        elif now - self._last_live > max(SILENT_PERIODS * self.period_ms / 1000.0, SILENT_MIN_S):
             lv = "silent"
         else:
             lv = "alive"
@@ -470,11 +497,19 @@ class Model:
     def _on_unknown(self, f, text):
         self._event("unknown", _body(text))
 
+    def _on_vocabulary_mismatch(self, f, text):
+        # A snapshot this panel cannot read: the banner says why, and the
+        # state is not guaranteed until one it can read arrives.
+        self.daemon_vocabulary = f["vocabulary"]
+        self._not_guaranteed()
+
     def _on_edge(self, f, text):
         # KTD6: edges mixed into the status mean stderr shares the pipe or
         # the journal with stdout, and a slow panel can then stall the
-        # daemon's edge_write() - the station with it.
-        self.mixed_edges = True
+        # daemon's edge_write() - the station with it. A regular file does
+        # not fill up behind a slow reader, so there the risk does not exist.
+        if self._warn_mixed_edges:
+            self.mixed_edges = True
 
     def _on_ignored(self, f, text):
         pass
@@ -542,10 +577,9 @@ class Model:
         self.settings = {key: s["settings"][key] for key in SETTINGS}
         self.clients = {}
         for c in s["clients"]:
-            self.clients[c["idx"]] = {"idx": c["idx"], "addr": c["addr"], "name": c["name"],
-                                      "name_truncated": c["name_truncated"],
-                                      "ready": c["state"] == "pronto",
-                                      "lat": c["lat"], "peak": c["peak"]}
+            self.clients[c["idx"]] = _new_client(
+                c["idx"], c["addr"], name=c["name"], name_truncated=c["name_truncated"],
+                ready=c["state"] == "pronto", lat=c["lat"], peak=c["peak"])
         self.key_known = True
         if o["holder"] == "libera":
             self.key_holder = None

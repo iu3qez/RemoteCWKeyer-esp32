@@ -178,7 +178,9 @@ function renderEvents(s) {
   const events = s.events.slice().reverse();
   for (const e of events) {
     const li = el("li", "event " + e.kind);
-    const t = new Date(e.t * 1000).toLocaleTimeString("it-IT");
+    // e.t is null for a line re-read from the backlog at panel start: its
+    // real time is unknown, so say that instead of formatting a time.
+    const t = e.t === null ? "dal file" : new Date(e.t * 1000).toLocaleTimeString("it-IT");
     li.appendChild(el("time", "muted", t));
     li.appendChild(el("span", "kind", EVENT_TEXT[e.kind] || e.kind));
     li.appendChild(el("span", "text", e.text));
@@ -215,9 +217,13 @@ function arm() {
 }
 
 function start() {
-  // EventSource reconnects by itself; on every connection the server sends
-  // the whole state first. The watchdog, not onerror, decides when what is
-  // on screen can no longer be trusted.
+  // EventSource reconnects by itself after a dropped connection, but the
+  // HTML spec makes it "fail the connection" instead on a 503 (16-stream
+  // cap full) or 421: readyState goes CLOSED and it never retries on its
+  // own. onerror below replaces a CLOSED source so a freed slot is picked
+  // up again, on the same 2 s the server's "retry:" already asks for. The
+  // watchdog, not onerror, still decides when what is on screen can no
+  // longer be trusted.
   const source = new EventSource("/events");
   source.onmessage = function (ev) {
     arm();
@@ -225,6 +231,15 @@ function start() {
     render();
   };
   source.addEventListener("keepalive", arm);
+  source.onerror = function () {
+    // Only CLOSED means the browser gave up for good; any other state
+    // (CONNECTING) is a normal retry in progress, and starting a second
+    // source here would leave two live connections open.
+    if (source.readyState === EventSource.CLOSED) {
+      source.close();
+      setTimeout(start, 2000);
+    }
+  };
   arm();
   render();
 }

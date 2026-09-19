@@ -1264,12 +1264,16 @@ int main(int argc, char **argv) {
         int64_t wake_ms = g_snap.due_ms;
         int64_t deadline = 0;
         if (cwnet_server_next_deadline(&g_srv, &deadline) &&
-            (deadline < wake_ms || wake_ms <= now_ms)) {
+            (deadline < wake_ms ||
+             (wake_ms <= now_ms && deadline - now_ms <= CWNETD_SNAPSHOT_GIVE_WAY_MS))) {
             /* The core's deadline comes first; or a snapshot already due
              * has given way to it (snapshot_maybe()), and then it is the
              * deadline to wait for too, with the snapshot right after.
              * Waiting for the snapshot's own instant, already past, would
-             * spin until the edge. */
+             * spin until the edge. A snapshot that fell due between
+             * snapshot_maybe() and here gave way to nothing: it keeps its
+             * own instant, so the next pass writes it rather than waiting
+             * for a deadline up to a PING period away. */
             wake_ms = deadline;
         }
         int64_t d = wake_ms - now_ms;

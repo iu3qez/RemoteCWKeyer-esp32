@@ -18,10 +18,12 @@ http.server is not a production server. What it lacks, and is added here
 (KTD11): ThreadingHTTPServer opens a thread per connection with no cap, and
 BaseHTTPRequestHandler waits for a request without a timeout, so a
 connection that never sends one holds a thread for ever. Hence a handler
-timeout, which also bounds a blocked write to a stream nobody reads, a cap
-on open connections and a cap on streams.
+timeout: one deadline for the request line and headers together, and a
+bound on each write, so also on a blocked write to a stream nobody reads.
+Plus a cap on open connections and a cap on streams.
 """
 import http.server
+import io
 import ipaddress
 import json
 import os
@@ -188,6 +190,41 @@ def load_static(directory: str = STATIC_DIR):
     return out
 
 
+class _RequestReader(io.RawIOBase):
+    """The socket as the handler's rfile, with one deadline on every read.
+
+    A socket timeout bounds each recv, not the request: a client that sends
+    one byte just inside it restarts it every time, and holds its thread and
+    its connection slot for as long as it keeps trickling. Here each recv
+    gets only what is left of `seconds` from setup(), and past that a read
+    raises socket.timeout, which handle_one_request() takes as a request
+    that timed out: it closes the connection before parsing anything. The
+    socket timeout is put back to `seconds` after each recv, so the writes
+    keep their own bound. Only the request line and headers are ever read:
+    a GET has no body, and every other method is refused without reading."""
+
+    def __init__(self, sock, seconds):
+        super().__init__()
+        self._sock = sock
+        self._seconds = seconds
+        self._deadline = time.monotonic() + seconds
+
+    def readable(self):
+        return True
+
+    def readinto(self, buf):
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            # socket.timeout, not TimeoutError: on 3.9 they are different
+            # classes, and handle_one_request() catches socket.timeout.
+            raise socket.timeout("timed out")
+        self._sock.settimeout(remaining)
+        try:
+            return self._sock.recv_into(buf)
+        finally:
+            self._sock.settimeout(self._seconds)
+
+
 class PanelHandler(http.server.BaseHTTPRequestHandler):
     """Fixed routes; never SimpleHTTPRequestHandler, which serves a directory."""
 
@@ -196,11 +233,17 @@ class PanelHandler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
 
     def setup(self):
-        # Read by StreamRequestHandler.setup() to set the socket timeout: it
-        # bounds the wait for a request and every write after it.
+        # Read by StreamRequestHandler.setup() to set the socket timeout,
+        # which bounds every write.
         self.timeout = self.server.handler_timeout
         self._extra_headers = []
         super().setup()
+        # The rfile setup() made bounds each read, not the request: replaced
+        # by one with a deadline on the whole request. Closed first, or the
+        # socket counts it as still open and its descriptor outlives the
+        # server's close().
+        self.rfile.close()
+        self.rfile = io.BufferedReader(_RequestReader(self.connection, self.timeout))
 
     def log_message(self, format, *args):
         # Nothing, for every request and for send_error(): the page is not a
@@ -322,8 +365,9 @@ class PanelServer(http.server.ThreadingHTTPServer):
     def process_request(self, request, client_address):
         # Counted on accept, before a thread exists: past the cap the
         # connection is closed at once, and the page is unreachable for at
-        # most one handler timeout - the price of a global cap on a page
-        # that commands nothing.
+        # most one handler timeout, the deadline _RequestReader puts on a
+        # whole request (streams have a cap of their own, below this one).
+        # That is the price of a global cap on a page that commands nothing.
         with self._count_lock:
             full = self._connections >= self.max_connections
             if not full:

@@ -39,7 +39,8 @@ Then open <http://127.0.0.1:7356/>.
   from its start.
 - At start-up the panel reads the last 64 KiB of the file. What it finds
   there sets the state but not the daemon's liveness: until a new line
-  arrives the page says it is waiting.
+  arrives the page says it is waiting. Events found there show `dal file`
+  in place of a time, because their time is not known.
 - The file grows by three lines every 5 s with the daemon idle, about 4 MB
   a day at the default `--snapshot-ms`.
 
@@ -74,8 +75,9 @@ The daemon's key and PTT edges go to stderr unless `--edges` names a file,
 and they are never dropped: when stderr stops draining, the daemon waits.
 Merged into a pipe or the journal that the panel reads, a slow panel stalls
 the daemon's edge writes, and the station with them. Give `--edges` a file.
-If the panel sees edge lines among the status lines, it says so in a
-banner. Into a regular file, as in the first example, `2>&1` is harmless.
+If the panel reads stdin and sees edge lines among the status lines, it
+says so in a banner. Into a regular file, as in the first example, `2>&1`
+is harmless, and a panel that follows a file does not raise the banner.
 
 ## Who can see the page
 
@@ -128,11 +130,11 @@ first:
 |---|---|
 | Pannello irraggiungibile | the browser has heard nothing from the panel for two keepalives (10 s): the whole page is greyed and frozen at the last update |
 | Daemon fermo | the daemon wrote `stato arresto`. It stays so until a new daemon starts |
-| Daemon silenzioso | no line for more than three snapshot periods (15 s by default) |
+| Daemon silenzioso | no line for more than three snapshot periods and at least 1 s (15 s by default; below `--snapshot-ms 334` the 1 s floor applies, because the panel reads the file every 200 ms and checks for silence once a second) |
 | Ingresso chiuso | stdin ended, or the file could not be read: nothing more will arrive |
 | In attesa della prima riga dal vivo | the page shows what was already in the file, and no new line has arrived yet |
 | Stato non garantito | lines were lost; until the next complete snapshot, key holder, PTT and clients can be wrong |
-| I fronti arrivano mescolati | edge lines among the status lines: see the `2>&1` section above |
+| I fronti arrivano mescolati | edge lines among the status lines read from stdin: see the `2>&1` section above |
 | Il daemon parla un vocabolario diverso | the daemon's snapshots carry another vocabulary version: the page shows what it recognises |
 
 ## What "guaranteed" means

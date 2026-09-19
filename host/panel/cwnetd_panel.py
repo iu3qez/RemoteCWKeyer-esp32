@@ -45,7 +45,9 @@ class Panel:
         self.follow_path = follow_path
         self.stdin = stdin
         self.tick_s = tick_s
-        self.state = web.PanelState(state.Model(), clock)
+        # Edges in the lines stall the daemon only through a pipe or the
+        # journal, which is stdin; a followed file is a regular file.
+        self.state = web.PanelState(state.Model(warn_mixed_edges=follow_path is None), clock)
         self.server = web.PanelServer((listen, port), self.state, allow_hosts, **server_options)
         self._stop = threading.Event()
         self._threads = [
