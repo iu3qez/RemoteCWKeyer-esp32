@@ -36,6 +36,15 @@ from typing import Callable, Dict, List, NamedTuple
 # The vocabulary this module reads (README, "The periodic snapshot").
 VOCABULARY = "v1"
 
+# The ids to_dict() sends for panel.js to look up in its text tables: every
+# one needs an entry there, and test_web checks that it has one.
+LIVENESS_VALUES = frozenset({"waiting", "alive", "silent", "stopped", "input_closed"})
+BANNER_IDS = (LIVENESS_VALUES - {"alive"}) | {"not_guaranteed", "mixed_edges", "vocabulary"}
+KEY_STATES = frozenset({"unknown", "free", "held"})
+PTT_STATES = frozenset({"unknown", "on", "off"})
+FITNESS_VALUES = frozenset({"unknown", "fit", "unfit"})
+EDGES_DESTINATIONS = frozenset({"file", "stderr"})
+
 # CWNETD_LINE_MAX is 256: minus the newline and vsnprintf()'s NUL, a status
 # line carries at most 254 characters, and a longer one is cut there.
 LINE_MAX = 254
@@ -242,6 +251,15 @@ def _body(text):
     return text.removeprefix("stato ")
 
 
+def _fitness(peak, ceiling):
+    # KTD4 of the station panel plan (#91, option A): the core does not
+    # expose "unfit", so the peak against the ceiling decides it, as in
+    # take_key(), which refuses only a peak over the ceiling.
+    if peak is None or ceiling is None:
+        return "unknown"
+    return "unfit" if peak > ceiling else "fit"
+
+
 class Model:
     """The state the page shows, built from the lines. Not thread-safe: the
     caller holds a lock around every call."""
@@ -305,6 +323,7 @@ class Model:
                 # KTD4: the core does not expose "unfit"; the peak over the
                 # ceiling is what makes it so.
                 "unfit": peak is not None and ceiling is not None and peak > ceiling,
+                "fitness": _fitness(peak, ceiling),
             })
         return {
             "vocabulary": VOCABULARY,
@@ -312,6 +331,8 @@ class Model:
             "liveness": self.liveness,
             "guaranteed": self.guaranteed,
             "certain": self.liveness == "alive" and self.guaranteed,
+            # Any other time key and PTT are the last known values.
+            "stale": not (self.liveness == "alive" and self.guaranteed),
             "banners": self._banners(),
             "daemon_vocabulary": self.daemon_vocabulary,
             "instance": self.instance,
@@ -322,6 +343,8 @@ class Model:
             "key_holder": self.key_holder,
             "key_holder_name": self.key_holder_name,
             "ptt": self.ptt,
+            "key_view": self._key_view(),
+            "ptt_view": "unknown" if self.ptt is None else ("on" if self.ptt else "off"),
             "settings": dict(self.settings),
             "clients": clients,
             "events": list(self.events),
@@ -351,16 +374,30 @@ class Model:
 
     def _event(self, kind, text):
         # A line carries no time. A backlog line can be hours old, and the
-        # panel's clock would date it now: its event has no time instead.
+        # panel's clock would date it now: its event has no time instead,
+        # and says it was read back from the file.
         t = None if self._backlog else self._wall()
-        self.events.append({"t": t, "kind": kind, "text": text})
+        self.events.append({"t": t, "kind": kind, "text": text, "from_file": self._backlog})
 
     def _not_guaranteed(self):
         self.guaranteed = False
 
+    def _key_view(self):
+        if not self.key_known:
+            return {"state": "unknown", "idx": None, "name": None}
+        if self.key_holder is None:
+            return {"state": "free", "idx": None, "name": None}
+        # KTD7: an empty name, or a holder missing from the snapshot's
+        # clients (key_holder_name None), is no name, and the page shows
+        # "client N". cwnetd writes neither today; key_holder_name keeps
+        # the raw value.
+        return {"state": "held", "idx": self.key_holder, "name": self.key_holder_name or None}
+
     def _banners(self):
         # KTD9: the ones that say "do not trust" first, in this order, then
-        # the configuration warnings. They stack; none hides another.
+        # the configuration warnings. They stack; none hides another. This
+        # is the order the page shows them in: it adds only "unreachable",
+        # in front, and never sorts them again.
         out = []
         if self.liveness != "alive":
             out.append(self.liveness)

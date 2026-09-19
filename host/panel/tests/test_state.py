@@ -44,6 +44,20 @@ C1 = (1, "pronto", "10.0.0.1:50001", 12, 15, "IU3QEZ")
 C2 = (2, "pronto", "10.0.0.2:50002", 20, 22, "DL4YHF")
 
 
+def check_ids(d):
+    """Every id the page looks up is in the set state.py exports for it: the
+    coverage check in test_web reads those sets, not the model."""
+    sent = [("banner", b, state.BANNER_IDS) for b in d["banners"]]
+    sent += [("liveness", d["liveness"], state.LIVENESS_VALUES),
+             ("key state", d["key_view"]["state"], state.KEY_STATES),
+             ("PTT state", d["ptt_view"], state.PTT_STATES)]
+    sent += [("fitness", c["fitness"], state.FITNESS_VALUES) for c in d["clients"]]
+    if d["output"]["edges"] is not None:
+        sent.append(("edges destination", d["output"]["edges"], state.EDGES_DESTINATIONS))
+    for what, value, ids in sent:
+        assert value in ids, "%s %r is not in %s" % (what, value, sorted(ids))
+
+
 class Feed:
     """A model and a clock: every live line arrives `dt` seconds after the last."""
 
@@ -69,7 +83,9 @@ class Feed:
 
     @property
     def d(self):
-        return self.m.to_dict()
+        d = self.m.to_dict()
+        check_ids(d)
+        return d
 
     def kinds(self):
         return [e["kind"] for e in self.d["events"]]
@@ -656,6 +672,111 @@ class LivenessTest(unittest.TestCase):
         f.tick(16.0)
         self.assertEqual(f.d["banners"],
                          ["silent", "not_guaranteed", "mixed_edges", "vocabulary"])
+
+
+class ViewTest(unittest.TestCase):
+    """The values the page copies without deciding anything (#90)."""
+
+    def test_key_view_is_unknown_before_any_line_with_no_holder_and_no_name(self):
+        self.assertEqual(Feed().d["key_view"], {"state": "unknown", "idx": None, "name": None})
+
+    def test_key_view_is_free_after_chiave_libera_and_after_a_snapshot_with_the_key_free(self):
+        free = {"state": "free", "idx": None, "name": None}
+        f = Feed().live("stato chiave client 1 IU3QEZ", "stato chiave libera")
+        self.assertEqual(f.d["key_view"], free)
+        self.assertEqual(guaranteed_with(C1, holder="libera").d["key_view"], free)
+
+    def test_key_view_is_held_by_the_client_with_its_name_after_a_chiave_line(self):
+        f = Feed().live("stato chiave client 2 DL4YHF")
+        self.assertEqual(f.d["key_view"], {"state": "held", "idx": 2, "name": "DL4YHF"})
+
+    def test_key_view_has_no_name_when_a_chiave_line_carries_an_empty_one(self):
+        # cwnetd writes "(senza nome)" in its place today: the guard is for a
+        # later daemon or a hand-written line.
+        f = Feed().live("stato chiave client 2 ")
+        self.assertEqual(f.d["key_view"], {"state": "held", "idx": 2, "name": None})
+        self.assertEqual(f.d["key_holder_name"], "")
+
+    def test_key_view_has_no_name_when_the_snapshot_holder_is_missing_from_its_clients(self):
+        f = Feed().live(*snap(1, [C1], holder="2"))
+        self.assertEqual(f.d["key_view"], {"state": "held", "idx": 2, "name": None})
+
+    def test_key_and_ptt_views_go_back_to_unknown_after_a_new_daemon_instance(self):
+        f = guaranteed_with(C1, holder="1", ptt=1)
+        self.assertEqual(f.d["key_view"]["state"], "held")
+        self.assertEqual(f.d["ptt_view"], "on")
+        f.live(ASCOLTO)
+        self.assertEqual(f.d["key_view"]["state"], "unknown")
+        self.assertEqual(f.d["ptt_view"], "unknown")
+
+    def test_ptt_view_is_unknown_before_any_line_then_follows_the_ptt_lines(self):
+        f = Feed()
+        self.assertEqual(f.d["ptt_view"], "unknown")
+        f.live("stato ptt 1")
+        self.assertEqual(f.d["ptt_view"], "on")
+        f.live("stato ptt 0")
+        self.assertEqual(f.d["ptt_view"], "off")
+
+    def test_ptt_view_follows_the_ptt_field_of_the_snapshot(self):
+        f = Feed().live(*snap(1, [C1], ptt=1))
+        self.assertEqual(f.d["ptt_view"], "on")
+        f.live(*snap(2, [C1], ptt=0))
+        self.assertEqual(f.d["ptt_view"], "off")
+
+    def test_stale_is_false_only_when_alive_and_guaranteed(self):
+        self.assertFalse(guaranteed_with(C1).d["stale"])
+        alive_not_guaranteed = Feed().live("stato ptt 0")
+        self.assertEqual(alive_not_guaranteed.d["liveness"], "alive")
+        self.assertTrue(alive_not_guaranteed.d["stale"])
+
+    def test_stale_while_waiting_silent_stopped_and_input_closed_with_a_guaranteed_state(self):
+        waiting = Feed().backlog(*snap(1, [C1]))
+        silent = guaranteed_with(C1).tick(16.0)
+        stopped = guaranteed_with(C1).live("stato arresto")
+        closed = guaranteed_with(C1)
+        closed.m.input_closed(closed.now)
+        for f in (waiting, silent, stopped, closed):
+            with self.subTest(liveness=f.d["liveness"]):
+                self.assertTrue(f.d["guaranteed"])
+                self.assertTrue(f.d["stale"])
+
+    def test_stale_after_a_confession_until_the_next_complete_snapshot(self):
+        f = guaranteed_with(C1)
+        f.live("stato stdout 1 righe scartate")
+        self.assertTrue(f.d["stale"])
+        f.live("stato ptt 0")
+        self.assertTrue(f.d["stale"], "a level line does not restore the guarantee")
+        f.live(*snap(2, [C1]))
+        self.assertFalse(f.d["stale"])
+
+    def test_fitness_is_unknown_for_a_client_with_no_peak(self):
+        f = guaranteed_with((1, "pronto", "10.0.0.1:50001", -1, -1, "IU3QEZ"))
+        self.assertEqual(f.d["clients"][0]["fitness"], "unknown")
+
+    def test_fitness_is_unknown_for_a_measured_client_before_the_ceiling_is_known(self):
+        # The page showed this client as "idoneo": the link ceiling comes with
+        # "stato ascolto" or the first snapshot, and neither has arrived.
+        f = Feed().live("stato accettato client 1 da 10.0.0.1:50001",
+                        "stato latenza client 1 12 ms peak 15 ms")
+        self.assertIsNone(f.d["settings"]["link_ceiling_ms"])
+        self.assertEqual(f.d["clients"][0]["peak_ms"], 15)
+        self.assertEqual(f.d["clients"][0]["fitness"], "unknown")
+
+    def test_fitness_is_fit_below_and_at_the_ceiling_and_unfit_one_millisecond_over(self):
+        # take_key() in cwnet_server.c refuses only a peak over the ceiling.
+        f = guaranteed_with(*[(idx, "pronto", "10.0.0.%d:5000" % idx, 10, peak, "C%d" % idx)
+                              for idx, peak in ((1, 999), (2, 1000), (3, 1001))])
+        self.assertEqual(f.d["settings"]["link_ceiling_ms"], 1000)
+        self.assertEqual([c["fitness"] for c in f.d["clients"]], ["fit", "fit", "unfit"])
+
+    def test_event_read_back_from_the_file_says_so_and_has_no_time_and_a_live_one_neither(self):
+        line = "stato fault: over oltre il tetto"
+        f = Feed().backlog(line)
+        self.assertTrue(f.d["events"][-1]["from_file"])
+        self.assertIsNone(f.d["events"][-1]["t"])
+        f.live(line)
+        self.assertFalse(f.d["events"][-1]["from_file"])
+        self.assertIsNotNone(f.d["events"][-1]["t"])
 
 
 class AcceptanceTest(unittest.TestCase):
