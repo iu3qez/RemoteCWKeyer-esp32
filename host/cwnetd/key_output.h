@@ -146,7 +146,7 @@ typedef struct key_output_cfg {
  * @brief Validate a configuration and resolve its line mapping.
  *
  * Touches no device. Refuses: an unknown backend; a serial backend without
- * a device; an unknown line value; the key on no line; key and PTT on the
+ * a device, and a device with the virtual backend; an unknown line value; the key on no line; key and PTT on the
  * same line, inverted or not.
  *
  * @param cfg     Configuration, not NULL

@@ -176,7 +176,15 @@ static bool test_unknown_backend_refused(void) {
     return expect_refused(&cfg, want, 2);
 }
 
-/* The virtual backend has no lines: its check ignores the serial fields. */
+/* A port named with the virtual output: the operator meant to key a rig
+ * and would get silence with no word said. */
+static bool test_serial_device_with_virtual_refused(void) {
+    key_output_cfg_t cfg = { .backend = "virtual", .device = "/dev/ttyUSB0" };
+    const char *want[] = { "--serial", "--output serial" };
+    return expect_refused(&cfg, want, 2);
+}
+
+/* The virtual backend has no lines: its check ignores the line fields. */
 static bool test_virtual_accepted(void) {
     key_output_cfg_t cfg = { .backend = "virtual" };
     key_output_map_t map;
@@ -818,6 +826,28 @@ static bool test_no_line_call_after_failure(void) {
     return expect_calls("after failure", from, "TIOCMSET close") && expect_edges(want, 4);
 }
 
+/* A release that fails at shutdown (the adapter already gone): the record
+ * outlives the close, so the daemon can still report it. */
+static bool test_failed_release_is_readable_after_close(void) {
+    fake_reset();
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (!fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        return false;
+    }
+    key_output_set_key(&out, true, 1);
+    F.fail_call = "TIOCMSET";
+    F.fail_nth = 1;
+    F.fail_errno = EIO;
+    key_output_close(&out, 2);
+    const key_output_fault_t *f = key_output_fault(&out);
+    if (f == NULL || f->kind != KEY_OUTPUT_FAULT_CALL || f->err != EIO) {
+        fprintf(stderr, "  failed release: no fault record after close\n");
+        return false;
+    }
+    return expect_calls("failed release", F.n_calls - 2u, "TIOCMSET close");
+}
+
 /* A call that succeeds after a 5000 ms stall: the edges queued behind it
  * must not go out back to back. */
 static bool test_no_line_call_after_stall(void) {
@@ -972,6 +1002,7 @@ int main(void) {
         {"unknown_ptt_line_refused", test_unknown_ptt_line_refused},
         {"serial_without_device_refused", test_serial_without_device_refused},
         {"unknown_backend_refused", test_unknown_backend_refused},
+        {"serial_device_with_virtual_refused", test_serial_device_with_virtual_refused},
         {"virtual_accepted", test_virtual_accepted},
         {"root_warning", test_root_warning},
         {"open_order_plain", test_open_order_plain},
@@ -987,6 +1018,7 @@ int main(void) {
         {"close_releases_in_order", test_close_releases_in_order},
         {"no_line_call_after_failure", test_no_line_call_after_failure},
         {"no_line_call_after_stall", test_no_line_call_after_stall},
+        {"failed_release_is_readable_after_close", test_failed_release_is_readable_after_close},
         {"poll_fd_only_while_open", test_poll_fd_only_while_open},
         {"hangup_is_a_fault", test_hangup_is_a_fault},
         {"received_bytes_drained", test_received_bytes_drained},

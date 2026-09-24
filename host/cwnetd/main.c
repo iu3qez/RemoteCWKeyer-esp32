@@ -1455,6 +1455,13 @@ int main(int argc, char **argv) {
     status_line("stato arresto");
     shutdown_clients();
     key_output_close(&g_out, now_ms);
+    /* The release above can fail too, on a port unplugged before the
+     * signal: the rig may be keyed, and a clean exit would hide it. */
+    const key_output_fault_t *release_fault = key_output_fault(&g_out);
+    if (exit_code == 0 && release_fault != NULL) {
+        output_fault_line(release_fault, args.serial);
+        exit_code = CWNETD_EXIT_OUTPUT_FAULT;
+    }
     report_ptt();
     sock_close(&listener);
     sock_cleanup();

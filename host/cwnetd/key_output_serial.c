@@ -65,6 +65,12 @@ bool key_output_check(const key_output_cfg_t *cfg, key_output_map_t *map,
 
     const char *backend = (cfg->backend != NULL) ? cfg->backend : "";
     if (strcmp(backend, "virtual") == 0) {
+        /* A port named with the virtual output: the operator meant to key a
+         * rig, and would get a daemon that keys nothing and says nothing. */
+        if (cfg->device != NULL) {
+            (void)snprintf(err, err_len, "--serial %s richiede --output serial", cfg->device);
+            return false;
+        }
         return true;
     }
     if (strcmp(backend, "serial") != 0) {
