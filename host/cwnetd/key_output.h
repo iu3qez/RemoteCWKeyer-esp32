@@ -7,11 +7,11 @@
  * descrittore proprio (file o stderr) che non scarta mai, separato dalle
  * righe di stato."
  *
- * KTD9 puts the physical transport behind its own Decision, which is not
- * open yet, so the only backend here is the virtual one: every edge becomes
- * a line on the descriptor the daemon chose with --edges. A serial-line or
- * GPIO backend later fills in the same two function pointers and nothing
- * above this file changes.
+ * Two backends fill in the same two function pointers. "virtual" writes
+ * every edge as a line on the descriptor the daemon chose with --edges.
+ * "serial" (key_output_serial.c, decision #98) drives the key and PTT on a
+ * serial port's DTR and RTS, then writes the same line, so the trace does
+ * not depend on the backend.
  *
  * The instant carried by an edge is the instant it was *scheduled* for, not
  * the instant the daemon noticed it: cwnet_play computes deadlines from the
@@ -49,6 +49,39 @@ extern "C" {
  */
 typedef void (*key_output_line_fn)(void *ctx, const char *line);
 
+/**
+ * Which modem-control line carries each function, as TIOCM_DTR / TIOCM_RTS
+ * bits. A zero bit is a function on no line. An inverted line is low when
+ * its function is active.
+ */
+typedef struct key_output_map {
+    unsigned key_bit;
+    bool key_inverted;
+    unsigned ptt_bit;
+    bool ptt_inverted;
+} key_output_map_t;
+
+/**
+ * An output failure (KTD4). Once `set`, the backend makes no further line
+ * call, and the lines are released only by closing the descriptor. The
+ * daemon reads it after each batch of edges and stops with a FAULT.
+ */
+typedef struct key_output_fault {
+    bool set;
+    const char *call;      /**< The call that failed, e.g. "TIOCMSET" */
+    int err;               /**< Its errno; 0 when it succeeded but was too slow */
+    int64_t duration_us;   /**< How long it took */
+} key_output_fault_t;
+
+/** Durations of the line changes, for the snapshot. All zero for virtual. */
+typedef struct key_output_timing {
+    unsigned long count;   /**< Line changes made */
+    int64_t max_us;        /**< The slowest */
+    unsigned long slow;    /**< Over KEY_OUTPUT_SERIAL_SLOW_US */
+} key_output_timing_t;
+
+struct key_output_os;
+
 typedef struct key_output {
     const char *name;         /**< Backend name, as given to key_output_open() */
     bool key_down;            /**< Key state as this interface last set it */
@@ -60,6 +93,16 @@ typedef struct key_output {
     /** Backend hooks. Called only on an actual transition. */
     void (*apply_key)(struct key_output *out, bool down, int64_t at_ms);
     void (*apply_ptt)(struct key_output *out, bool on, int64_t at_ms);
+    /** Backend teardown after the release; NULL when there is none. */
+    void (*finish)(struct key_output *out);
+
+    key_output_fault_t fault;
+    key_output_timing_t timing;
+
+    /* Serial backend only. */
+    int fd;                            /**< -1 when closed */
+    key_output_map_t map;
+    const struct key_output_os *os;
 } key_output_t;
 
 /** Comma-separated list of the backends key_output_open() accepts, for --help. */
@@ -74,7 +117,7 @@ const char *key_output_backends(void);
 #define KEY_OUTPUT_DEFAULT_PTT_LINE "rts"
 
 /** Room for any message key_output_check() writes. */
-#define KEY_OUTPUT_ERR_LEN 160
+#define KEY_OUTPUT_ERR_LEN 256
 
 /**
  * What the operator asked for, as given on the command line. The strings
@@ -88,18 +131,6 @@ typedef struct key_output_cfg {
     const char *key_line;  /**< --key-line: dtr, rts, dtr-inv, rts-inv */
     const char *ptt_line;  /**< --ptt-line: the same, or none */
 } key_output_cfg_t;
-
-/**
- * Which modem-control line carries each function, as TIOCM_DTR / TIOCM_RTS
- * bits. A zero bit is a function on no line. An inverted line is low when
- * its function is active.
- */
-typedef struct key_output_map {
-    unsigned key_bit;
-    bool key_inverted;
-    unsigned ptt_bit;
-    bool ptt_inverted;
-} key_output_map_t;
 
 /**
  * @brief Validate a configuration and resolve its line mapping.
@@ -144,14 +175,24 @@ const char *key_output_root_warning(const char *backend, unsigned long euid);
 /**
  * @brief Wire up an output. Starts at rest: key up, PTT off.
  *
+ * For "serial" this opens the port and leaves both lines at rest, in the
+ * order key_output_serial.h describes.
+ *
  * @param out      Interface, not NULL
- * @param backend  Backend name; see key_output_backends()
+ * @param cfg      Configuration; refused as key_output_check() refuses it
  * @param line     Line sink, not NULL
  * @param line_ctx Passed back to @p line
- * @return false on an unknown backend or a NULL argument; nothing is written.
+ * @param err      On failure, why; not NULL
+ * @param err_len  Size of @p err; KEY_OUTPUT_ERR_LEN holds any message
+ * @return false on a refused configuration, a NULL argument or a port that
+ *         did not open at rest; nothing is written to @p line.
  */
-bool key_output_open(key_output_t *out, const char *backend,
-                     key_output_line_fn line, void *line_ctx);
+bool key_output_open(key_output_t *out, const key_output_cfg_t *cfg,
+                     key_output_line_fn line, void *line_ctx,
+                     char *err, size_t err_len);
+
+/** @brief The output's failure record, or NULL when it has none (KTD4). */
+const key_output_fault_t *key_output_fault(const key_output_t *out);
 
 /** @brief Key edge at the instant it was scheduled for. No-op if unchanged. */
 void key_output_set_key(key_output_t *out, bool down, int64_t at_ms);

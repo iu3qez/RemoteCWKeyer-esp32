@@ -1,17 +1,26 @@
 /**
  * @file key_output_serial_test.c
- * @brief The serial output of cwnetd: line mapping and configuration (U1).
+ * @brief The serial output of cwnetd: line mapping and configuration (U1),
+ *        and the backend's calls to the OS (U2).
  *
  * What a real adapter does with these levels is the bench's job (U6). This
  * file proves what the daemon asks for: which line goes high for which
- * function, and which configurations it refuses before a port is touched.
+ * function, which configurations it refuses before a port is touched, and
+ * in what order the backend calls the OS. The OS is the table of KTD8,
+ * replaced here by one that records every call: a pty cannot stand in,
+ * because Linux ptys refuse the modem-line ioctls.
  */
 #include "../cwnetd/key_output.h"
+#include "../cwnetd/key_output_serial.h"
 
+#include <errno.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/ioctl.h>
+#include <termios.h>
 
 /*===========================================================================*/
 /* Helpers                                                                   */
@@ -201,6 +210,593 @@ static bool test_root_warning(void) {
 }
 
 /*===========================================================================*/
+/* Fake OS (KTD8)                                                            */
+/*===========================================================================*/
+
+#define FAKE_FD 7
+#define FAKE_MAX_CALLS 64
+#define FAKE_MAX_EDGES 16
+#define FAKE_CALL_US 1000
+
+typedef struct {
+    const char *name;   /* "open", "TIOCMSET", "tcsetattr", ... */
+    int arg;            /* TIOCMSET: the lines; flock: the operation */
+} fake_call_t;
+
+static struct {
+    fake_call_t calls[FAKE_MAX_CALLS];
+    size_t n_calls;
+
+    int lines;                 /* DTR | RTS as the port holds them */
+    bool readback_lies;        /* TIOCMGET reports the opposite of lines */
+    struct termios tio;        /* What tcgetattr returns, and tcsetattr stores */
+
+    const char *fail_call;     /* This call fails ... */
+    int fail_nth;              /* ... at its nth occurrence, from 1 ... */
+    int fail_errno;            /* ... with this errno */
+
+    int64_t clock_us;
+    int64_t mset_us[FAKE_MAX_CALLS];  /* How long the kth TIOCMSET takes; 0 = default */
+    int n_mset;
+
+    char edges[FAKE_MAX_EDGES][32];
+    size_t n_edges;
+} F;
+
+static void fake_reset(void) {
+    memset(&F, 0, sizeof(F));
+    F.lines = TIOCM_DTR | TIOCM_RTS;   /* What an open leaves on Linux and macOS */
+    (void)cfsetispeed(&F.tio, B9600);
+    (void)cfsetospeed(&F.tio, B9600);
+    F.tio.c_cflag |= (tcflag_t)(CS8 | CREAD);
+}
+
+/* Records the call; returns true when it is the one set to fail. */
+static bool fake_record(const char *name, int arg) {
+    if (F.n_calls < FAKE_MAX_CALLS) {
+        F.calls[F.n_calls].name = name;
+        F.calls[F.n_calls].arg = arg;
+        F.n_calls++;
+    }
+    if (F.fail_call != NULL && strcmp(F.fail_call, name) == 0) {
+        F.fail_nth--;
+        if (F.fail_nth == 0) {
+            errno = F.fail_errno;
+            return true;
+        }
+    }
+    return false;
+}
+
+static int fake_open(const char *path, int flags) {
+    (void)path;
+    return fake_record("open", flags) ? -1 : FAKE_FD;
+}
+
+static int fake_close(int fd) {
+    (void)fd;
+    (void)fake_record("close", 0);
+    /* HUPCL: the kernel drops both lines on the last close. */
+    F.lines = 0;
+    return 0;
+}
+
+static int fake_ioctl_int(int fd, unsigned long request, int *arg) {
+    (void)fd;
+    if (request == (unsigned long)TIOCMSET) {
+        int64_t us = F.mset_us[F.n_mset];
+        F.n_mset++;
+        F.clock_us += (us != 0) ? us : FAKE_CALL_US;
+        if (fake_record("TIOCMSET", *arg)) {
+            return -1;
+        }
+        F.lines = *arg & (TIOCM_DTR | TIOCM_RTS);
+        return 0;
+    }
+    if (request == (unsigned long)TIOCMGET) {
+        if (fake_record("TIOCMGET", 0)) {
+            return -1;
+        }
+        int l = F.readback_lies ? (~F.lines & (TIOCM_DTR | TIOCM_RTS)) : F.lines;
+        *arg = l | TIOCM_CTS;   /* An input line, which the read-back must ignore */
+        return 0;
+    }
+    (void)fake_record("ioctl?", 0);
+    errno = ENOTTY;
+    return -1;
+}
+
+static int fake_ioctl_none(int fd, unsigned long request) {
+    (void)fd;
+    return fake_record((request == (unsigned long)TIOCEXCL) ? "TIOCEXCL" : "ioctl?", 0) ? -1 : 0;
+}
+
+static int fake_tcgetattr(int fd, struct termios *t) {
+    (void)fd;
+    if (fake_record("tcgetattr", 0)) {
+        return -1;
+    }
+    *t = F.tio;
+    return 0;
+}
+
+static int fake_tcsetattr(int fd, int action, const struct termios *t) {
+    (void)fd;
+    (void)action;
+    if (fake_record("tcsetattr", 0)) {
+        return -1;
+    }
+    F.tio = *t;
+    return 0;
+}
+
+static int fake_flock(int fd, int operation) {
+    (void)fd;
+    return fake_record("flock", operation) ? -1 : 0;
+}
+
+static int64_t fake_now_us(void) {
+    return F.clock_us;
+}
+
+static const key_output_os_t fake_os = {
+    .open       = fake_open,
+    .close      = fake_close,
+    .ioctl_int  = fake_ioctl_int,
+    .ioctl_none = fake_ioctl_none,
+    .tcgetattr  = fake_tcgetattr,
+    .tcsetattr  = fake_tcsetattr,
+    .flock      = fake_flock,
+    .now_us     = fake_now_us,
+    .b0_at_rest = true,
+};
+
+static void capture_edge(void *ctx, const char *line) {
+    (void)ctx;
+    if (F.n_edges < FAKE_MAX_EDGES) {
+        (void)snprintf(F.edges[F.n_edges], sizeof(F.edges[0]), "%s", line);
+        F.n_edges++;
+    }
+}
+
+/* Opens the backend on the given fake OS with the given lines. */
+static bool fake_serial_open_on(const key_output_os_t *os, key_output_t *out,
+                                const char *key_line, const char *ptt_line,
+                                char *err, size_t err_len) {
+    key_output_cfg_t cfg = serial_cfg(key_line, ptt_line);
+    key_output_map_t map;
+    if (!key_output_check(&cfg, &map, err, err_len)) {
+        return false;
+    }
+    memset(out, 0, sizeof(*out));
+    out->line = capture_edge;
+    return key_output_serial_open(out, cfg.device, &map, os, err, err_len);
+}
+
+static bool fake_serial_open(key_output_t *out, const char *key_line, const char *ptt_line,
+                             char *err, size_t err_len) {
+    return fake_serial_open_on(&fake_os, out, key_line, ptt_line, err, err_len);
+}
+
+/* The recorded call names, space separated, for one comparison. */
+static const char *call_names(size_t from) {
+    static char buf[512];
+    buf[0] = '\0';
+    for (size_t i = from; i < F.n_calls; i++) {
+        size_t len = strlen(buf);
+        (void)snprintf(buf + len, sizeof(buf) - len, "%s%s", (len > 0u) ? " " : "",
+                       F.calls[i].name);
+    }
+    return buf;
+}
+
+static bool expect_calls(const char *what, size_t from, const char *want) {
+    const char *got = call_names(from);
+    if (strcmp(got, want) != 0) {
+        fprintf(stderr, "  %s: calls \"%s\", want \"%s\"\n", what, got, want);
+        return false;
+    }
+    return true;
+}
+
+static bool expect_edges(const char *const *want, size_t n) {
+    if (F.n_edges != n) {
+        fprintf(stderr, "  %zu edge lines, want %zu\n", F.n_edges, n);
+        return false;
+    }
+    for (size_t i = 0; i < n; i++) {
+        if (strcmp(F.edges[i], want[i]) != 0) {
+            fprintf(stderr, "  edge %zu \"%s\", want \"%s\"\n", i, F.edges[i], want[i]);
+            return false;
+        }
+    }
+    return true;
+}
+
+#define OPEN_CALLS "open TIOCMSET tcgetattr tcsetattr TIOCEXCL flock TIOCMGET"
+
+/*===========================================================================*/
+/* Open (KTD2)                                                               */
+/*===========================================================================*/
+
+/* The safety property: after open, the first call puts both lines at rest,
+ * and nothing drives a line active before it. */
+static bool test_open_order_plain(void) {
+    fake_reset();
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (!fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        fprintf(stderr, "  open failed: %s\n", err);
+        return false;
+    }
+    if (!expect_calls("open", 0, OPEN_CALLS)) {
+        return false;
+    }
+    if (F.calls[1].arg != 0) {
+        fprintf(stderr, "  rest call set 0x%x, want 0\n", (unsigned)F.calls[1].arg);
+        return false;
+    }
+    if ((F.calls[0].arg & O_NONBLOCK) == 0 || (F.calls[0].arg & O_NOCTTY) == 0 ||
+        (F.calls[0].arg & O_CLOEXEC) == 0) {
+        fprintf(stderr, "  open flags 0x%x lack O_NONBLOCK, O_NOCTTY or O_CLOEXEC\n",
+                (unsigned)F.calls[0].arg);
+        return false;
+    }
+    if (F.calls[5].arg != (LOCK_EX | LOCK_NB)) {
+        fprintf(stderr, "  flock 0x%x, want LOCK_EX | LOCK_NB\n", (unsigned)F.calls[5].arg);
+        return false;
+    }
+    if ((F.tio.c_cflag & HUPCL) == 0 || (F.tio.c_cflag & CLOCAL) == 0) {
+        fprintf(stderr, "  termios lacks HUPCL or CLOCAL\n");
+        return false;
+    }
+    if (cfgetospeed(&F.tio) != B0) {
+        fprintf(stderr, "  plain lines: speed not B0\n");
+        return false;
+    }
+    if (F.lines != 0 || F.n_edges != 0u || out.fault.set) {
+        fprintf(stderr, "  after open: lines 0x%x, %zu edges, fault %d\n",
+                (unsigned)F.lines, F.n_edges, out.fault.set);
+        return false;
+    }
+    key_output_close(&out, 0);
+    return true;
+}
+
+/* B0 drops both lines, which is active on an inverted one: keep the speed. */
+static bool test_open_inverted_keeps_speed(void) {
+    fake_reset();
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (!fake_serial_open(&out, "dtr-inv", "rts", err, sizeof(err))) {
+        fprintf(stderr, "  open failed: %s\n", err);
+        return false;
+    }
+    bool ok = expect_calls("open", 0, OPEN_CALLS);
+    if (F.calls[1].arg != TIOCM_DTR) {
+        fprintf(stderr, "  rest call set 0x%x, want DTR high\n", (unsigned)F.calls[1].arg);
+        ok = false;
+    }
+    if (cfgetospeed(&F.tio) != B9600) {
+        fprintf(stderr, "  inverted line: speed changed\n");
+        ok = false;
+    }
+    if ((F.tio.c_cflag & HUPCL) == 0) {
+        fprintf(stderr, "  termios lacks HUPCL\n");
+        ok = false;
+    }
+    key_output_close(&out, 0);
+    return ok;
+}
+
+static bool test_open_inverted_ptt_keeps_speed(void) {
+    fake_reset();
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (!fake_serial_open(&out, "dtr", "rts-inv", err, sizeof(err))) {
+        fprintf(stderr, "  open failed: %s\n", err);
+        return false;
+    }
+    bool ok = (F.calls[1].arg == TIOCM_RTS) && (cfgetospeed(&F.tio) == B9600);
+    if (!ok) {
+        fprintf(stderr, "  rest 0x%x or speed changed\n", (unsigned)F.calls[1].arg);
+    }
+    key_output_close(&out, 0);
+    return ok;
+}
+
+/* macOS: no B0, the rest is the same. */
+static bool test_open_without_b0(void) {
+    fake_reset();
+    key_output_os_t os = fake_os;
+    os.b0_at_rest = false;
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (!fake_serial_open_on(&os, &out, "dtr", "rts", err, sizeof(err))) {
+        fprintf(stderr, "  open failed: %s\n", err);
+        return false;
+    }
+    bool ok = expect_calls("open", 0, OPEN_CALLS) && F.calls[1].arg == 0 &&
+              cfgetospeed(&F.tio) == B9600 && (F.tio.c_cflag & HUPCL) != 0;
+    if (!ok) {
+        fprintf(stderr, "  without B0: speed changed, or rest or HUPCL wrong\n");
+    }
+    key_output_close(&out, 0);
+    return ok;
+}
+
+/* Open fails at `call`: the descriptor is closed, no line call follows the
+ * rest call, and the message names the device and contains `want`. */
+static bool expect_open_fails_at(const char *call, int err_no, const char *want) {
+    fake_reset();
+    F.fail_call = call;
+    F.fail_nth = 1;
+    F.fail_errno = err_no;
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    err[0] = '\0';
+    if (fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        fprintf(stderr, "  %s failing: open succeeded\n", call);
+        return false;
+    }
+    if (strstr(err, "/dev/ttyUSB0") == NULL || strstr(err, want) == NULL) {
+        fprintf(stderr, "  %s failing: message \"%s\" lacks the device or \"%s\"\n",
+                call, err, want);
+        return false;
+    }
+    int msets = 0;
+    for (size_t i = 0; i < F.n_calls; i++) {
+        if (strcmp(F.calls[i].name, "TIOCMSET") == 0) {
+            msets++;
+        }
+    }
+    if (msets > 1) {
+        fprintf(stderr, "  %s failing: %d line calls\n", call, msets);
+        return false;
+    }
+    bool opened = strcmp(call, "open") != 0;
+    const char *last = (F.n_calls > 0u) ? F.calls[F.n_calls - 1u].name : "";
+    if (opened && strcmp(last, "close") != 0) {
+        fprintf(stderr, "  %s failing: last call %s, want close\n", call, last);
+        return false;
+    }
+    if (!opened && F.n_calls != 1u) {
+        fprintf(stderr, "  open failing: %zu calls after it\n", F.n_calls - 1u);
+        return false;
+    }
+    /* A second close must not reach the OS. */
+    size_t n = F.n_calls;
+    key_output_close(&out, 0);
+    if (F.n_calls != n) {
+        fprintf(stderr, "  %s failing: close after a failed open called the OS\n", call);
+        return false;
+    }
+    return true;
+}
+
+static bool test_open_errors_named(void) {
+    return expect_open_fails_at("open", ENOENT, "non esiste") &&
+           expect_open_fails_at("open", EACCES, "permesso") &&
+           expect_open_fails_at("open", EBUSY, "occupata") &&
+           expect_open_fails_at("TIOCMSET", ENOTTY, "non e' una porta seriale") &&
+           expect_open_fails_at("TIOCMSET", ENODEV, "non e' una porta seriale") &&
+           expect_open_fails_at("tcgetattr", EIO, "tcgetattr") &&
+           expect_open_fails_at("tcsetattr", EIO, "tcsetattr") &&
+           expect_open_fails_at("TIOCEXCL", EBUSY, "occupata") &&
+           expect_open_fails_at("flock", EWOULDBLOCK, "occupata") &&
+           expect_open_fails_at("TIOCMGET", EIO, "TIOCMGET");
+}
+
+static bool test_open_readback_mismatch(void) {
+    fake_reset();
+    F.readback_lies = true;
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        fprintf(stderr, "  a read-back that disagrees was accepted\n");
+        return false;
+    }
+    return expect_calls("readback", 0, OPEN_CALLS " close");
+}
+
+/*===========================================================================*/
+/* Edges and failures (KTD3, KTD4, KTD5)                                     */
+/*===========================================================================*/
+
+static bool test_key_edge_one_call_one_line(void) {
+    fake_reset();
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (!fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        return false;
+    }
+    size_t from = F.n_calls;
+    key_output_set_key(&out, true, 1234);
+    const char *want[] = { "key 1 1234" };
+    bool ok = expect_calls("key edge", from, "TIOCMSET") && expect_edges(want, 1) &&
+              F.lines == TIOCM_DTR && out.timing.count == 1u;
+    key_output_close(&out, 0);
+    return ok;
+}
+
+/* R8: the trace does not depend on the backend. */
+static bool test_same_edges_as_virtual(void) {
+    static const struct { bool key; bool on; int64_t at; } seq[] = {
+        { false, true, 100 }, { true, true, 110 }, { true, false, 170 },
+        { true, true, 230 }, { true, false, 250 }, { false, false, 350 },
+    };
+    size_t n = sizeof(seq) / sizeof(seq[0]);
+
+    fake_reset();
+    key_output_t v;
+    char err[KEY_OUTPUT_ERR_LEN];
+    key_output_cfg_t vcfg = { .backend = "virtual" };
+    if (!key_output_open(&v, &vcfg, capture_edge, NULL, err, sizeof(err))) {
+        fprintf(stderr, "  virtual open: %s\n", err);
+        return false;
+    }
+    for (size_t i = 0; i < n; i++) {
+        if (seq[i].key) {
+            key_output_set_key(&v, seq[i].on, seq[i].at);
+        } else {
+            key_output_set_ptt(&v, seq[i].on, seq[i].at);
+        }
+    }
+    key_output_close(&v, 400);
+    char virt[FAKE_MAX_EDGES][32];
+    size_t n_virt = F.n_edges;
+    memcpy(virt, F.edges, sizeof(virt));
+
+    fake_reset();
+    key_output_t s;
+    if (!fake_serial_open(&s, "dtr", "rts", err, sizeof(err))) {
+        return false;
+    }
+    for (size_t i = 0; i < n; i++) {
+        if (seq[i].key) {
+            key_output_set_key(&s, seq[i].on, seq[i].at);
+        } else {
+            key_output_set_ptt(&s, seq[i].on, seq[i].at);
+        }
+    }
+    key_output_close(&s, 400);
+
+    const char *want[FAKE_MAX_EDGES];
+    for (size_t i = 0; i < n_virt; i++) {
+        want[i] = virt[i];
+    }
+    return n_virt == n && expect_edges(want, n_virt);
+}
+
+static bool test_line_call_error_recorded(void) {
+    fake_reset();
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (!fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        return false;
+    }
+    F.fail_call = "TIOCMSET";
+    F.fail_nth = 1;
+    F.fail_errno = EIO;
+    key_output_set_key(&out, true, 500);
+    const key_output_fault_t *f = key_output_fault(&out);
+    const char *want[] = { "key 1 500" };
+    bool ok = expect_edges(want, 1);
+    if (f == NULL || !f->set || strcmp(f->call, "TIOCMSET") != 0 || f->err != EIO ||
+        f->duration_us != FAKE_CALL_US) {
+        fprintf(stderr, "  fault not recorded as TIOCMSET, EIO, %d us\n", FAKE_CALL_US);
+        ok = false;
+    }
+    key_output_close(&out, 600);
+    return ok;
+}
+
+/* KTD3: over 100 ms is a FAULT, 100 ms is not. */
+static bool test_slow_line_call(void) {
+    fake_reset();
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (!fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        return false;
+    }
+    F.mset_us[F.n_mset] = KEY_OUTPUT_SERIAL_SLOW_US;
+    key_output_set_key(&out, true, 10);
+    if (key_output_fault(&out) != NULL) {
+        fprintf(stderr, "  100 ms: fault recorded\n");
+        return false;
+    }
+    F.mset_us[F.n_mset] = KEY_OUTPUT_SERIAL_SLOW_US + 1000;
+    key_output_set_key(&out, false, 20);
+    const key_output_fault_t *f = key_output_fault(&out);
+    bool ok = true;
+    if (f == NULL || f->err != 0 || f->duration_us != KEY_OUTPUT_SERIAL_SLOW_US + 1000) {
+        fprintf(stderr, "  101 ms: no fault, or not recorded as slow\n");
+        ok = false;
+    }
+    if (out.timing.count != 2u || out.timing.slow != 1u ||
+        out.timing.max_us != KEY_OUTPUT_SERIAL_SLOW_US + 1000) {
+        fprintf(stderr, "  timing %lu changes, %lu slow, max %lld us\n", out.timing.count,
+                out.timing.slow, (long long)out.timing.max_us);
+        ok = false;
+    }
+    key_output_close(&out, 30);
+    return ok;
+}
+
+/* key_output_release()'s order on a port: key up, then PTT off, then close. */
+static bool test_close_releases_in_order(void) {
+    fake_reset();
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (!fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        return false;
+    }
+    key_output_set_ptt(&out, true, 1);
+    key_output_set_key(&out, true, 2);
+    size_t from = F.n_calls;
+    key_output_close(&out, 3);
+    if (!expect_calls("close", from, "TIOCMSET TIOCMSET close")) {
+        return false;
+    }
+    if (F.calls[from].arg != TIOCM_RTS || F.calls[from + 1u].arg != 0) {
+        fprintf(stderr, "  release set 0x%x then 0x%x, want RTS then 0\n",
+                (unsigned)F.calls[from].arg, (unsigned)F.calls[from + 1u].arg);
+        return false;
+    }
+    /* Twice: nothing reaches the OS. */
+    size_t n = F.n_calls;
+    key_output_close(&out, 4);
+    if (F.n_calls != n) {
+        fprintf(stderr, "  second close called the OS\n");
+        return false;
+    }
+    return true;
+}
+
+/* KTD4: after a failed key-up, no line call at all. A release would skip
+ * the key-up (key_down is already false) and drop PTT under a key that may
+ * still be down; only the close, with HUPCL, drops both together. */
+static bool test_no_line_call_after_failure(void) {
+    fake_reset();
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (!fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        return false;
+    }
+    key_output_set_ptt(&out, true, 1);
+    key_output_set_key(&out, true, 2);
+    F.fail_call = "TIOCMSET";
+    F.fail_nth = 1;
+    F.fail_errno = EIO;
+    size_t from = F.n_calls;
+    key_output_set_key(&out, false, 3);
+    key_output_set_ptt(&out, false, 4);
+    key_output_close(&out, 5);
+    const char *want[] = { "ptt 1 1", "key 1 2", "key 0 3", "ptt 0 4" };
+    return expect_calls("after failure", from, "TIOCMSET close") && expect_edges(want, 4);
+}
+
+/* A call that succeeds after a 5000 ms stall: the edges queued behind it
+ * must not go out back to back. */
+static bool test_no_line_call_after_stall(void) {
+    fake_reset();
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (!fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        return false;
+    }
+    F.mset_us[F.n_mset] = 5000000;
+    size_t from = F.n_calls;
+    key_output_set_key(&out, true, 10);
+    key_output_set_key(&out, false, 20);
+    key_output_set_key(&out, true, 30);
+    key_output_set_key(&out, false, 40);
+    bool ok = expect_calls("after stall", from, "TIOCMSET");
+    key_output_close(&out, 50);
+    return ok && F.n_edges == 4u;
+}
+
+/*===========================================================================*/
 /* Runner                                                                    */
 /*===========================================================================*/
 
@@ -226,6 +822,19 @@ int main(void) {
         {"unknown_backend_refused", test_unknown_backend_refused},
         {"virtual_accepted", test_virtual_accepted},
         {"root_warning", test_root_warning},
+        {"open_order_plain", test_open_order_plain},
+        {"open_inverted_keeps_speed", test_open_inverted_keeps_speed},
+        {"open_inverted_ptt_keeps_speed", test_open_inverted_ptt_keeps_speed},
+        {"open_without_b0", test_open_without_b0},
+        {"open_errors_named", test_open_errors_named},
+        {"open_readback_mismatch", test_open_readback_mismatch},
+        {"key_edge_one_call_one_line", test_key_edge_one_call_one_line},
+        {"same_edges_as_virtual", test_same_edges_as_virtual},
+        {"line_call_error_recorded", test_line_call_error_recorded},
+        {"slow_line_call", test_slow_line_call},
+        {"close_releases_in_order", test_close_releases_in_order},
+        {"no_line_call_after_failure", test_no_line_call_after_failure},
+        {"no_line_call_after_stall", test_no_line_call_after_stall},
     };
     size_t n_tests = sizeof(tests) / sizeof(tests[0]);
 

@@ -1213,9 +1213,8 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (!key_output_open(&g_out, args.output, edge_write, NULL)) {
-        fprintf(stderr, "cwnetd: backend di uscita sconosciuto: %s (validi: %s)\n",
-                args.output, key_output_backends());
+    if (!key_output_open(&g_out, &out_cfg, edge_write, NULL, out_err, sizeof(out_err))) {
+        fprintf(stderr, "cwnetd: %s\n", out_err);
         return 2;
     }
     if (!install_signals()) {
