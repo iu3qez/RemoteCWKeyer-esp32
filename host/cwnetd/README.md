@@ -55,7 +55,11 @@ Ctrl-C (SIGINT) or SIGTERM close the clients and return the output to rest
 --handshake MS      time to complete the CONNECT (default 5000)
 --out-cap BYTE      unsent bytes per client beyond which I close it
                     (default 16384, min 256, max 16777216)
---output BACKEND    key and PTT output: virtual (default virtual)
+--output BACKEND    key and PTT output: virtual, serial (default virtual)
+--serial DEVICE     port of --output serial (default none)
+--key-line LINE     line of the key: dtr, rts, dtr-inv, rts-inv
+                    (default dtr; -inv: low = key down)
+--ptt-line LINE     line of the PTT: the same, or none (default rts)
 --edges DEST        edges descriptor: 'stderr' or a file (default stderr)
 --snapshot-ms MS    period of the state snapshot on stdout
                     (default 5000, min 50, max 3600000)
@@ -84,10 +88,14 @@ backlog. A peer that has not read in a long time is not coming back, and
 holding its bytes only costs the others, who wait for their PING behind it.
 Past the cap that client closes, the loop does not slow down.
 
-`--output` has only one backend today, `virtual`: the physical transport
-(serial or GPIO to the rig) is behind a Decision not yet opened (KTD9); once
-it is, a new backend fills the same two function pointers in
-`key_output.h` and nothing above changes.
+`--output` has two backends. `virtual` drives nothing and writes each edge
+on `--edges`. `serial` keys the rig on a serial port's DTR and RTS lines
+(decision #98), and writes the same edge lines: see *Serial output at the
+station*. Both fill the same two function pointers in `key_output.h`.
+
+Exit codes: 0 after SIGINT or SIGTERM, 1 when the start fails (the port, the
+socket, memory), 2 for a bad flag, 3 after an output FAULT (`stato fault:
+uscita ...`).
 
 ## Two outputs, and why
 
@@ -129,6 +137,91 @@ cost is made visible instead of hidden:
 
 `--edges stdout` is rejected at startup: it's the only descriptor that
 cannot give edges the separation R11 requires.
+
+**On a serial port, rest is the kernel's job.** The port is opened with
+`HUPCL`, so the last close of the descriptor drops DTR and RTS. That close
+happens on SIGINT and SIGTERM (after the daemon has put key up and PTT
+off), on an output FAULT (with no line call before it, so key and PTT drop
+together), and on SIGKILL or a crash (the kernel closes every descriptor
+of a dead process). With plain lines, dropped is rest: the transmitter is
+at key up and PTT off whenever `cwnetd` is not running. Where it stops
+holding:
+
+- **An inverted line.** Dropped is *active* for `dtr-inv` and `rts-inv`:
+  every stop and every crash leaves that function on.
+- **SIGSTOP, a debugger, a sleeping PC.** No close happens, so the lines
+  keep their state, key down included. Only the rig's own transmit timer
+  ends a key-down then. Set it.
+- **Another process holding the port.** The lines drop on the *last*
+  close, so while ModemManager, brltty or a CAT program has the port open,
+  a crash of `cwnetd` drops nothing.
+
+## Serial output at the station
+
+```sh
+host/build/cwnetd --output serial --serial /dev/serial/by-id/usb-FTDI_...-if00-port0 \
+                  --edges fronti.log
+```
+
+**Wiring.** The default follows N1MM Logger+ and the DL4YHF program: DTR
+(DB9 pin 4) is the CW key, RTS (DB9 pin 7) is PTT, and a high line is an
+active function. `--key-line` and `--ptt-line` move a function to the
+other line, invert it (`dtr-inv`, `rts-inv`), or leave PTT on no line
+(`--ptt-line none`, for a rig that switches on the key with its own
+break-in). Key and PTT on the same line are refused. A line no function
+uses is held low.
+
+**Naming the port.** On Linux use `/dev/serial/by-id/...`: the name stays
+the same whatever order adapters are plugged in, where `/dev/ttyUSB0` does
+not. On macOS use `/dev/cu.*`, not `/dev/tty.*`. The user needs read and
+write access to the device: on most Linux distributions, membership of the
+`dialout` group.
+
+**Start the daemon with the rig off, or its keying input disabled.**
+Opening a USB serial port raises DTR and RTS for about one control
+transfer before `cwnetd` can put them back to rest, and neither OS lets
+software prevent it:
+
+- on Linux, at the first start after the adapter is plugged in, and at
+  every start when a line is inverted. With plain lines `cwnetd` leaves the
+  port at speed B0, which the kernel remembers until the adapter is
+  unplugged, and at B0 a later open does not raise the lines
+  (`tty_port.c:504-507`);
+- on macOS, at every start (`IOSerialBSDClient.cpp:2401-2408`). There
+  `cwnetd` does not set B0: it would not prevent this, and macOS passes the
+  rate 0 to a closed driver.
+
+How wide that rise is on each OS is under *Measured numbers*.
+
+**Nothing else may hold the port.** `cwnetd` locks it (`TIOCEXCL` and
+`flock`), so a second `cwnetd` or a terminal program is refused. Two cases
+get past the lock:
+
+- **Programs already holding the port.** On Linux, ModemManager probes new
+  serial devices and raises DTR while it does. Tell it to ignore the
+  adapter with a udev rule, for an FT232R
+  `ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", ENV{ID_MM_DEVICE_IGNORE}="1"`
+  (`lsusb` gives the ids of yours), or remove ModemManager. brltty claims some USB serial chips (CH341, CP210x): remove
+  it on a station PC.
+- **root.** The lock does not stop root, so a root process that opens the
+  port raises the lines under a running `cwnetd`. Started as root,
+  `cwnetd` says so on stderr and runs anyway. Run it as a normal user.
+
+**The port settings are cwnetd's.** At open it sets `HUPCL` and `CLOCAL`,
+raw mode, and turns hardware flow control off: with `CRTSCTS` on, the
+driver drives RTS itself, and RTS is the PTT. Linux keeps a port's settings
+across closes, so whatever the last program left would otherwise still be
+in force. Bytes the device sends (a rig's own USB port may) are read and
+dropped.
+
+**Faults.** A line change that fails or takes over 100 ms, or a port that
+disappears (the adapter unplugged), is an output FAULT: `stato fault:
+uscita DEVICE: ...`, no further line change, the port closed, exit code 3.
+`cwnetd` never re-opens the port on its own, because a re-open raises the
+lines again: restart it by hand, with the rig off.
+
+With an inverted line, every stop and every crash leaves that function
+active (see *Two outputs, and why*).
 
 ## Reading a status line
 
