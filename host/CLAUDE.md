@@ -15,7 +15,7 @@ Key abstractions:
   (the core's or the snapshot's), never a tick. Owns stdout: droppable status lines with
   each loss confessed, `stato ptt` when the output PTT changes, and every `--snapshot-ms`
   the whole state over several lines. The tables in `cwnetd/README.md` are the contract
-  with every reader, versioned (`v1`).
+  with every reader, versioned (`v2`).
 - `cwnetd/key_output.[ch]` — the seam key and PTT edges leave through (one backend,
   `virtual`), to the `--edges` descriptor, which never drops a line.
 - `panel/cwnetd_panel.py` — joins `follow.py` (stdin, or a file followed like `tail -F`),

@@ -25,10 +25,11 @@ INSTANCE = "1789769762-38671"
 
 
 def snap(seq, clients=(), holder="libera", ptt=0, period=5000, instance=INSTANCE,
-         version="v1", manopole=MANOPOLE):
+         version="v2", manopole=MANOPOLE, uscita=(0, 0, 0)):
     """One snapshot, line by line, as snapshot_write() in main.c writes it.
 
-    clients: (idx, "pronto"|"attesa", addr, lat, peak, name) per open socket."""
+    clients: (idx, "pronto"|"attesa", addr, lat, peak, name) per open socket.
+    uscita: (line changes, slowest in us, changes over 100 ms)."""
     k = len(clients)
     lines = ["stato snap inizio %s istanza %s seq %d client %d chiave %s ptt %d periodo %d"
              % (version, instance, seq, k, holder, ptt, period),
@@ -36,6 +37,7 @@ def snap(seq, clients=(), holder="libera", ptt=0, period=5000, instance=INSTANCE
     for i, (idx, st, addr, lat, peak, name) in enumerate(clients, 1):
         lines.append("stato snap client %d/%d %d %s %s lat %d peak %d nome %d %s"
                      % (i, k, idx, st, addr, lat, peak, len(name), name))
+    lines.append("stato snap uscita cambi %d max-us %d lenti %d" % uscita)
     lines.append("stato snap fine seq %d" % seq)
     return lines
 
@@ -116,6 +118,27 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(d["settings"]["out_cap_bytes"], 16384)
         self.assertEqual(d["instance"], INSTANCE)
         self.assertEqual(d["period_ms"], 5000)
+
+    def test_snapshot_carries_the_line_change_durations(self):
+        d = Feed().live(*snap(1, [C1], uscita=(42, 1850, 1))).d
+        self.assertTrue(d["guaranteed"])
+        self.assertEqual(d["output"]["changes"], 42)
+        self.assertEqual(d["output"]["max_us"], 1850)
+        self.assertEqual(d["output"]["slow"], 1)
+
+    def test_snapshot_without_its_output_line_is_discarded(self):
+        lines = snap(1, [C1], holder="1")
+        del lines[-2]
+        f = Feed().live(*lines)
+        self.assertFalse(f.d["guaranteed"])
+        self.assertIn("discarded_snapshot", f.kinds())
+
+    def test_output_line_before_the_client_lines_discards_the_snapshot(self):
+        lines = snap(1, [C1], holder="1")
+        lines.insert(2, lines.pop(-2))
+        f = Feed().live(*lines)
+        self.assertFalse(f.d["guaranteed"])
+        self.assertEqual(f.d["clients"], [])
 
     def test_ae3_snapshot_missing_one_client_line_is_discarded_and_state_not_guaranteed(self):
         lines = snap(1, [C1, C2], holder="2", ptt=1)
@@ -204,7 +227,7 @@ class SnapshotTest(unittest.TestCase):
         lines = snap(1, [C1], holder="1", ptt=1)
         glued = "stato snap client 1/1 1 pronto 10.0.0.1:50001 lat 12 peak 15 nome 6 IU3" \
                 "stato stdout 1 righe scartate"
-        f = Feed().live(lines[0], lines[1], glued, lines[3])
+        f = Feed().live(lines[0], lines[1], glued, *lines[3:])
         self.assertFalse(f.d["guaranteed"])
         self.assertIn("dropped_lines", f.kinds())
 
@@ -217,7 +240,7 @@ class SnapshotTest(unittest.TestCase):
         glued = "stato snap client 1/1 1 pronto 10.0.0.1:50001 lat 12 peak 15 nome 40 IU3" \
                 "stato stdout 1 righe scartate"
         self.assertLess(len("IU3stato stdout 1 righe scartate"), 40)
-        f = Feed().live(lines[0], lines[1], glued, lines[3])
+        f = Feed().live(lines[0], lines[1], glued, *lines[3:])
         self.assertFalse(f.d["guaranteed"])
         self.assertEqual(f.d["clients"], [])
         self.assertIn("dropped_lines", f.kinds())
@@ -281,11 +304,11 @@ class SnapshotTest(unittest.TestCase):
         self.assertNotIn("missing_snapshots", f.kinds())
         self.assertEqual(f.kinds().count("new_instance"), 2)
 
-    def test_vocabulary_v2_in_the_opening_raises_the_banner_and_still_applies(self):
-        f = Feed().live(*snap(1, [C1], holder="1", version="v2"))
+    def test_vocabulary_v3_in_the_opening_raises_the_banner_and_still_applies(self):
+        f = Feed().live(*snap(1, [C1], holder="1", version="v3"))
         d = f.d
         self.assertIn("vocabulary", d["banners"])
-        self.assertEqual(d["daemon_vocabulary"], "v2")
+        self.assertEqual(d["daemon_vocabulary"], "v3")
         self.assertTrue(d["guaranteed"])
         self.assertEqual(d["key_holder"], 1)
         f.live("stato chiave libera")
@@ -295,16 +318,16 @@ class SnapshotTest(unittest.TestCase):
         # The shape of the opening changed with the version: the panel cannot
         # read the snapshot, and says why instead of only "unreadable".
         f = guaranteed_with(C1)
-        f.live(snap(2, [C1])[0], "stato snap inizio v2 istanza 1-2 seq 1 nuovo-campo 3")
+        f.live(snap(2, [C1])[0], "stato snap inizio v3 istanza 1-2 seq 1 nuovo-campo 3")
         d = f.d
         self.assertIn("vocabulary", d["banners"])
-        self.assertEqual(d["daemon_vocabulary"], "v2")
+        self.assertEqual(d["daemon_vocabulary"], "v3")
         self.assertFalse(d["guaranteed"])
         self.assertIn("discarded_snapshot", f.kinds())
 
     def test_opening_of_this_vocabulary_in_another_shape_stays_unreadable(self):
         f = guaranteed_with(C1)
-        f.live("stato snap inizio v1 istanza 1-2 seq 1 nuovo-campo 3")
+        f.live("stato snap inizio v2 istanza 1-2 seq 1 nuovo-campo 3")
         d = f.d
         self.assertNotIn("vocabulary", d["banners"])
         self.assertFalse(d["guaranteed"])
@@ -459,6 +482,50 @@ class LineTest(unittest.TestCase):
         f.live("stato fault: over oltre il tetto")
         self.assertEqual(f.d["events"][-1]["kind"], "fault")
 
+    def test_output_fault_raises_its_banner_until_a_new_daemon(self):
+        f = guaranteed_with(C1, holder="1", ptt=1)
+        f.live("stato fault: uscita /dev/ttyUSB0: TIOCMSET: Input/output error dopo 3 ms")
+        d = f.d
+        self.assertIn("output_fault", d["banners"])
+        self.assertEqual(d["events"][-1]["kind"], "fault")
+        f.live("stato arresto")
+        self.assertIn("output_fault", f.d["banners"])
+        f.live(ASCOLTO)
+        self.assertNotIn("output_fault", f.d["banners"])
+
+    def test_every_output_fault_cwnetd_writes_raises_the_banner(self):
+        # The four shapes of output_fault_line() in main.c.
+        for line in ("stato fault: uscita /dev/cu.usbserial-A1: porta scomparsa (hang-up)",
+                     "stato fault: uscita /dev/ttyUSB0: porta scomparsa (read: fine del file)",
+                     "stato fault: uscita /dev/ttyUSB0: TIOCMSET lento: 5000 ms",
+                     "stato fault: uscita /dev/ttyUSB0: TIOCMSET: Input/output error dopo 3 ms"):
+            with self.subTest(line=line):
+                self.assertIn("output_fault", guaranteed_with(C1).live(line).d["banners"])
+
+    def test_a_fault_that_is_not_the_output_raises_no_output_banner(self):
+        f = guaranteed_with(C1, holder="1", ptt=1)
+        f.live("stato fault client 1 IU3QEZ: titolare sparito a meta' over",
+               "stato fault: over oltre il tetto")
+        self.assertNotIn("output_fault", f.d["banners"])
+
+    def test_serial_uscita_line_gives_backend_device_and_mapping(self):
+        f = Feed().live(ASCOLTO, "stato uscita serial tasto dtr-inv ptt none "
+                                 "porta /dev/cu.usbserial-A1 fronti stderr")
+        o = f.d["output"]
+        self.assertEqual(o["backend"], "serial")
+        self.assertEqual(o["device"], "/dev/cu.usbserial-A1")
+        self.assertEqual(o["key_line"], "dtr-inv")
+        self.assertEqual(o["ptt_line"], "none")
+        self.assertEqual(o["edges"], "stderr")
+
+    def test_virtual_uscita_line_has_no_device_or_mapping(self):
+        o = Feed().live(ASCOLTO, "stato uscita virtual fronti /tmp/edges.log").d["output"]
+        self.assertEqual(o["backend"], "virtual")
+        self.assertIsNone(o["device"])
+        self.assertIsNone(o["key_line"])
+        self.assertIsNone(o["ptt_line"])
+        self.assertEqual(o["edges"], "file")
+
     def test_peak_over_the_ceiling_marks_the_link_unfit_and_below_it_does_not(self):
         f = guaranteed_with(C1, C2)
         f.live("stato latenza client 1 300 ms peak 1200 ms",
@@ -475,7 +542,7 @@ class LineTest(unittest.TestCase):
                "stato arresto",
                "stato uscita fronti (%s): 2 attese per 300 ms, 1 errori, 0 persi" % path)
         d = f.d
-        self.assertEqual(d["output"], {"backend": "virtual", "edges": "file"})
+        self.assertEqual((d["output"]["backend"], d["output"]["edges"]), ("virtual", "file"))
         self.assertEqual(f.kinds()[-3:], ["edges_refused", "stopped", "edges_summary"])
         self.assertIn("edges_stall", f.kinds())
         text = json.dumps(d)
@@ -484,7 +551,7 @@ class LineTest(unittest.TestCase):
 
     def test_edges_to_stderr_are_named_as_stderr(self):
         f = Feed().live("stato uscita virtual fronti stderr")
-        self.assertEqual(f.d["output"], {"backend": "virtual", "edges": "stderr"})
+        self.assertEqual((f.d["output"]["backend"], f.d["output"]["edges"]), ("virtual", "stderr"))
 
     def test_edge_line_in_the_stream_is_ignored_and_raises_the_mixed_edges_banner(self):
         f = guaranteed_with(C1)
@@ -668,7 +735,7 @@ class LivenessTest(unittest.TestCase):
         self.assertTrue(f.d["stale"])
 
     def test_banners_come_in_the_order_of_trust(self):
-        f = Feed().live(*snap(1, [C1], version="v2"), "stato eventi persi 1", "key 1 5")
+        f = Feed().live(*snap(1, [C1], version="v3"), "stato eventi persi 1", "key 1 5")
         f.tick(16.0)
         self.assertEqual(f.d["banners"],
                          ["silent", "not_guaranteed", "mixed_edges", "vocabulary"])
@@ -811,27 +878,32 @@ class AcceptanceTest(unittest.TestCase):
 class RealDaemonLinesTest(unittest.TestCase):
     """Lines as the built cwnetd wrote them: three U1 hand runs, 2026-09-19, one
     edges path shortened. Two instances, so the second snapshot of 39046 is a
-    new daemon seen without its `stato ascolto`."""
+    new daemon seen without its `stato ascolto`. Brought to vocabulary v2 by
+    hand on 2026-09-24: `v1` became `v2`, and each snapshot gained the output
+    line the virtual backend writes before `fine`. fixtures/session.txt is a
+    whole v2 run recorded from the daemon."""
 
     LINES = [
         "stato ascolto 127.0.0.1:17500 max-clients 4 B>=100 ms tetto 1000 ms coda 100 ms "
         "lead 0 ms out-cap 16384 byte",
         "stato uscita virtual fronti /var/folders/cc/T/tmpml_vm_ww/edges.log",
-        "stato snap inizio v1 istanza 1789769781-39043 seq 1 client 0 chiave libera ptt 0 "
+        "stato snap inizio v2 istanza 1789769781-39043 seq 1 client 0 chiave libera ptt 0 "
         "periodo 250",
         "stato snap manopole max-clients 4 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 "
         "over-max 120000 handshake 5000 out-cap 16384",
+        "stato snap uscita cambi 0 max-us 0 lenti 0",
         "stato snap fine seq 1",
         "stato accettato client 1 da 127.0.0.1:60412",
         "stato connesso client 1 A1 da 127.0.0.1:60412",
         "stato accettato client 2 da 127.0.0.1:60413",
         "stato connesso client 2 B2 <b>x</b> da 127.0.0.1:60413",
-        "stato snap inizio v1 istanza 1789769781-39043 seq 2 client 2 chiave libera ptt 0 "
+        "stato snap inizio v2 istanza 1789769781-39043 seq 2 client 2 chiave libera ptt 0 "
         "periodo 250",
         "stato snap manopole max-clients 4 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 "
         "over-max 120000 handshake 5000 out-cap 16384",
         "stato snap client 1/2 1 pronto 127.0.0.1:60412 lat -1 peak -1 nome 2 A1",
         "stato snap client 2/2 2 pronto 127.0.0.1:60413 lat -1 peak -1 nome 11 B2 <b>x</b>",
+        "stato snap uscita cambi 0 max-us 0 lenti 0",
         "stato snap fine seq 2",
         "stato over client 1 A1 B 100 ms",
         "stato chiave client 1 A1",
@@ -842,17 +914,19 @@ class RealDaemonLinesTest(unittest.TestCase):
         "stato fault client 1 A1: titolare sparito a meta' over",
         "stato chiave libera",
         "stato ptt 0",
-        "stato snap inizio v1 istanza 1789769781-39043 seq 3 client 1 chiave libera ptt 0 "
+        "stato snap inizio v2 istanza 1789769781-39043 seq 3 client 1 chiave libera ptt 0 "
         "periodo 250",
         "stato snap manopole max-clients 4 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 "
         "over-max 120000 handshake 5000 out-cap 16384",
         "stato snap client 1/1 1 attesa 127.0.0.1:60415 lat -1 peak -1 nome 0 ",
+        "stato snap uscita cambi 0 max-us 0 lenti 0",
         "stato snap fine seq 3",
-        "stato snap inizio v1 istanza 1789769784-39046 seq 2 client 1 chiave libera ptt 0 "
+        "stato snap inizio v2 istanza 1789769784-39046 seq 2 client 1 chiave libera ptt 0 "
         "periodo 500",
         "stato snap manopole max-clients 4 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 "
         "over-max 120000 handshake 5000 out-cap 16384",
         "stato snap client 1/1 1 pronto 127.0.0.1:60414 lat -1 peak -1 nome 173 X" + "\\x1B" * 43,
+        "stato snap uscita cambi 0 max-us 0 lenti 0",
         "stato snap fine seq 2",
         "stato arresto",
     ]

@@ -428,7 +428,7 @@ class EventsTest(ServerTest):
             self.assertNotIn(sink, source)
 
     def test_three_banners_together_reach_the_browser_in_the_order_the_page_shows(self):
-        self.feed(*snap(1, version="v2"), "key 1 123")
+        self.feed(*snap(1, version="v3"), "key 1 123")
         self.clock.advance(16.0)
         self.state.tick()
         d = self.sse().state()

@@ -27,6 +27,8 @@ const BANNER_TEXT = {
     + "journal): un pannello lento puo' fermare la stazione.",
   vocabulary: "Il daemon parla un vocabolario diverso da quello del pannello: si mostra solo "
     + "quello che il pannello riconosce.",
+  output_fault: "Uscita verso la radio guasta: il daemon si e' fermato. Controlla la porta "
+    + "seriale prima di riavviarlo.",
 };
 
 // A banner's look belongs to its id: the ones that say "do not trust" are
@@ -40,6 +42,7 @@ const BANNER_CLASS = {
   not_guaranteed: "danger",
   mixed_edges: "warning",
   vocabulary: "warning",
+  output_fault: "danger",
 };
 
 const LIVENESS_TEXT = {
@@ -185,7 +188,12 @@ function renderSettings(s) {
     parts.push("in ascolto su " + s.listen);
   }
   if (s.output.backend) {
-    parts.push("uscita " + s.output.backend + ", fronti " + EDGES_TEXT[s.output.edges]);
+    let out = "uscita " + s.output.backend;
+    if (s.output.device) {
+      out += " su " + s.output.device + " (tasto " + s.output.key_line + ", ptt "
+        + s.output.ptt_line + ")";
+    }
+    parts.push(out + ", fronti " + EDGES_TEXT[s.output.edges]);
   }
   parts.push("istantanea ogni " + s.period_ms + " ms");
   if (s.instance) {

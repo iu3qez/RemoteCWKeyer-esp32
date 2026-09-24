@@ -154,6 +154,7 @@ Vocabulary (clients, connections):
 |---|---|
 | `stato ascolto ADDR:PORTA max-clients N B>=X ms tetto Y ms coda Z ms lead W ms out-cap C byte` | the daemon is ready, with the configuration it actually has. A reader treats it as a new daemon: what it knew before belongs to another process |
 | `stato uscita BACKEND fronti DEST` | where the edges end up (a separate line: a long path must not truncate the configuration) |
+| `stato uscita serial tasto LINE ptt LINE porta DEVICE fronti DEST` | the same, for `--output serial`: the line of each function as `--key-line` and `--ptt-line` gave it, and the port. `DEVICE` is escaped as `NOME` is, and ends at the first ` fronti ` |
 | `stato accettato client N da IP:PORTA` | TCP accepted, waiting for the CONNECT |
 | `stato rifiutato da IP:PORTA: nessuno slot libero` | beyond `--max-clients`, closed immediately (R1: accept never blocks) |
 | `stato connesso client N NOME da IP:PORTA` | CONNECT complete, the client is READY |
@@ -173,6 +174,7 @@ Vocabulary (key, PTT, link, over):
 | `stato over client N NOME B X ms` | an over has started, with the B computed for that session |
 | `stato byte in ritardo client N NOME: B byte, M ms in totale` | a byte arrived after the deadline of the edge it carried: the element came out longer than it was keyed, and the link is slipping. Cumulative, so two lines apart say *how fast* |
 | `stato fault [client N NOME:] MOTIVO` | FAULT philosophy: key up and it stops (holder vanished mid-over - TCP closed or three PINGs without an answer -, over too long, holder silent past `--idle` with the key up). A fault says nothing about who holds the key: a `chiave` line says that |
+| `stato fault: uscita DEVICE: CAUSA` | the serial output failed, and the daemon stops right after it with exit code 3: the port is in a state nobody knows. `CAUSA` is `porta scomparsa (hang-up)`, `porta scomparsa (read: ERRORE)` (the adapter was unplugged), `TIOCMSET: ERRORE dopo N ms` (a line change failed) or `TIOCMSET lento: N ms` (a line change took over 100 ms). No line is driven after it: closing the port drops both lines together |
 | `stato eventi persi N` | the core produced more events than the read buffer could hold, `N` in that batch: no edge is lost, only the descriptive lines, so a reader rebuilding the state from the lines is wrong until the next snapshot |
 
 Vocabulary (the daemon itself):
@@ -180,7 +182,7 @@ Vocabulary (the daemon itself):
 | Line | Meaning |
 |---|---|
 | `stato stdout N righe scartate` | the confession: `N` status lines, counted since start, that stdout did not take. It is written right before the next line that gets through, and only when `N` has grown since the last confession |
-| `stato arresto` | SIGINT or SIGTERM: the daemon is stopping. What follows belongs to the shutdown: the `disconnesso ...: arresto` lines, `stato ptt 0` if the PTT was on, the two totals below |
+| `stato arresto` | SIGINT, SIGTERM or an output FAULT: the daemon is stopping. What follows belongs to the shutdown: the `disconnesso ...: arresto` lines, `stato ptt 0` if the PTT was on, the two totals below |
 | `stato stdout N righe scartate in totale` | at shutdown, if any line was dropped: the same count as the last confession, not a new one |
 | `stato uscita fronti (DEST): A attese per M ms, E errori, P persi` | at shutdown, if the edges descriptor ever waited or failed: `P` other than zero is the only case where an edge was not written, and it only happens after a SIGINT |
 | `stato uscita fronti (DEST) non drena: N ms e aspetto` | the edges descriptor has stopped taking bytes and the loop has been stuck there for N ms (see *Two outputs*) |
@@ -196,15 +198,16 @@ the daemon also writes the whole state, over several lines, because 8
 clients with their names do not fit in one:
 
 ```
-stato snap inizio v1 istanza S-P seq N client K chiave C ptt L periodo MS
+stato snap inizio v2 istanza S-P seq N client K chiave C ptt L periodo MS
 stato snap manopole max-clients N B>= MS tetto MS coda MS lead MS idle MS over-max MS handshake MS out-cap BYTE
 stato snap client I/K IDX STATO ADDR lat MS peak MS nome LEN NOME      (K lines)
+stato snap uscita cambi N max-us US lenti N
 stato snap fine seq N
 ```
 
 | Field | Meaning |
 |---|---|
-| `v1` | the version of this vocabulary. It changes when a line in these tables changes shape, so a reader can say it no longer knows what it is reading |
+| `v2` | the version of this vocabulary. It changes when a line in these tables changes shape, so a reader can say it no longer knows what it is reading. `v2` added `stato snap uscita`, the serial form of `stato uscita` and the output fault |
 | `istanza S-P` | which daemon wrote it: `S` its start instant in seconds since the Unix epoch, `P` its pid. The pid alone repeats in a container. Another value means another process, even when its `stato ascolto` line was lost |
 | `seq N` | counts snapshots from 1. It grows for every snapshot the daemon writes, taken by stdout or not, so a gap between two complete snapshots means some were lost; `fine` carries the same `N` |
 | `client K` | how many `stato snap client` lines follow: the connections with an open socket |
@@ -217,12 +220,13 @@ stato snap fine seq N
 | `STATO` | `pronto` when the client has completed the CONNECT; `attesa` when the socket is open and it has not, which includes a client the core has already closed while the event that said so was lost |
 | `ADDR` | `IP:PORTA`, or `?` when the system could not say |
 | `lat`, `peak` | the RTT of the last PING and its peak-hold, in ms; `-1` until a PING has come back |
+| `uscita cambi N max-us US lenti N` | the output's line changes since start: how many, the slowest in microseconds, and how many took over 100 ms (each of those is a FAULT). All zero for `virtual`, which drives no line |
 | `nome LEN NOME` | the name, escaped as above and empty before the CONNECT, last on the line, preceded by its length in characters. A name shorter than `LEN` was cut by the 254-character limit |
 
 The lines of one snapshot are written in one go, with no other line between
 them. A reader applies a snapshot only when it has all of it: the opening,
 `manopole`, exactly `K` client lines with positions `1/K` to `K/K` in order,
-and `fine` with the same `seq`. With anything else between them, or a line
+`uscita`, and `fine` with the same `seq`. With anything else between them, or a line
 missing, it discards the snapshot and waits for the next one. The name's
 declared length is what lets a reader tell a name containing `stato stdout`
 from a confession glued after half a line, which is what stdout does when

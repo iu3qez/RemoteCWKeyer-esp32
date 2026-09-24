@@ -147,7 +147,7 @@
  * tables in cwnetd/README.md, "Reading a status line", are what it names:
  * change the shape of a line there and this changes with it.
  */
-#define CWNETD_VOCABULARY "v1"
+#define CWNETD_VOCABULARY "v2"
 
 /** Exit code of a stop on an output FAULT, apart from a clean stop (0) and
  *  a failed start (1, 2). */
@@ -1076,9 +1076,10 @@ static bool parse_args(int argc, char **argv, args_t *a, bool *want_help) {
  * @brief The whole state, over several lines, in one go
  *
  * 256 bytes do not hold eight clients and their names, so a snapshot is an
- * opening, a settings line, one line per connection and a closing, tied by
- * a sequence number (cwnetd/README.md, "The periodic snapshot"). Nothing
- * else is written between them: this runs on the loop's only thread.
+ * opening, a settings line, one line per connection, an output line and a
+ * closing, tied by a sequence number (cwnetd/README.md, "The periodic
+ * snapshot"). Nothing else is written between them: this runs on the
+ * loop's only thread.
  *
  * The opening's count and the client lines come from one enumeration, the
  * connections with an open socket, taken before anything is written. Two
@@ -1132,6 +1133,11 @@ static void snapshot_write(const args_t *a) {
                     strlen(name), name);
     }
 
+    /* The line changes of the output: how many, the slowest in us, and how
+     * many took over the 100 ms of a FAULT. Zeros for virtual, which makes
+     * none. The serial numbers are what U6 measures against. */
+    status_line("stato snap uscita cambi %lu max-us %lld lenti %lu",
+                g_out.timing.count, (long long)g_out.timing.max_us, g_out.timing.slow);
     status_line("stato snap fine seq %lu", g_snap.seq);
 }
 
