@@ -1,6 +1,6 @@
 /**
  * @file usb_console.c
- * @brief CDC0 console with immediate echo
+ * @brief CDC0 console transport
  */
 
 #include "usb_console.h"
@@ -109,17 +109,38 @@ void usb_console_print(const char *str) {
     tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, 0);
 }
 
+/**
+ * @brief Formatting buffer for usb_console_printf()
+ *
+ * Static rather than on the stack: console commands run in the TinyUSB task,
+ * whose stack is CONFIG_TINYUSB_TASK_STACK_SIZE (4096 bytes).
+ *
+ * usb_console_printf() is reached only through keyer_console's printf, and
+ * keyer_console runs only from console_rx_callback() and
+ * console_line_state_callback(), both in the TinyUSB task (console_task() is
+ * never started). One task, so no lock is needed.
+ */
+static char s_printf_buf[USB_CONSOLE_PRINTF_BUF_SIZE];
+
 void usb_console_printf(const char *fmt, ...) {
-    char buf[256];
     va_list args;
     va_start(args, fmt);
-    int len = vsnprintf(buf, sizeof(buf), fmt, args);
+    int len = vsnprintf(s_printf_buf, sizeof(s_printf_buf), fmt, args);
     va_end(args);
 
-    if (len > 0) {
-        tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_0, (const uint8_t *)buf, (size_t)len);
-        tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, 0);
+    if (len <= 0) {
+        return;
     }
+
+    /* vsnprintf() returns the length the whole output would have had, not
+     * the number of bytes it wrote. Send only what is in the buffer. */
+    size_t n = (size_t)len;
+    if (n >= sizeof(s_printf_buf)) {
+        n = sizeof(s_printf_buf) - 1;
+    }
+
+    tinyusb_cdcacm_write_queue(TINYUSB_CDC_ACM_0, (const uint8_t *)s_printf_buf, n);
+    tinyusb_cdcacm_write_flush(TINYUSB_CDC_ACM_0, 0);
 }
 
 void usb_console_prompt(void) {
