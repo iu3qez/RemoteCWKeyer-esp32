@@ -66,6 +66,7 @@ A serial output adds failure modes the virtual one never had. Opening a USB seri
 - **The common convention is the default.** (session-settled: user-directed, chosen over defining a mapping of our own: the operator asked to follow the standard, not reinvent it.) Governs R2.
 - **Lines are fully configurable, inversion included.** (session-settled: user-directed, chosen over dropping inversion: interfaces wired either way must work.) Governs R3. With inversion, R4 does not hold: a dropped line is active, so every stop keys the inverted function. This narrows the parent plan's rest-on-death criterion (`docs/plans/2026-09-08-2158-feat-station-daemon-plan.md`, "Deferred to Follow-Up Work") to non-inverted lines, and R10 states the consequence to the operator.
 - **No key-down timeout inside the daemon.** (session-settled: user-directed, chosen over a watchdog like the reference's 10 s one: tuning holds the key down on purpose.) The ceiling on continuous key-down lives outside the process, in the rig's own transmit timer, as the parent plan already requires. `--over-max` (120 s) is unchanged.
+- **Running as root warns, it does not refuse.** (session-settled: user-directed 2026-09-24, chosen over refusing to start and over no check.) Neither `TIOCEXCL` nor `flock` stops a root opener (Linux `tty_io.c:1339` exempts `CAP_SYS_ADMIN`; XNU exempts the superuser; `flock` is advisory), so a second `cwnetd` started as root raises the lines under a running one. With `--output serial` and `geteuid() == 0`, the daemon writes one warning line at start-up that names this, and runs. Governs R9.
 
 ### Success Criteria
 
@@ -171,6 +172,7 @@ The last row is why R4 holds only for plain lines.
   1. Add the configuration (device, key line, PTT line) to the struct that `key_output_open()` receives, following KTD7.
   2. Parse `--serial`, `--key-line` and `--ptt-line` in `parse_args()` like `--output` and `--edges`, as unchecked strings with defaults in the `args` struct.
   3. Write the mapping as a pure function from (key state, PTT state, configuration) to the two line levels. Use it for rest, for every edge and for release.
+  4. With `--output serial` and an effective uid of 0, write the root warning of Key Decisions to stderr at start-up, and continue.
 - **Patterns to follow:**
   - `args_t`, `opts[]` and `usage()` in `host/cwnetd/main.c`, where defaults come from one struct.
   - The `loopback_test` target in `host/CMakeLists.txt`.
@@ -183,6 +185,7 @@ The last row is why R4 holds only for plain lines.
   - `--key-line none`: refused.
   - An unknown LINE value: refused, and the message lists the accepted values.
   - `--output serial` without `--serial`: refused before anything is opened.
+  - The root warning: a pure check from (backend, effective uid) returns the warning for serial and uid 0, and nothing for virtual or a non-zero uid.
 - **Verification:** the new ctest target passes; `--help` prints the three flags with their defaults.
 
 ### U2. Serial backend: open, rest, edges, close, failure
