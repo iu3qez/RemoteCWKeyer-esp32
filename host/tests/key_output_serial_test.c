@@ -848,6 +848,85 @@ static bool test_failed_release_is_readable_after_close(void) {
     return expect_calls("failed release", F.n_calls - 2u, "TIOCMSET close");
 }
 
+/* Tuning: the key held down for ten minutes is not a fault. The backend
+ * makes one line call at key-down and one at key-up, and nothing between:
+ * no limit applies to how long the key is held. */
+static bool test_long_key_down_for_tuning(void) {
+    fake_reset();
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (!fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        return false;
+    }
+    size_t from = F.n_calls;
+    key_output_set_ptt(&out, true, 0);
+    key_output_set_key(&out, true, 10);
+    F.clock_us += 600LL * 1000000LL;
+    key_output_set_key(&out, false, 600010);
+    key_output_set_ptt(&out, false, 600110);
+    bool ok = expect_calls("tuning", from, "TIOCMSET TIOCMSET TIOCMSET TIOCMSET") &&
+              key_output_fault(&out) == NULL && out.timing.slow == 0u;
+    key_output_close(&out, 600200);
+    return ok;
+}
+
+/* How long one edge write may wait: without limit for virtual, whose
+ * trace is all it drives; 100 ms for serial, whose line is already
+ * changed while the loop waits; not at all once serial has faulted. */
+static bool test_edge_wait_limit(void) {
+    fake_reset();
+    key_output_t v;
+    char err[KEY_OUTPUT_ERR_LEN];
+    key_output_cfg_t vcfg = { .backend = "virtual" };
+    if (!key_output_open(&v, &vcfg, capture_edge, NULL, err, sizeof(err))) {
+        return false;
+    }
+    key_output_t out;
+    if (!fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        return false;
+    }
+    bool ok = true;
+    if (key_output_edge_wait_ms(&v) != KEY_OUTPUT_EDGE_WAIT_FOREVER) {
+        fprintf(stderr, "  virtual: limited\n");
+        ok = false;
+    }
+    if (key_output_edge_wait_ms(&out) != KEY_OUTPUT_SERIAL_SLOW_US / 1000) {
+        fprintf(stderr, "  serial: %lld ms, want 100\n", (long long)key_output_edge_wait_ms(&out));
+        ok = false;
+    }
+    key_output_fail(&out, KEY_OUTPUT_FAULT_EDGES, "write", 0, 100000);
+    if (key_output_edge_wait_ms(&out) != 0) {
+        fprintf(stderr, "  serial after a fault: still waits\n");
+        ok = false;
+    }
+    key_output_close(&out, 0);
+    key_output_close(&v, 0);
+    return ok;
+}
+
+/* A fault seen outside the backend (the edges stalled) stops the line
+ * calls like any other, and the first fault recorded is the one kept. */
+static bool test_outside_fault_stops_line_calls(void) {
+    fake_reset();
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (!fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        return false;
+    }
+    key_output_set_key(&out, true, 1);
+    key_output_fail(&out, KEY_OUTPUT_FAULT_EDGES, "write", 0, 120000);
+    key_output_fail(&out, KEY_OUTPUT_FAULT_HANGUP, "poll", 0, 0);
+    size_t from = F.n_calls;
+    key_output_set_key(&out, false, 2);
+    key_output_close(&out, 3);
+    const key_output_fault_t *f = key_output_fault(&out);
+    if (f == NULL || f->kind != KEY_OUTPUT_FAULT_EDGES || f->duration_us != 120000) {
+        fprintf(stderr, "  first fault not kept\n");
+        return false;
+    }
+    return expect_calls("after an outside fault", from, "close");
+}
+
 /* A call that succeeds after a 5000 ms stall: the edges queued behind it
  * must not go out back to back. */
 static bool test_no_line_call_after_stall(void) {
@@ -1019,6 +1098,9 @@ int main(void) {
         {"no_line_call_after_failure", test_no_line_call_after_failure},
         {"no_line_call_after_stall", test_no_line_call_after_stall},
         {"failed_release_is_readable_after_close", test_failed_release_is_readable_after_close},
+        {"long_key_down_for_tuning", test_long_key_down_for_tuning},
+        {"edge_wait_limit", test_edge_wait_limit},
+        {"outside_fault_stops_line_calls", test_outside_fault_stops_line_calls},
         {"poll_fd_only_while_open", test_poll_fd_only_while_open},
         {"hangup_is_a_fault", test_hangup_is_a_fault},
         {"received_bytes_drained", test_received_bytes_drained},

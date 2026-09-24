@@ -494,10 +494,11 @@ class LineTest(unittest.TestCase):
         self.assertNotIn("output_fault", f.d["banners"])
 
     def test_every_output_fault_cwnetd_writes_raises_the_banner(self):
-        # The four shapes of output_fault_line() in main.c.
+        # The five shapes of output_fault_line() in main.c.
         for line in ("stato fault: uscita /dev/cu.usbserial-A1: porta scomparsa (hang-up)",
                      "stato fault: uscita /dev/ttyUSB0: porta scomparsa (read: fine del file)",
                      "stato fault: uscita /dev/ttyUSB0: TIOCMSET lento: 5000 ms",
+                     "stato fault: uscita /dev/ttyUSB0: fronti bloccati da 100 ms",
                      "stato fault: uscita /dev/ttyUSB0: TIOCMSET: Input/output error dopo 3 ms"):
             with self.subTest(line=line):
                 self.assertIn("output_fault", guaranteed_with(C1).live(line).d["banners"])

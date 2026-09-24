@@ -134,6 +134,14 @@ cost is made visible instead of hidden:
   edge is capped at one second: a descriptor that nobody drains must not
   make the daemon impossible to close except with SIGKILL. The edges left
   behind end up in the `persi` count of the last line.
+- **With `--output serial` a stall is a FAULT.** The line has already
+  changed when the edge line is written, so while the loop waits the rig
+  is keyed and nothing can key it up. A wait over 100 ms ends the session:
+  `stato fault: uscita DEVICE: fronti bloccati da N ms`, the port closed,
+  exit code 3, the edge not written counted in `persi`. A Ctrl-S in the
+  terminal that shows stderr is enough to cause it: with the serial output,
+  send the edges to a file. This limits one write, not how long the key is
+  held: a key held down for tuning writes one line and then nothing.
 
 `--edges stdout` is rejected at startup: it's the only descriptor that
 cannot give edges the separation R11 requires.
@@ -267,7 +275,7 @@ Vocabulary (key, PTT, link, over):
 | `stato over client N NOME B X ms` | an over has started, with the B computed for that session |
 | `stato byte in ritardo client N NOME: B byte, M ms in totale` | a byte arrived after the deadline of the edge it carried: the element came out longer than it was keyed, and the link is slipping. Cumulative, so two lines apart say *how fast* |
 | `stato fault [client N NOME:] MOTIVO` | FAULT philosophy: key up and it stops (holder vanished mid-over - TCP closed or three PINGs without an answer -, over too long, holder silent past `--idle` with the key up). A fault says nothing about who holds the key: a `chiave` line says that |
-| `stato fault: uscita DEVICE: CAUSA` | the serial output failed, and the daemon stops right after it with exit code 3: the port is in a state nobody knows. `CAUSA` is `porta scomparsa (hang-up)`, `porta scomparsa (read: ERRORE)` (the adapter was unplugged), `TIOCMSET: ERRORE dopo N ms` (a line change failed) or `TIOCMSET lento: N ms` (a line change took over 100 ms). No line is driven after it: closing the port drops both lines together. It can also come after `stato arresto`, when the release at shutdown fails (the adapter was unplugged first): the exit code is then 3, not 0 |
+| `stato fault: uscita DEVICE: CAUSA` | the serial output failed, and the daemon stops right after it with exit code 3: the port is in a state nobody knows. `CAUSA` is `porta scomparsa (hang-up)`, `porta scomparsa (read: ERRORE)` (the adapter was unplugged), `TIOCMSET: ERRORE dopo N ms` (a line change failed), `TIOCMSET lento: N ms` (a line change took over 100 ms) or `fronti bloccati da N ms` (the `--edges` descriptor stopped taking lines for 100 ms, see *Two outputs*). No line is driven after it: closing the port drops both lines together. It can also come after `stato arresto`, when the release at shutdown fails (the adapter was unplugged first): the exit code is then 3, not 0 |
 | `stato eventi persi N` | the core produced more events than the read buffer could hold, `N` in that batch: no edge is lost, only the descriptive lines, so a reader rebuilding the state from the lines is wrong until the next snapshot |
 
 Vocabulary (the daemon itself):

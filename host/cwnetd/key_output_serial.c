@@ -178,15 +178,6 @@ const key_output_os_t key_output_os_posix = {
 /* Edges (KTD3, KTD4, KTD5)                                                  */
 /*===========================================================================*/
 
-static void record_fault(key_output_t *out, key_output_fault_kind_t kind, const char *call,
-                         int err, int64_t duration_us) {
-    out->fault.set = true;
-    out->fault.kind = kind;
-    out->fault.call = call;
-    out->fault.err = err;
-    out->fault.duration_us = duration_us;
-}
-
 /*
  * Both lines to the levels of the current function state, in one TIOCMSET:
  * one control transfer on FTDI, so key and PTT never pass through a
@@ -217,9 +208,9 @@ static void serial_drive(key_output_t *out) {
         out->timing.slow++;
     }
     if (rc != 0) {
-        record_fault(out, KEY_OUTPUT_FAULT_CALL, "TIOCMSET", err, took);
+        key_output_fail(out, KEY_OUTPUT_FAULT_CALL, "TIOCMSET", err, took);
     } else if (took > KEY_OUTPUT_SERIAL_SLOW_US) {
-        record_fault(out, KEY_OUTPUT_FAULT_SLOW, "TIOCMSET", 0, took);
+        key_output_fail(out, KEY_OUTPUT_FAULT_SLOW, "TIOCMSET", 0, took);
     }
 }
 
@@ -244,7 +235,7 @@ static void serial_service(key_output_t *out, bool hangup) {
         return;
     }
     if (hangup) {
-        record_fault(out, KEY_OUTPUT_FAULT_HANGUP, "poll", 0, 0);
+        key_output_fail(out, KEY_OUTPUT_FAULT_HANGUP, "poll", 0, 0);
         return;
     }
     char buf[256];
@@ -257,7 +248,7 @@ static void serial_service(key_output_t *out, bool hangup) {
             return;
         }
         /* 0 is end of file: the tty was hung up under us (Linux). */
-        record_fault(out, KEY_OUTPUT_FAULT_READ, "read", (n < 0) ? errno : 0, 0);
+        key_output_fail(out, KEY_OUTPUT_FAULT_READ, "read", (n < 0) ? errno : 0, 0);
         return;
     }
 }

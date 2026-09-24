@@ -72,6 +72,25 @@ const key_output_fault_t *key_output_fault(const key_output_t *out) {
     return (out != NULL && out->fault.set) ? &out->fault : NULL;
 }
 
+void key_output_fail(key_output_t *out, key_output_fault_kind_t kind, const char *call,
+                     int err, int64_t duration_us) {
+    if (out == NULL || out->fault.set) {
+        return;
+    }
+    out->fault.set = true;
+    out->fault.kind = kind;
+    out->fault.call = call;
+    out->fault.err = err;
+    out->fault.duration_us = duration_us;
+}
+
+int64_t key_output_edge_wait_ms(const key_output_t *out) {
+    if (out == NULL || out->os == NULL) {
+        return KEY_OUTPUT_EDGE_WAIT_FOREVER;
+    }
+    return out->fault.set ? 0 : (int64_t)(KEY_OUTPUT_SERIAL_SLOW_US / 1000);
+}
+
 int key_output_poll_fd(const key_output_t *out) {
     return (out != NULL && out->service != NULL) ? out->fd : -1;
 }

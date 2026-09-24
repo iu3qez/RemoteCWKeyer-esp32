@@ -324,7 +324,7 @@ static bool g_edge_owned = false;       /**< A file we opened, so we close it */
 static unsigned long g_edge_stalls = 0;      /**< Edges that had to wait */
 static int64_t g_edge_stall_ms = 0;          /**< How long they waited, in total */
 static unsigned long g_edge_errors = 0;      /**< Edges the descriptor refused */
-static unsigned long g_edge_given_up = 0;    /**< Edges dropped while shutting down */
+static unsigned long g_edge_given_up = 0;    /**< Edges not written: at shutdown, or on an output FAULT */
 
 /**
  * @brief One edge line on the edge descriptor. Does not return until it is
@@ -362,13 +362,28 @@ static void edge_write(void *ctx, const char *line) {
                 wait_started_ms = (int64_t)clock_now_ms();
                 waited = true;
             }
+            /* The serial output has already changed the line: while this
+             * waits, the rig is keyed. Past its limit the wait is an output
+             * FAULT, and the loop stops and closes the port. Tuning is not
+             * affected: a key held down writes one line, then nothing. */
+            int64_t limit_ms = key_output_edge_wait_ms(&g_out);
+            int64_t waited_ms = (int64_t)clock_now_ms() - wait_started_ms;
+            if (limit_ms != KEY_OUTPUT_EDGE_WAIT_FOREVER && waited_ms >= limit_ms) {
+                key_output_fail(&g_out, KEY_OUTPUT_FAULT_EDGES, "write", 0, waited_ms * 1000);
+                g_edge_given_up++;
+                return;
+            }
+            int slice_ms = CWNETD_EDGE_WAIT_MS;
+            if (limit_ms != KEY_OUTPUT_EDGE_WAIT_FOREVER && limit_ms - waited_ms < slice_ms) {
+                slice_ms = (int)(limit_ms - waited_ms);
+            }
             struct pollfd p;
             p.fd = g_edge_fd;
             p.events = POLLOUT;
             p.revents = 0;
-            (void)poll(&p, 1, CWNETD_EDGE_WAIT_MS);
+            (void)poll(&p, 1, slice_ms);
 
-            int64_t waited_ms = (int64_t)clock_now_ms() - wait_started_ms;
+            waited_ms = (int64_t)clock_now_ms() - wait_started_ms;
             if (!said_so && waited_ms >= CWNETD_EDGE_WAIT_MS) {
                 /* Live, while still stuck: the operator sees the cause of
                  * the jitter as it happens, not in the totals afterwards. */
@@ -862,6 +877,10 @@ static void output_fault_line(const key_output_fault_t *f, const char *device) {
         case KEY_OUTPUT_FAULT_READ:
             status_line("stato fault: uscita %s: porta scomparsa (read: %s)", dev,
                         (f->err != 0) ? strerror(f->err) : "fine del file");
+            break;
+        case KEY_OUTPUT_FAULT_EDGES:
+            /* Not the path: the panel shows fault lines on a LAN page. */
+            status_line("stato fault: uscita %s: fronti bloccati da %lld ms", dev, ms);
             break;
         case KEY_OUTPUT_FAULT_SLOW:
             status_line("stato fault: uscita %s: %s lento: %lld ms", dev, f->call, ms);

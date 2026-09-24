@@ -71,6 +71,7 @@ typedef enum key_output_fault_kind {
     KEY_OUTPUT_FAULT_SLOW,    /**< An OS call succeeded, over the time allowed */
     KEY_OUTPUT_FAULT_HANGUP,  /**< The poll reported the device hung up */
     KEY_OUTPUT_FAULT_READ,    /**< Reading the device hit end of file or an error */
+    KEY_OUTPUT_FAULT_EDGES,   /**< An edge line waited too long for --edges */
 } key_output_fault_kind_t;
 
 typedef struct key_output_fault {
@@ -203,6 +204,32 @@ bool key_output_open(key_output_t *out, const key_output_cfg_t *cfg,
 
 /** @brief The output's failure record, or NULL when it has none (KTD4). */
 const key_output_fault_t *key_output_fault(const key_output_t *out);
+
+/**
+ * @brief Record a failure seen outside the backend, e.g. a stalled --edges.
+ *
+ * The first failure recorded is the one kept. From then on the backend
+ * makes no line call, as after a failure of its own (KTD4).
+ */
+void key_output_fail(key_output_t *out, key_output_fault_kind_t kind, const char *call,
+                     int err, int64_t duration_us);
+
+/** key_output_edge_wait_ms(): no limit. */
+#define KEY_OUTPUT_EDGE_WAIT_FOREVER ((int64_t)-1)
+
+/**
+ * @brief How long one edge line may wait for the --edges descriptor.
+ *
+ * The serial backend changes the line before the edge line is written, so
+ * while the loop waits the rig is already keyed: 100 ms, the limit of a
+ * line change, and none at all once the output has failed. The virtual
+ * backend drives nothing, and its trace never drops a line: no limit.
+ * This bounds one write, never how long the key is held: a key held down
+ * for tuning writes one line and then nothing.
+ *
+ * @return milliseconds, or KEY_OUTPUT_EDGE_WAIT_FOREVER
+ */
+int64_t key_output_edge_wait_ms(const key_output_t *out);
 
 /**
  * @brief The descriptor the loop polls for input and hang-up, or -1.
