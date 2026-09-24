@@ -283,6 +283,9 @@ static short from_native_revents(short revents) {
     if (revents & POLLOUT) {
         out = (short)(out | SOCK_POLLOUT);
     }
+    if (revents & (POLLHUP | POLLERR | POLLNVAL)) {
+        out = (short)(out | SOCK_POLLHUP);
+    }
     return out;
 }
 
@@ -310,6 +313,12 @@ int sock_poll(sock_pollfd_t *fds, size_t nfds, int timeout_ms) {
     }
 
     return rc;
+}
+
+sock_handle_t sock_handle_from_fd(int fd) {
+    sock_handle_t h;
+    h.native_handle = (intptr_t)fd;
+    return h;
 }
 
 /*===========================================================================*/

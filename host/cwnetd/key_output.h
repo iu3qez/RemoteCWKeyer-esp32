@@ -95,6 +95,8 @@ typedef struct key_output {
     void (*apply_ptt)(struct key_output *out, bool on, int64_t at_ms);
     /** Backend teardown after the release; NULL when there is none. */
     void (*finish)(struct key_output *out);
+    /** key_output_service(); NULL for a backend with nothing to poll. */
+    void (*service)(struct key_output *out, bool hangup);
 
     key_output_fault_t fault;
     key_output_timing_t timing;
@@ -193,6 +195,27 @@ bool key_output_open(key_output_t *out, const key_output_cfg_t *cfg,
 
 /** @brief The output's failure record, or NULL when it has none (KTD4). */
 const key_output_fault_t *key_output_fault(const key_output_t *out);
+
+/**
+ * @brief The descriptor the loop polls for input and hang-up, or -1.
+ *
+ * The serial port, while it is open. The loop asks for input, not for
+ * nothing: XNU's poll() watches only the events requested
+ * (sys_generic.c:1750), so with none an unplug would never be reported.
+ */
+int key_output_poll_fd(const key_output_t *out);
+
+/**
+ * @brief The loop's poll found key_output_poll_fd() ready.
+ *
+ * A hang-up is the device gone, and is recorded as a failure. Otherwise the
+ * bytes the device sent are read and dropped, a bounded number per call;
+ * an end of file or an error on that read is the device gone too (R7).
+ * Makes no line call.
+ *
+ * @param hangup The poll reported POLLHUP, POLLERR or POLLNVAL
+ */
+void key_output_service(key_output_t *out, bool hangup);
 
 /** @brief Key edge at the instant it was scheduled for. No-op if unchanged. */
 void key_output_set_key(key_output_t *out, bool down, int64_t at_ms);

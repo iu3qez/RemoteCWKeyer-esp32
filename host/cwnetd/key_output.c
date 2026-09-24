@@ -72,6 +72,16 @@ const key_output_fault_t *key_output_fault(const key_output_t *out) {
     return (out != NULL && out->fault.set) ? &out->fault : NULL;
 }
 
+int key_output_poll_fd(const key_output_t *out) {
+    return (out != NULL && out->service != NULL) ? out->fd : -1;
+}
+
+void key_output_service(key_output_t *out, bool hangup) {
+    if (out != NULL && out->service != NULL) {
+        out->service(out, hangup);
+    }
+}
+
 void key_output_set_key(key_output_t *out, bool down, int64_t at_ms) {
     if (out == NULL || out->apply_key == NULL || out->key_down == down) {
         return;
@@ -100,6 +110,7 @@ void key_output_close(key_output_t *out, int64_t at_ms) {
     key_output_release(out, at_ms);
     out->apply_key = NULL;
     out->apply_ptt = NULL;
+    out->service = NULL;
     if (out->finish != NULL) {
         out->finish(out);
         out->finish = NULL;

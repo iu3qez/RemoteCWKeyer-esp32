@@ -17,6 +17,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/types.h>
 #include <termios.h>
 
 #ifdef __cplusplus
@@ -25,6 +26,10 @@ extern "C" {
 
 /** A line change slower than this is a FAULT: the PTT tail (KTD3, R7). */
 #define KEY_OUTPUT_SERIAL_SLOW_US 100000
+
+/** Reads of received bytes per key_output_service(), so a port that never
+ *  stops talking cannot hold the loop. */
+#define KEY_OUTPUT_SERIAL_MAX_READS 8
 
 typedef struct key_output_os {
     int (*open)(const char *path, int flags);
@@ -36,6 +41,8 @@ typedef struct key_output_os {
     int (*tcgetattr)(int fd, struct termios *t);
     int (*tcsetattr)(int fd, int action, const struct termios *t);
     int (*flock)(int fd, int operation);
+    /** Received bytes, read to be dropped (key_output_service()). */
+    ssize_t (*read)(int fd, void *buf, size_t len);
     /** Monotonic microseconds, to time each line change. */
     int64_t (*now_us)(void);
     /**
@@ -56,7 +63,8 @@ extern const key_output_os_t key_output_os_posix;
  * @brief Open @p device and leave it at rest (KTD2).
  *
  * The order is the safety property: open, then both lines to rest in one
- * call, then termios (HUPCL, CLOCAL, and B0 as key_output_os_t says),
+ * call, then termios (HUPCL, CLOCAL, raw, no flow control, and B0 as
+ * key_output_os_t says),
  * then the exclusive lock, then the lines read back. Any failure closes the
  * descriptor, makes no further line call, and writes a message that names
  * the device.

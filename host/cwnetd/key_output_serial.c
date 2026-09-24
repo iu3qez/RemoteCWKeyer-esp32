@@ -159,6 +159,7 @@ const key_output_os_t key_output_os_posix = {
     .tcgetattr  = tcgetattr,
     .tcsetattr  = tcsetattr,
     .flock      = flock,
+    .read       = read,
     .now_us     = posix_now_us,
 #if defined(__linux__)
     .b0_at_rest = true,
@@ -225,6 +226,32 @@ static void serial_key(key_output_t *out, bool down, int64_t at_ms) {
 static void serial_ptt(key_output_t *out, bool on, int64_t at_ms) {
     serial_drive(out);
     key_output_edge_line(out, "ptt", on, at_ms);
+}
+
+/* Hang-up, or bytes from the device. The keying interface sends nothing,
+ * a rig's own USB port may: those bytes are read and dropped, or the tty
+ * stays readable and the loop's poll never sleeps. */
+static void serial_service(key_output_t *out, bool hangup) {
+    if (out->fd < 0 || out->fault.set) {
+        return;
+    }
+    if (hangup) {
+        record_fault(out, "hangup", 0, 0);
+        return;
+    }
+    char buf[256];
+    for (int i = 0; i < KEY_OUTPUT_SERIAL_MAX_READS; i++) {
+        ssize_t n = out->os->read(out->fd, buf, sizeof(buf));
+        if (n > 0) {
+            continue;
+        }
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+            return;
+        }
+        /* 0 is end of file: the tty was hung up under us (Linux). */
+        record_fault(out, "read", (n < 0) ? errno : 0, 0);
+        return;
+    }
 }
 
 /* After the release. Closing the last descriptor is what makes the kernel
@@ -302,13 +329,31 @@ bool key_output_serial_open(key_output_t *out, const char *device,
     }
 
     /* 3. HUPCL: the last close drops both lines, SIGKILL included.
-     *    CLOCAL: no carrier to wait for. B0 where it helps (b0_at_rest);
-     *    never with an inverted line, where a dropped line is active. */
+     *    CLOCAL: no carrier to wait for.
+     *    No hardware flow control: with it the driver, or the chip, drives
+     *    RTS itself, and RTS is the PTT. Linux keeps termios across closes,
+     *    so whatever the last program left is still set.
+     *    Raw, VMIN 1: poll() reports each received byte, which
+     *    serial_service() drops, and nothing is echoed back to the rig.
+     *    B0 where it helps (b0_at_rest); never with an inverted line,
+     *    where a dropped line is active. */
     struct termios t;
     if (os->tcgetattr(fd, &t) != 0) {
         return open_failed(out, fd, err, err_len, device, "tcgetattr", errno);
     }
     t.c_cflag |= (tcflag_t)(HUPCL | CLOCAL);
+    t.c_cflag &= ~(tcflag_t)CRTSCTS;
+#if defined(CDTR_IFLOW)
+    t.c_cflag &= ~(tcflag_t)CDTR_IFLOW;
+#endif
+#if defined(CDSR_OFLOW)
+    t.c_cflag &= ~(tcflag_t)CDSR_OFLOW;
+#endif
+    t.c_lflag &= ~(tcflag_t)(ICANON | ECHO | ECHOE | ECHOK | ECHONL | ISIG | IEXTEN);
+    t.c_iflag &= ~(tcflag_t)(IXON | IXOFF | IXANY | ICRNL | INLCR | IGNCR | ISTRIP);
+    t.c_oflag &= ~(tcflag_t)OPOST;
+    t.c_cc[VMIN] = 1;
+    t.c_cc[VTIME] = 0;
     bool inverted = (map->key_bit != 0u && map->key_inverted) ||
                     (map->ptt_bit != 0u && map->ptt_inverted);
     if (os->b0_at_rest && !inverted) {
@@ -361,5 +406,6 @@ bool key_output_serial_open(key_output_t *out, const char *device,
     out->apply_key = serial_key;
     out->apply_ptt = serial_ptt;
     out->finish = serial_finish;
+    out->service = serial_service;
     return true;
 }

@@ -241,6 +241,10 @@ static struct {
 
     char edges[FAKE_MAX_EDGES][32];
     size_t n_edges;
+
+    int reads_with_data;       /* read() returns bytes this many times ... */
+    ssize_t read_end;          /* ... then this: -1 (with read_errno) or 0 */
+    int read_errno;
 } F;
 
 static void fake_reset(void) {
@@ -248,7 +252,12 @@ static void fake_reset(void) {
     F.lines = TIOCM_DTR | TIOCM_RTS;   /* What an open leaves on Linux and macOS */
     (void)cfsetispeed(&F.tio, B9600);
     (void)cfsetospeed(&F.tio, B9600);
-    F.tio.c_cflag |= (tcflag_t)(CS8 | CREAD);
+    /* What a previous program may have left, and Linux keeps across
+     * closes: hardware flow control, and a canonical line with echo. */
+    F.tio.c_cflag |= (tcflag_t)(CS8 | CREAD | CRTSCTS);
+    F.tio.c_lflag |= (tcflag_t)(ICANON | ECHO | ISIG);
+    F.read_end = -1;
+    F.read_errno = EAGAIN;
 }
 
 /* Records the call; returns true when it is the one set to fail. */
@@ -335,6 +344,21 @@ static int fake_flock(int fd, int operation) {
     return fake_record("flock", operation) ? -1 : 0;
 }
 
+static ssize_t fake_read(int fd, void *buf, size_t len) {
+    (void)fd;
+    if (F.reads_with_data > 0) {
+        F.reads_with_data--;
+        (void)fake_record("read", 1);
+        memset(buf, 'x', len);
+        return (ssize_t)len;
+    }
+    (void)fake_record("read", 0);
+    if (F.read_end < 0) {
+        errno = F.read_errno;
+    }
+    return F.read_end;
+}
+
 static int64_t fake_now_us(void) {
     return F.clock_us;
 }
@@ -347,6 +371,7 @@ static const key_output_os_t fake_os = {
     .tcgetattr  = fake_tcgetattr,
     .tcsetattr  = fake_tcsetattr,
     .flock      = fake_flock,
+    .read       = fake_read,
     .now_us     = fake_now_us,
     .b0_at_rest = true,
 };
@@ -452,6 +477,21 @@ static bool test_open_order_plain(void) {
     }
     if (cfgetospeed(&F.tio) != B0) {
         fprintf(stderr, "  plain lines: speed not B0\n");
+        return false;
+    }
+    /* Hardware flow control would hand RTS, the PTT, to the driver. */
+    if ((F.tio.c_cflag & CRTSCTS) != 0) {
+        fprintf(stderr, "  termios keeps CRTSCTS\n");
+        return false;
+    }
+    /* Raw: POLLIN on any byte, and nothing echoed back to the rig. */
+    if ((F.tio.c_lflag & (ICANON | ECHO | ISIG)) != 0 || F.tio.c_cc[VMIN] != 1 ||
+        F.tio.c_cc[VTIME] != 0) {
+        fprintf(stderr, "  termios not raw with VMIN 1, VTIME 0\n");
+        return false;
+    }
+    if (key_output_poll_fd(&out) != FAKE_FD) {
+        fprintf(stderr, "  poll fd %d, want %d\n", key_output_poll_fd(&out), FAKE_FD);
         return false;
     }
     if (F.lines != 0 || F.n_edges != 0u || out.fault.set) {
@@ -797,6 +837,116 @@ static bool test_no_line_call_after_stall(void) {
 }
 
 /*===========================================================================*/
+/* The port seen by the loop's poll (R7)                                     */
+/*===========================================================================*/
+
+static bool test_poll_fd_only_while_open(void) {
+    fake_reset();
+    key_output_t v;
+    char err[KEY_OUTPUT_ERR_LEN];
+    key_output_cfg_t vcfg = { .backend = "virtual" };
+    if (!key_output_open(&v, &vcfg, capture_edge, NULL, err, sizeof(err)) ||
+        key_output_poll_fd(&v) != -1) {
+        fprintf(stderr, "  virtual has a poll fd\n");
+        return false;
+    }
+    key_output_t out;
+    if (!fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        return false;
+    }
+    key_output_close(&out, 0);
+    if (key_output_poll_fd(&out) != -1) {
+        fprintf(stderr, "  poll fd after close\n");
+        return false;
+    }
+    return true;
+}
+
+/* A hang-up is the device gone: a fault, and no line call after it. */
+static bool test_hangup_is_a_fault(void) {
+    fake_reset();
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (!fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        return false;
+    }
+    size_t from = F.n_calls;
+    key_output_service(&out, true);
+    const key_output_fault_t *f = key_output_fault(&out);
+    if (f == NULL || strcmp(f->call, "hangup") != 0) {
+        fprintf(stderr, "  hang-up: no fault, or not named hangup\n");
+        return false;
+    }
+    key_output_set_ptt(&out, true, 1);
+    key_output_close(&out, 2);
+    return expect_calls("after hang-up", from, "close");
+}
+
+/* Bytes from the rig are read and dropped until there are none. */
+static bool test_received_bytes_drained(void) {
+    fake_reset();
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (!fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        return false;
+    }
+    F.reads_with_data = 2;
+    size_t from = F.n_calls;
+    key_output_service(&out, false);
+    bool ok = expect_calls("drain", from, "read read read") &&
+              key_output_fault(&out) == NULL;
+    key_output_close(&out, 0);
+    return ok;
+}
+
+/* The drain is bounded: a port that never stops talking cannot hold the
+ * loop. What is left is read on the next pass. */
+static bool test_drain_is_bounded(void) {
+    fake_reset();
+    key_output_t out;
+    char err[KEY_OUTPUT_ERR_LEN];
+    if (!fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+        return false;
+    }
+    F.reads_with_data = 1000;
+    size_t from = F.n_calls;
+    key_output_service(&out, false);
+    size_t reads = F.n_calls - from;
+    key_output_close(&out, 0);
+    if (reads == 0u || reads > (size_t)KEY_OUTPUT_SERIAL_MAX_READS) {
+        fprintf(stderr, "  %zu reads, want 1 to %d\n", reads, KEY_OUTPUT_SERIAL_MAX_READS);
+        return false;
+    }
+    return key_output_fault(&out) == NULL;
+}
+
+/* End of file or an error on read: the device is gone. */
+static bool test_read_end_is_a_fault(void) {
+    static const struct { ssize_t end; int err_no; } cases[] = {
+        { 0, 0 }, { -1, EIO }, { -1, ENXIO },
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        fake_reset();
+        key_output_t out;
+        char err[KEY_OUTPUT_ERR_LEN];
+        if (!fake_serial_open(&out, "dtr", "rts", err, sizeof(err))) {
+            return false;
+        }
+        F.read_end = cases[i].end;
+        F.read_errno = cases[i].err_no;
+        key_output_service(&out, false);
+        const key_output_fault_t *f = key_output_fault(&out);
+        key_output_close(&out, 0);
+        if (f == NULL || strcmp(f->call, "read") != 0 || f->err != cases[i].err_no) {
+            fprintf(stderr, "  read returning %zd errno %d: no fault, or wrong record\n",
+                    cases[i].end, cases[i].err_no);
+            return false;
+        }
+    }
+    return true;
+}
+
+/*===========================================================================*/
 /* Runner                                                                    */
 /*===========================================================================*/
 
@@ -835,6 +985,11 @@ int main(void) {
         {"close_releases_in_order", test_close_releases_in_order},
         {"no_line_call_after_failure", test_no_line_call_after_failure},
         {"no_line_call_after_stall", test_no_line_call_after_stall},
+        {"poll_fd_only_while_open", test_poll_fd_only_while_open},
+        {"hangup_is_a_fault", test_hangup_is_a_fault},
+        {"received_bytes_drained", test_received_bytes_drained},
+        {"drain_is_bounded", test_drain_is_bounded},
+        {"read_end_is_a_fault", test_read_end_is_a_fault},
     };
     size_t n_tests = sizeof(tests) / sizeof(tests[0]);
 

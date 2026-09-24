@@ -149,6 +149,10 @@
  */
 #define CWNETD_VOCABULARY "v1"
 
+/** Exit code of a stop on an output FAULT, apart from a clean stop (0) and
+ *  a failed start (1, 2). */
+#define CWNETD_EXIT_OUTPUT_FAULT 3
+
 /** --snapshot-ms: how often the whole state goes to stdout */
 #define CWNETD_DEFAULT_SNAPSHOT_MS 5000u
 #define CWNETD_MIN_SNAPSHOT_MS 50u
@@ -837,6 +841,34 @@ static void do_recv(int client_idx, int64_t now_ms) {
 }
 
 /*===========================================================================*/
+/* Output FAULT (plan 2026-09-24-2143, R7, KTD4)                             */
+/*===========================================================================*/
+
+/**
+ * @brief The status line of an output failure
+ *
+ * "stato fault: uscita DEVICE: CAUSE", the form of a fault that belongs to
+ * no client. The daemon stops right after it: the port is in a state
+ * nobody knows, and corrupted CW timing is worse than silence.
+ */
+static void output_fault_line(const key_output_fault_t *f, const char *device) {
+    char dev[CWNETD_SAFE_NAME_LEN];
+    sanitize(dev, sizeof(dev), (device != NULL) ? device : g_out.name);
+    long long ms = (long long)(f->duration_us / 1000);
+    if (strcmp(f->call, "hangup") == 0) {
+        status_line("stato fault: uscita %s: porta scomparsa (hang-up)", dev);
+    } else if (strcmp(f->call, "read") == 0) {
+        status_line("stato fault: uscita %s: porta scomparsa (read: %s)", dev,
+                    (f->err != 0) ? strerror(f->err) : "fine del file");
+    } else if (f->err != 0) {
+        status_line("stato fault: uscita %s: %s: %s dopo %lld ms", dev, f->call,
+                    strerror(f->err), ms);
+    } else {
+        status_line("stato fault: uscita %s: %s lento: %lld ms", dev, f->call, ms);
+    }
+}
+
+/*===========================================================================*/
 /* Signals                                                                   */
 /*===========================================================================*/
 
@@ -1213,10 +1245,6 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (!key_output_open(&g_out, &out_cfg, edge_write, NULL, out_err, sizeof(out_err))) {
-        fprintf(stderr, "cwnetd: %s\n", out_err);
-        return 2;
-    }
     if (!install_signals()) {
         fprintf(stderr, "cwnetd: sigaction: %s\n", strerror(errno));
         return 1;
@@ -1253,6 +1281,16 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    /* The output opens last, once the daemon can serve (KTD6): a start
+     * that fails before this point has changed no line, and one that fails
+     * here has left the port at rest and closed it (R6). */
+    if (!key_output_open(&g_out, &out_cfg, edge_write, NULL, out_err, sizeof(out_err))) {
+        fprintf(stderr, "cwnetd: %s\n", out_err);
+        sock_close(&listener);
+        sock_cleanup();
+        return 1;
+    }
+
     uint16_t bound = (uint16_t)args.port;
     (void)sock_local_port(listener, &bound);
     status_line("stato ascolto %s:%u max-clients %lu B>=%lu ms tetto %lu ms "
@@ -1262,7 +1300,16 @@ int main(int argc, char **argv) {
                 args.ptt_lead_ms, args.out_cap);
     /* Its own line: a path can be long, and truncating it must not take the
      * configuration with it. */
-    status_line("stato uscita %s fronti %s", g_out.name, g_edge_name);
+    if (key_output_poll_fd(&g_out) >= 0) {
+        /* The mapping first: two paths on one line, and the cap cuts the
+         * last one. */
+        char dev[CWNETD_SAFE_NAME_LEN];
+        sanitize(dev, sizeof(dev), args.serial);
+        status_line("stato uscita %s tasto %s ptt %s porta %s fronti %s", g_out.name,
+                    args.key_line, args.ptt_line, dev, g_edge_name);
+    } else {
+        status_line("stato uscita %s fronti %s", g_out.name, g_edge_name);
+    }
 
     /* The first snapshot goes out on the first pass, so a reader has the
      * whole state from the start rather than one period later. */
@@ -1272,11 +1319,12 @@ int main(int argc, char **argv) {
     g_snap.start_s = (long long)time(NULL);
     g_snap.pid = (long)getpid();
 
+    int exit_code = 0;
     while (g_stop == 0) {
         int64_t now_ms = (int64_t)clock_now_ms();
 
-        sock_pollfd_t fds[1 + CWNET_SERVER_MAX_CLIENTS];
-        int owner[1 + CWNET_SERVER_MAX_CLIENTS];
+        sock_pollfd_t fds[2 + CWNET_SERVER_MAX_CLIENTS];
+        int owner[2 + CWNET_SERVER_MAX_CLIENTS];
         size_t nfds = 0;
 
         fds[nfds].handle = listener;
@@ -1295,6 +1343,20 @@ int main(int argc, char **argv) {
                                        ((c->out_len > 0u) ? SOCK_POLLOUT : 0));
             fds[nfds].revents = 0;
             owner[nfds] = CWNET_SERVER_FIRST_CLIENT + i;
+            nfds++;
+        }
+        size_t nclients = nfds;
+
+        /* The serial port, last and apart from the clients: a hang-up is
+         * the adapter unplugged, and input is what the device sent, read
+         * and dropped. Input is asked for, not nothing, because XNU's
+         * poll() watches only the events requested (key_output.h). */
+        int out_fd = key_output_poll_fd(&g_out);
+        if (out_fd >= 0) {
+            fds[nfds].handle = sock_handle_from_fd(out_fd);
+            fds[nfds].events = SOCK_POLLIN;
+            fds[nfds].revents = 0;
+            owner[nfds] = -1;
             nfds++;
         }
 
@@ -1336,7 +1398,10 @@ int main(int argc, char **argv) {
         now_ms = (int64_t)clock_now_ms();
 
         if (ready > 0) {
-            for (size_t k = 1; k < nfds; k++) {
+            if (nfds > nclients && fds[nclients].revents != 0) {
+                key_output_service(&g_out, (fds[nclients].revents & SOCK_POLLHUP) != 0);
+            }
+            for (size_t k = 1; k < nclients; k++) {
                 if ((fds[k].revents & SOCK_POLLOUT) != 0) {
                     conn_t *c = conn_of(owner[k]);
                     if (c != NULL && c->in_use) {
@@ -1344,7 +1409,7 @@ int main(int argc, char **argv) {
                     }
                 }
             }
-            for (size_t k = 1; k < nfds; k++) {
+            for (size_t k = 1; k < nclients; k++) {
                 if ((fds[k].revents & SOCK_POLLIN) != 0) {
                     do_recv(owner[k], now_ms);
                 }
@@ -1361,6 +1426,15 @@ int main(int argc, char **argv) {
         cwnet_server_result_t res;
         cwnet_server_poll(&g_srv, now_ms, &res);
         handle_events(&res, now_ms);
+
+        /* After the batch, not inside it: every edge of the pass has been
+         * handed to the output and written to --edges (KTD4). */
+        const key_output_fault_t *fault = key_output_fault(&g_out);
+        if (fault != NULL) {
+            output_fault_line(fault, args.serial);
+            exit_code = CWNETD_EXIT_OUTPUT_FAULT;
+            break;
+        }
 
         snapshot_maybe(&args);
     }
@@ -1390,5 +1464,5 @@ int main(int argc, char **argv) {
         free(g_conn[i].out);
         g_conn[i].out = NULL;
     }
-    return 0;
+    return exit_code;
 }
