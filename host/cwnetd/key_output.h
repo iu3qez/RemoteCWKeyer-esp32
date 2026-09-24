@@ -66,10 +66,18 @@ typedef struct key_output_map {
  * call, and the lines are released only by closing the descriptor. The
  * daemon reads it after each batch of edges and stops with a FAULT.
  */
+typedef enum key_output_fault_kind {
+    KEY_OUTPUT_FAULT_CALL,    /**< An OS call returned an error */
+    KEY_OUTPUT_FAULT_SLOW,    /**< An OS call succeeded, over the time allowed */
+    KEY_OUTPUT_FAULT_HANGUP,  /**< The poll reported the device hung up */
+    KEY_OUTPUT_FAULT_READ,    /**< Reading the device hit end of file or an error */
+} key_output_fault_kind_t;
+
 typedef struct key_output_fault {
     bool set;
-    const char *call;      /**< The call that failed, e.g. "TIOCMSET" */
-    int err;               /**< Its errno; 0 when it succeeded but was too slow */
+    key_output_fault_kind_t kind;
+    const char *call;      /**< The OS call, for the message, e.g. "TIOCMSET" */
+    int err;               /**< Its errno; 0 for SLOW, HANGUP, and READ at end of file */
     int64_t duration_us;   /**< How long it took */
 } key_output_fault_t;
 

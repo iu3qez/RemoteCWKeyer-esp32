@@ -722,7 +722,8 @@ static bool test_line_call_error_recorded(void) {
     const key_output_fault_t *f = key_output_fault(&out);
     const char *want[] = { "key 1 500" };
     bool ok = expect_edges(want, 1);
-    if (f == NULL || !f->set || strcmp(f->call, "TIOCMSET") != 0 || f->err != EIO ||
+    if (f == NULL || !f->set || f->kind != KEY_OUTPUT_FAULT_CALL ||
+        strcmp(f->call, "TIOCMSET") != 0 || f->err != EIO ||
         f->duration_us != FAKE_CALL_US) {
         fprintf(stderr, "  fault not recorded as TIOCMSET, EIO, %d us\n", FAKE_CALL_US);
         ok = false;
@@ -749,7 +750,8 @@ static bool test_slow_line_call(void) {
     key_output_set_key(&out, false, 20);
     const key_output_fault_t *f = key_output_fault(&out);
     bool ok = true;
-    if (f == NULL || f->err != 0 || f->duration_us != KEY_OUTPUT_SERIAL_SLOW_US + 1000) {
+    if (f == NULL || f->kind != KEY_OUTPUT_FAULT_SLOW ||
+        f->duration_us != KEY_OUTPUT_SERIAL_SLOW_US + 1000) {
         fprintf(stderr, "  101 ms: no fault, or not recorded as slow\n");
         ok = false;
     }
@@ -873,7 +875,7 @@ static bool test_hangup_is_a_fault(void) {
     size_t from = F.n_calls;
     key_output_service(&out, true);
     const key_output_fault_t *f = key_output_fault(&out);
-    if (f == NULL || strcmp(f->call, "hangup") != 0) {
+    if (f == NULL || f->kind != KEY_OUTPUT_FAULT_HANGUP) {
         fprintf(stderr, "  hang-up: no fault, or not named hangup\n");
         return false;
     }
@@ -937,7 +939,7 @@ static bool test_read_end_is_a_fault(void) {
         key_output_service(&out, false);
         const key_output_fault_t *f = key_output_fault(&out);
         key_output_close(&out, 0);
-        if (f == NULL || strcmp(f->call, "read") != 0 || f->err != cases[i].err_no) {
+        if (f == NULL || f->kind != KEY_OUTPUT_FAULT_READ || f->err != cases[i].err_no) {
             fprintf(stderr, "  read returning %zd errno %d: no fault, or wrong record\n",
                     cases[i].end, cases[i].err_no);
             return false;

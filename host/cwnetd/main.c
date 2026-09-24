@@ -855,16 +855,22 @@ static void output_fault_line(const key_output_fault_t *f, const char *device) {
     char dev[CWNETD_SAFE_NAME_LEN];
     sanitize(dev, sizeof(dev), (device != NULL) ? device : g_out.name);
     long long ms = (long long)(f->duration_us / 1000);
-    if (strcmp(f->call, "hangup") == 0) {
-        status_line("stato fault: uscita %s: porta scomparsa (hang-up)", dev);
-    } else if (strcmp(f->call, "read") == 0) {
-        status_line("stato fault: uscita %s: porta scomparsa (read: %s)", dev,
-                    (f->err != 0) ? strerror(f->err) : "fine del file");
-    } else if (f->err != 0) {
-        status_line("stato fault: uscita %s: %s: %s dopo %lld ms", dev, f->call,
-                    strerror(f->err), ms);
-    } else {
-        status_line("stato fault: uscita %s: %s lento: %lld ms", dev, f->call, ms);
+    switch (f->kind) {
+        case KEY_OUTPUT_FAULT_HANGUP:
+            status_line("stato fault: uscita %s: porta scomparsa (hang-up)", dev);
+            break;
+        case KEY_OUTPUT_FAULT_READ:
+            status_line("stato fault: uscita %s: porta scomparsa (read: %s)", dev,
+                        (f->err != 0) ? strerror(f->err) : "fine del file");
+            break;
+        case KEY_OUTPUT_FAULT_SLOW:
+            status_line("stato fault: uscita %s: %s lento: %lld ms", dev, f->call, ms);
+            break;
+        case KEY_OUTPUT_FAULT_CALL:
+        default:
+            status_line("stato fault: uscita %s: %s: %s dopo %lld ms", dev, f->call,
+                        strerror(f->err), ms);
+            break;
     }
 }
 
