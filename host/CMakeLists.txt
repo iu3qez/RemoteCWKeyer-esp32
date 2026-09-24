@@ -53,8 +53,19 @@ add_library(cwnet_core STATIC
 )
 target_include_directories(cwnet_core PUBLIC ${CWNET_DIR}/include)
 
+# The output seam on its own, so the serial backend's test links it without
+# main.c.
+add_library(key_output STATIC
+    cwnetd/key_output.c
+    cwnetd/key_output_serial.c
+)
+
+add_executable(key_output_serial_test tests/key_output_serial_test.c)
+target_link_libraries(key_output_serial_test PRIVATE key_output)
+
+add_test(NAME key_output_serial_test COMMAND key_output_serial_test)
+
 add_executable(cwnetd
     cwnetd/main.c
-    cwnetd/key_output.c
 )
-target_link_libraries(cwnetd PRIVATE host_platform cwnet_core)
+target_link_libraries(cwnetd PRIVATE host_platform cwnet_core key_output)

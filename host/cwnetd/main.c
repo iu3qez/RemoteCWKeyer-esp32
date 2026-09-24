@@ -885,6 +885,9 @@ typedef struct {
     unsigned long handshake_ms;
     unsigned long out_cap;
     const char *output;
+    const char *serial;
+    const char *key_line;
+    const char *ptt_line;
     const char *edges;
     unsigned long snapshot_ms;
 } args_t;
@@ -910,6 +913,10 @@ static void usage(const char *argv0, const args_t *d) {
         "  --out-cap BYTE      byte non inviati per client oltre i quali lo chiudo\n"
         "                      (default %lu, min %lu, max %lu)\n"
         "  --output BACKEND    uscita di tasto e PTT: %s (default %s)\n"
+        "  --serial DEVICE     porta di --output serial (default nessuna)\n"
+        "  --key-line LINE     linea del tasto: dtr, rts, dtr-inv, rts-inv\n"
+        "                      (default %s; -inv: bassa = tasto giu')\n"
+        "  --ptt-line LINE     linea del PTT: come sopra, o none (default %s)\n"
         "  --edges DEST        descrittore dei fronti: 'stderr' o un file, mai stdout\n"
         "                      (default %s; il file si apre in append)\n"
         "  --snapshot-ms MS    periodo dell'istantanea dello stato su stdout\n"
@@ -928,7 +935,7 @@ static void usage(const char *argv0, const args_t *d) {
         d->play_floor_ms, d->link_ceiling_ms, d->ptt_tail_ms, d->ptt_lead_ms,
         d->idle_ms, d->over_max_ms, d->handshake_ms,
         d->out_cap, (unsigned long)CWNETD_MIN_OUT_CAP, (unsigned long)CWNETD_MAX_OUT_CAP,
-        key_output_backends(), d->output, d->edges,
+        key_output_backends(), d->output, d->key_line, d->ptt_line, d->edges,
         d->snapshot_ms, (unsigned long)CWNETD_MIN_SNAPSHOT_MS,
         (unsigned long)CWNETD_MAX_SNAPSHOT_MS);
 }
@@ -947,7 +954,8 @@ static bool parse_ulong(const char *s, unsigned long max, unsigned long *out) {
 enum {
     OPT_LISTEN = 1000, OPT_PORT, OPT_MAX_CLIENTS, OPT_PLAY_FLOOR, OPT_LINK_CEILING,
     OPT_PTT_TAIL, OPT_PTT_LEAD, OPT_IDLE, OPT_OVER_MAX, OPT_HANDSHAKE,
-    OPT_OUT_CAP, OPT_OUTPUT, OPT_EDGES, OPT_SNAPSHOT_MS,
+    OPT_OUT_CAP, OPT_OUTPUT, OPT_SERIAL, OPT_KEY_LINE, OPT_PTT_LINE, OPT_EDGES,
+    OPT_SNAPSHOT_MS,
     OPT_HELP
 };
 
@@ -965,6 +973,9 @@ static bool parse_args(int argc, char **argv, args_t *a, bool *want_help) {
         { "handshake",    required_argument, NULL, OPT_HANDSHAKE },
         { "out-cap",      required_argument, NULL, OPT_OUT_CAP },
         { "output",       required_argument, NULL, OPT_OUTPUT },
+        { "serial",       required_argument, NULL, OPT_SERIAL },
+        { "key-line",     required_argument, NULL, OPT_KEY_LINE },
+        { "ptt-line",     required_argument, NULL, OPT_PTT_LINE },
         { "edges",        required_argument, NULL, OPT_EDGES },
         { "snapshot-ms",  required_argument, NULL, OPT_SNAPSHOT_MS },
         { "help",         no_argument,       NULL, OPT_HELP },
@@ -998,6 +1009,9 @@ static bool parse_args(int argc, char **argv, args_t *a, bool *want_help) {
                      a->out_cap >= (unsigned long)CWNETD_MIN_OUT_CAP;
                 break;
             case OPT_OUTPUT:       a->output = optarg; break;
+            case OPT_SERIAL:       a->serial = optarg; break;
+            case OPT_KEY_LINE:     a->key_line = optarg; break;
+            case OPT_PTT_LINE:     a->ptt_line = optarg; break;
             case OPT_EDGES:        a->edges = optarg; break;
             case OPT_SNAPSHOT_MS:
                 ok = parse_ulong(optarg, (unsigned long)CWNETD_MAX_SNAPSHOT_MS,
@@ -1144,6 +1158,9 @@ int main(int argc, char **argv) {
         .handshake_ms    = CWNET_SERVER_DEFAULT_HANDSHAKE_MS,
         .out_cap         = CWNETD_DEFAULT_OUT_CAP,
         .output          = "virtual",
+        .serial          = NULL,
+        .key_line        = KEY_OUTPUT_DEFAULT_KEY_LINE,
+        .ptt_line        = KEY_OUTPUT_DEFAULT_PTT_LINE,
         .edges           = "stderr",
         .snapshot_ms     = CWNETD_DEFAULT_SNAPSHOT_MS,
     };
@@ -1157,6 +1174,25 @@ int main(int argc, char **argv) {
     if (want_help) {
         usage(argv[0], &defaults);
         return 0;
+    }
+
+    /* The output's configuration is refused here, before anything is opened:
+     * a bad line mapping must not cost a port, a file or a socket. */
+    const key_output_cfg_t out_cfg = {
+        .backend  = args.output,
+        .device   = args.serial,
+        .key_line = args.key_line,
+        .ptt_line = args.ptt_line,
+    };
+    key_output_map_t out_map;
+    char out_err[KEY_OUTPUT_ERR_LEN];
+    if (!key_output_check(&out_cfg, &out_map, out_err, sizeof(out_err))) {
+        fprintf(stderr, "cwnetd: %s\n", out_err);
+        return 2;
+    }
+    const char *root_warning = key_output_root_warning(args.output, (unsigned long)geteuid());
+    if (root_warning != NULL) {
+        fprintf(stderr, "cwnetd: %s\n", root_warning);
     }
 
     /* stdout must never be what stalls the timing (KTD7) */

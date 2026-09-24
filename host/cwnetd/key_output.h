@@ -30,6 +30,7 @@
 #define HOST_CWNETD_KEY_OUTPUT_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -63,6 +64,82 @@ typedef struct key_output {
 
 /** Comma-separated list of the backends key_output_open() accepts, for --help. */
 const char *key_output_backends(void);
+
+/*---------------------------------------------------------------------------*/
+/* Configuration (plan 2026-09-24-2143, KTD7)                                */
+/*---------------------------------------------------------------------------*/
+
+/** Default line of each function: DTR = key, RTS = PTT (N1MM, DL4YHF). */
+#define KEY_OUTPUT_DEFAULT_KEY_LINE "dtr"
+#define KEY_OUTPUT_DEFAULT_PTT_LINE "rts"
+
+/** Room for any message key_output_check() writes. */
+#define KEY_OUTPUT_ERR_LEN 160
+
+/**
+ * What the operator asked for, as given on the command line. The strings
+ * are not copied and must outlive the output. A NULL line takes its default,
+ * so main.c can pass a flag that was never given as it is. The serial fields
+ * are read only when the backend is "serial".
+ */
+typedef struct key_output_cfg {
+    const char *backend;   /**< "virtual" or "serial" */
+    const char *device;    /**< --serial: the port, e.g. /dev/cu.usbserial-X */
+    const char *key_line;  /**< --key-line: dtr, rts, dtr-inv, rts-inv */
+    const char *ptt_line;  /**< --ptt-line: the same, or none */
+} key_output_cfg_t;
+
+/**
+ * Which modem-control line carries each function, as TIOCM_DTR / TIOCM_RTS
+ * bits. A zero bit is a function on no line. An inverted line is low when
+ * its function is active.
+ */
+typedef struct key_output_map {
+    unsigned key_bit;
+    bool key_inverted;
+    unsigned ptt_bit;
+    bool ptt_inverted;
+} key_output_map_t;
+
+/**
+ * @brief Validate a configuration and resolve its line mapping.
+ *
+ * Touches no device. Refuses: an unknown backend; a serial backend without
+ * a device; an unknown line value; the key on no line; key and PTT on the
+ * same line, inverted or not.
+ *
+ * @param cfg     Configuration, not NULL
+ * @param map     Filled on success; all zero for the virtual backend
+ * @param err     On failure, a message that names the flag and the value
+ * @param err_len Size of @p err; KEY_OUTPUT_ERR_LEN holds any message
+ * @return true when the configuration can be opened
+ */
+bool key_output_check(const key_output_cfg_t *cfg, key_output_map_t *map,
+                      char *err, size_t err_len);
+
+/**
+ * @brief The modem-control lines to hold high for a function state.
+ *
+ * Pure. Rest is (false, false). A line no function uses is never in the
+ * result, so it stays low.
+ *
+ * @return a TIOCM_DTR / TIOCM_RTS mask of the lines that are high
+ */
+unsigned key_output_levels(const key_output_map_t *map, bool key_down, bool ptt_on);
+
+/**
+ * @brief The start-up warning for a serial output run as root, or NULL.
+ *
+ * The exclusive lock on the port does not stop root: Linux lets
+ * CAP_SYS_ADMIN past TIOCEXCL, XNU lets the superuser past it, and flock is
+ * advisory. A second cwnetd started as root then opens the port under a
+ * running one, and the open raises DTR and RTS. The maintainer chose a
+ * warning over a refusal (plan 2026-09-24-2143, Key Decisions).
+ *
+ * @param backend The --output value
+ * @param euid    The effective uid, as geteuid() returns it
+ */
+const char *key_output_root_warning(const char *backend, unsigned long euid);
 
 /**
  * @brief Wire up an output. Starts at rest: key up, PTT off.
