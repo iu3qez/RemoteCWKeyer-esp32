@@ -13,6 +13,7 @@
 #include <string.h>
 #include <time.h>
 #include <sys/socket.h>
+#include <unistd.h>
 
 /*===========================================================================*/
 /* Fixture bytes                                                            */
@@ -385,6 +386,31 @@ static bool test_clock_wire_mask(void) {
     return ok;
 }
 
+/* A descriptor that is not open reports SOCK_POLLHUP: the case of a serial
+ * port whose adapter was unplugged (cwnetd, U3). SOCK_POLLIN is asked for
+ * because XNU's poll() registers a kevent only for the events requested
+ * (sys_generic.c:1750): with none, it reports nothing at all. */
+static bool test_poll_reports_hangup_on_a_plain_fd(void) {
+    int p[2];
+    if (pipe(p) != 0) {
+        fprintf(stderr, "poll_hangup: pipe failed\n");
+        return false;
+    }
+    (void)close(p[0]);
+    (void)close(p[1]);
+    sock_pollfd_t fd;
+    fd.handle = sock_handle_from_fd(p[0]);
+    fd.events = SOCK_POLLIN;
+    fd.revents = 0;
+    int n = sock_poll(&fd, 1, 0);
+    if (n != 1 || (fd.revents & SOCK_POLLHUP) == 0) {
+        fprintf(stderr, "poll_hangup: n=%d revents=0x%x, want SOCK_POLLHUP\n",
+                n, (unsigned)fd.revents);
+        return false;
+    }
+    return true;
+}
+
 /*===========================================================================*/
 /* Runner                                                                   */
 /*===========================================================================*/
@@ -407,6 +433,7 @@ int main(void) {
         {"listen_refuses_a_hostname", test_listen_refuses_a_hostname},
         {"clock_monotonic_and_in_ms", test_clock_monotonic_and_in_ms},
         {"clock_wire_mask", test_clock_wire_mask},
+        {"poll_reports_hangup_on_a_plain_fd", test_poll_reports_hangup_on_a_plain_fd},
     };
     size_t n_tests = sizeof(tests) / sizeof(tests[0]);
 

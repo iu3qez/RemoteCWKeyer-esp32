@@ -147,7 +147,11 @@
  * tables in cwnetd/README.md, "Reading a status line", are what it names:
  * change the shape of a line there and this changes with it.
  */
-#define CWNETD_VOCABULARY "v1"
+#define CWNETD_VOCABULARY "v2"
+
+/** Exit code of a stop on an output FAULT, apart from a clean stop (0) and
+ *  a failed start (1, 2). */
+#define CWNETD_EXIT_OUTPUT_FAULT 3
 
 /** --snapshot-ms: how often the whole state goes to stdout */
 #define CWNETD_DEFAULT_SNAPSHOT_MS 5000u
@@ -320,7 +324,7 @@ static bool g_edge_owned = false;       /**< A file we opened, so we close it */
 static unsigned long g_edge_stalls = 0;      /**< Edges that had to wait */
 static int64_t g_edge_stall_ms = 0;          /**< How long they waited, in total */
 static unsigned long g_edge_errors = 0;      /**< Edges the descriptor refused */
-static unsigned long g_edge_given_up = 0;    /**< Edges dropped while shutting down */
+static unsigned long g_edge_given_up = 0;    /**< Edges not written: at shutdown, or on an output FAULT */
 
 /**
  * @brief One edge line on the edge descriptor. Does not return until it is
@@ -358,13 +362,28 @@ static void edge_write(void *ctx, const char *line) {
                 wait_started_ms = (int64_t)clock_now_ms();
                 waited = true;
             }
+            /* The serial output has already changed the line: while this
+             * waits, the rig is keyed. Past its limit the wait is an output
+             * FAULT, and the loop stops and closes the port. Tuning is not
+             * affected: a key held down writes one line, then nothing. */
+            int64_t limit_ms = key_output_edge_wait_ms(&g_out);
+            int64_t waited_ms = (int64_t)clock_now_ms() - wait_started_ms;
+            if (limit_ms != KEY_OUTPUT_EDGE_WAIT_FOREVER && waited_ms >= limit_ms) {
+                key_output_fail(&g_out, KEY_OUTPUT_FAULT_EDGES, "write", 0, waited_ms * 1000);
+                g_edge_given_up++;
+                return;
+            }
+            int slice_ms = CWNETD_EDGE_WAIT_MS;
+            if (limit_ms != KEY_OUTPUT_EDGE_WAIT_FOREVER && limit_ms - waited_ms < slice_ms) {
+                slice_ms = (int)(limit_ms - waited_ms);
+            }
             struct pollfd p;
             p.fd = g_edge_fd;
             p.events = POLLOUT;
             p.revents = 0;
-            (void)poll(&p, 1, CWNETD_EDGE_WAIT_MS);
+            (void)poll(&p, 1, slice_ms);
 
-            int64_t waited_ms = (int64_t)clock_now_ms() - wait_started_ms;
+            waited_ms = (int64_t)clock_now_ms() - wait_started_ms;
             if (!said_so && waited_ms >= CWNETD_EDGE_WAIT_MS) {
                 /* Live, while still stuck: the operator sees the cause of
                  * the jitter as it happens, not in the totals afterwards. */
@@ -837,6 +856,44 @@ static void do_recv(int client_idx, int64_t now_ms) {
 }
 
 /*===========================================================================*/
+/* Output FAULT (plan 2026-09-24-2143, R7, KTD4)                             */
+/*===========================================================================*/
+
+/**
+ * @brief The status line of an output failure
+ *
+ * "stato fault: uscita DEVICE: CAUSE", the form of a fault that belongs to
+ * no client. The daemon stops right after it: the port is in a state
+ * nobody knows, and corrupted CW timing is worse than silence.
+ */
+static void output_fault_line(const key_output_fault_t *f, const char *device) {
+    char dev[CWNETD_SAFE_NAME_LEN];
+    sanitize(dev, sizeof(dev), (device != NULL) ? device : g_out.name);
+    long long ms = (long long)(f->duration_us / 1000);
+    switch (f->kind) {
+        case KEY_OUTPUT_FAULT_HANGUP:
+            status_line("stato fault: uscita %s: porta scomparsa (hang-up)", dev);
+            break;
+        case KEY_OUTPUT_FAULT_READ:
+            status_line("stato fault: uscita %s: porta scomparsa (read: %s)", dev,
+                        (f->err != 0) ? strerror(f->err) : "fine del file");
+            break;
+        case KEY_OUTPUT_FAULT_EDGES:
+            /* Not the path: the panel shows fault lines on a LAN page. */
+            status_line("stato fault: uscita %s: fronti bloccati da %lld ms", dev, ms);
+            break;
+        case KEY_OUTPUT_FAULT_SLOW:
+            status_line("stato fault: uscita %s: %s lento: %lld ms", dev, f->call, ms);
+            break;
+        case KEY_OUTPUT_FAULT_CALL:
+        default:
+            status_line("stato fault: uscita %s: %s: %s dopo %lld ms", dev, f->call,
+                        strerror(f->err), ms);
+            break;
+    }
+}
+
+/*===========================================================================*/
 /* Signals                                                                   */
 /*===========================================================================*/
 
@@ -885,6 +942,9 @@ typedef struct {
     unsigned long handshake_ms;
     unsigned long out_cap;
     const char *output;
+    const char *serial;
+    const char *key_line;
+    const char *ptt_line;
     const char *edges;
     unsigned long snapshot_ms;
 } args_t;
@@ -910,6 +970,10 @@ static void usage(const char *argv0, const args_t *d) {
         "  --out-cap BYTE      byte non inviati per client oltre i quali lo chiudo\n"
         "                      (default %lu, min %lu, max %lu)\n"
         "  --output BACKEND    uscita di tasto e PTT: %s (default %s)\n"
+        "  --serial DEVICE     porta di --output serial (default nessuna)\n"
+        "  --key-line LINE     linea del tasto: dtr, rts, dtr-inv, rts-inv\n"
+        "                      (default %s; -inv: bassa = tasto giu')\n"
+        "  --ptt-line LINE     linea del PTT: come sopra, o none (default %s)\n"
         "  --edges DEST        descrittore dei fronti: 'stderr' o un file, mai stdout\n"
         "                      (default %s; il file si apre in append)\n"
         "  --snapshot-ms MS    periodo dell'istantanea dello stato su stdout\n"
@@ -928,7 +992,7 @@ static void usage(const char *argv0, const args_t *d) {
         d->play_floor_ms, d->link_ceiling_ms, d->ptt_tail_ms, d->ptt_lead_ms,
         d->idle_ms, d->over_max_ms, d->handshake_ms,
         d->out_cap, (unsigned long)CWNETD_MIN_OUT_CAP, (unsigned long)CWNETD_MAX_OUT_CAP,
-        key_output_backends(), d->output, d->edges,
+        key_output_backends(), d->output, d->key_line, d->ptt_line, d->edges,
         d->snapshot_ms, (unsigned long)CWNETD_MIN_SNAPSHOT_MS,
         (unsigned long)CWNETD_MAX_SNAPSHOT_MS);
 }
@@ -947,7 +1011,8 @@ static bool parse_ulong(const char *s, unsigned long max, unsigned long *out) {
 enum {
     OPT_LISTEN = 1000, OPT_PORT, OPT_MAX_CLIENTS, OPT_PLAY_FLOOR, OPT_LINK_CEILING,
     OPT_PTT_TAIL, OPT_PTT_LEAD, OPT_IDLE, OPT_OVER_MAX, OPT_HANDSHAKE,
-    OPT_OUT_CAP, OPT_OUTPUT, OPT_EDGES, OPT_SNAPSHOT_MS,
+    OPT_OUT_CAP, OPT_OUTPUT, OPT_SERIAL, OPT_KEY_LINE, OPT_PTT_LINE, OPT_EDGES,
+    OPT_SNAPSHOT_MS,
     OPT_HELP
 };
 
@@ -965,6 +1030,9 @@ static bool parse_args(int argc, char **argv, args_t *a, bool *want_help) {
         { "handshake",    required_argument, NULL, OPT_HANDSHAKE },
         { "out-cap",      required_argument, NULL, OPT_OUT_CAP },
         { "output",       required_argument, NULL, OPT_OUTPUT },
+        { "serial",       required_argument, NULL, OPT_SERIAL },
+        { "key-line",     required_argument, NULL, OPT_KEY_LINE },
+        { "ptt-line",     required_argument, NULL, OPT_PTT_LINE },
         { "edges",        required_argument, NULL, OPT_EDGES },
         { "snapshot-ms",  required_argument, NULL, OPT_SNAPSHOT_MS },
         { "help",         no_argument,       NULL, OPT_HELP },
@@ -998,6 +1066,9 @@ static bool parse_args(int argc, char **argv, args_t *a, bool *want_help) {
                      a->out_cap >= (unsigned long)CWNETD_MIN_OUT_CAP;
                 break;
             case OPT_OUTPUT:       a->output = optarg; break;
+            case OPT_SERIAL:       a->serial = optarg; break;
+            case OPT_KEY_LINE:     a->key_line = optarg; break;
+            case OPT_PTT_LINE:     a->ptt_line = optarg; break;
             case OPT_EDGES:        a->edges = optarg; break;
             case OPT_SNAPSHOT_MS:
                 ok = parse_ulong(optarg, (unsigned long)CWNETD_MAX_SNAPSHOT_MS,
@@ -1030,9 +1101,10 @@ static bool parse_args(int argc, char **argv, args_t *a, bool *want_help) {
  * @brief The whole state, over several lines, in one go
  *
  * 256 bytes do not hold eight clients and their names, so a snapshot is an
- * opening, a settings line, one line per connection and a closing, tied by
- * a sequence number (cwnetd/README.md, "The periodic snapshot"). Nothing
- * else is written between them: this runs on the loop's only thread.
+ * opening, a settings line, one line per connection, an output line and a
+ * closing, tied by a sequence number (cwnetd/README.md, "The periodic
+ * snapshot"). Nothing else is written between them: this runs on the
+ * loop's only thread.
  *
  * The opening's count and the client lines come from one enumeration, the
  * connections with an open socket, taken before anything is written. Two
@@ -1086,6 +1158,11 @@ static void snapshot_write(const args_t *a) {
                     strlen(name), name);
     }
 
+    /* The line changes of the output: how many, the slowest in us, and how
+     * many took over the 100 ms of a FAULT. Zeros for virtual, which makes
+     * none. The serial numbers are what U6 measures against. */
+    status_line("stato snap uscita cambi %lu max-us %lld lenti %lu",
+                g_out.timing.count, (long long)g_out.timing.max_us, g_out.timing.slow);
     status_line("stato snap fine seq %lu", g_snap.seq);
 }
 
@@ -1144,6 +1221,9 @@ int main(int argc, char **argv) {
         .handshake_ms    = CWNET_SERVER_DEFAULT_HANDSHAKE_MS,
         .out_cap         = CWNETD_DEFAULT_OUT_CAP,
         .output          = "virtual",
+        .serial          = NULL,
+        .key_line        = KEY_OUTPUT_DEFAULT_KEY_LINE,
+        .ptt_line        = KEY_OUTPUT_DEFAULT_PTT_LINE,
         .edges           = "stderr",
         .snapshot_ms     = CWNETD_DEFAULT_SNAPSHOT_MS,
     };
@@ -1157,6 +1237,25 @@ int main(int argc, char **argv) {
     if (want_help) {
         usage(argv[0], &defaults);
         return 0;
+    }
+
+    /* The output's configuration is refused here, before anything is opened:
+     * a bad line mapping must not cost a port, a file or a socket. */
+    const key_output_cfg_t out_cfg = {
+        .backend  = args.output,
+        .device   = args.serial,
+        .key_line = args.key_line,
+        .ptt_line = args.ptt_line,
+    };
+    key_output_map_t out_map;
+    char out_err[KEY_OUTPUT_ERR_LEN];
+    if (!key_output_check(&out_cfg, &out_map, out_err, sizeof(out_err))) {
+        fprintf(stderr, "cwnetd: %s\n", out_err);
+        return 2;
+    }
+    const char *root_warning = key_output_root_warning(args.output, (unsigned long)geteuid());
+    if (root_warning != NULL) {
+        fprintf(stderr, "cwnetd: %s\n", root_warning);
     }
 
     /* stdout must never be what stalls the timing (KTD7) */
@@ -1177,11 +1276,6 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (!key_output_open(&g_out, args.output, edge_write, NULL)) {
-        fprintf(stderr, "cwnetd: backend di uscita sconosciuto: %s (validi: %s)\n",
-                args.output, key_output_backends());
-        return 2;
-    }
     if (!install_signals()) {
         fprintf(stderr, "cwnetd: sigaction: %s\n", strerror(errno));
         return 1;
@@ -1218,6 +1312,16 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    /* The output opens last, once the daemon can serve (KTD6): a start
+     * that fails before this point has changed no line, and one that fails
+     * here has left the port at rest and closed it (R6). */
+    if (!key_output_open(&g_out, &out_cfg, edge_write, NULL, out_err, sizeof(out_err))) {
+        fprintf(stderr, "cwnetd: %s\n", out_err);
+        sock_close(&listener);
+        sock_cleanup();
+        return 1;
+    }
+
     uint16_t bound = (uint16_t)args.port;
     (void)sock_local_port(listener, &bound);
     status_line("stato ascolto %s:%u max-clients %lu B>=%lu ms tetto %lu ms "
@@ -1227,7 +1331,16 @@ int main(int argc, char **argv) {
                 args.ptt_lead_ms, args.out_cap);
     /* Its own line: a path can be long, and truncating it must not take the
      * configuration with it. */
-    status_line("stato uscita %s fronti %s", g_out.name, g_edge_name);
+    if (key_output_poll_fd(&g_out) >= 0) {
+        /* The mapping first: two paths on one line, and the cap cuts the
+         * last one. */
+        char dev[CWNETD_SAFE_NAME_LEN];
+        sanitize(dev, sizeof(dev), args.serial);
+        status_line("stato uscita %s tasto %s ptt %s porta %s fronti %s", g_out.name,
+                    args.key_line, args.ptt_line, dev, g_edge_name);
+    } else {
+        status_line("stato uscita %s fronti %s", g_out.name, g_edge_name);
+    }
 
     /* The first snapshot goes out on the first pass, so a reader has the
      * whole state from the start rather than one period later. */
@@ -1237,11 +1350,12 @@ int main(int argc, char **argv) {
     g_snap.start_s = (long long)time(NULL);
     g_snap.pid = (long)getpid();
 
+    int exit_code = 0;
     while (g_stop == 0) {
         int64_t now_ms = (int64_t)clock_now_ms();
 
-        sock_pollfd_t fds[1 + CWNET_SERVER_MAX_CLIENTS];
-        int owner[1 + CWNET_SERVER_MAX_CLIENTS];
+        sock_pollfd_t fds[2 + CWNET_SERVER_MAX_CLIENTS];
+        int owner[2 + CWNET_SERVER_MAX_CLIENTS];
         size_t nfds = 0;
 
         fds[nfds].handle = listener;
@@ -1260,6 +1374,20 @@ int main(int argc, char **argv) {
                                        ((c->out_len > 0u) ? SOCK_POLLOUT : 0));
             fds[nfds].revents = 0;
             owner[nfds] = CWNET_SERVER_FIRST_CLIENT + i;
+            nfds++;
+        }
+        size_t nclients = nfds;
+
+        /* The serial port, last and apart from the clients: a hang-up is
+         * the adapter unplugged, and input is what the device sent, read
+         * and dropped. Input is asked for, not nothing, because XNU's
+         * poll() watches only the events requested (key_output.h). */
+        int out_fd = key_output_poll_fd(&g_out);
+        if (out_fd >= 0) {
+            fds[nfds].handle = sock_handle_from_fd(out_fd);
+            fds[nfds].events = SOCK_POLLIN;
+            fds[nfds].revents = 0;
+            owner[nfds] = -1;
             nfds++;
         }
 
@@ -1301,7 +1429,10 @@ int main(int argc, char **argv) {
         now_ms = (int64_t)clock_now_ms();
 
         if (ready > 0) {
-            for (size_t k = 1; k < nfds; k++) {
+            if (nfds > nclients && fds[nclients].revents != 0) {
+                key_output_service(&g_out, (fds[nclients].revents & SOCK_POLLHUP) != 0);
+            }
+            for (size_t k = 1; k < nclients; k++) {
                 if ((fds[k].revents & SOCK_POLLOUT) != 0) {
                     conn_t *c = conn_of(owner[k]);
                     if (c != NULL && c->in_use) {
@@ -1309,7 +1440,7 @@ int main(int argc, char **argv) {
                     }
                 }
             }
-            for (size_t k = 1; k < nfds; k++) {
+            for (size_t k = 1; k < nclients; k++) {
                 if ((fds[k].revents & SOCK_POLLIN) != 0) {
                     do_recv(owner[k], now_ms);
                 }
@@ -1327,6 +1458,15 @@ int main(int argc, char **argv) {
         cwnet_server_poll(&g_srv, now_ms, &res);
         handle_events(&res, now_ms);
 
+        /* After the batch, not inside it: every edge of the pass has been
+         * handed to the output and written to --edges (KTD4). */
+        const key_output_fault_t *fault = key_output_fault(&g_out);
+        if (fault != NULL) {
+            output_fault_line(fault, args.serial);
+            exit_code = CWNETD_EXIT_OUTPUT_FAULT;
+            break;
+        }
+
         snapshot_maybe(&args);
     }
 
@@ -1334,6 +1474,13 @@ int main(int argc, char **argv) {
     status_line("stato arresto");
     shutdown_clients();
     key_output_close(&g_out, now_ms);
+    /* The release above can fail too, on a port unplugged before the
+     * signal: the rig may be keyed, and a clean exit would hide it. */
+    const key_output_fault_t *release_fault = key_output_fault(&g_out);
+    if (exit_code == 0 && release_fault != NULL) {
+        output_fault_line(release_fault, args.serial);
+        exit_code = CWNETD_EXIT_OUTPUT_FAULT;
+    }
     report_ptt();
     sock_close(&listener);
     sock_cleanup();
@@ -1355,5 +1502,5 @@ int main(int argc, char **argv) {
         free(g_conn[i].out);
         g_conn[i].out = NULL;
     }
-    return 0;
+    return exit_code;
 }

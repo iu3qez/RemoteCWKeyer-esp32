@@ -55,7 +55,11 @@ Ctrl-C (SIGINT) or SIGTERM close the clients and return the output to rest
 --handshake MS      time to complete the CONNECT (default 5000)
 --out-cap BYTE      unsent bytes per client beyond which I close it
                     (default 16384, min 256, max 16777216)
---output BACKEND    key and PTT output: virtual (default virtual)
+--output BACKEND    key and PTT output: virtual, serial (default virtual)
+--serial DEVICE     port of --output serial (default none)
+--key-line LINE     line of the key: dtr, rts, dtr-inv, rts-inv
+                    (default dtr; -inv: low = key down)
+--ptt-line LINE     line of the PTT: the same, or none (default rts)
 --edges DEST        edges descriptor: 'stderr' or a file (default stderr)
 --snapshot-ms MS    period of the state snapshot on stdout
                     (default 5000, min 50, max 3600000)
@@ -84,10 +88,14 @@ backlog. A peer that has not read in a long time is not coming back, and
 holding its bytes only costs the others, who wait for their PING behind it.
 Past the cap that client closes, the loop does not slow down.
 
-`--output` has only one backend today, `virtual`: the physical transport
-(serial or GPIO to the rig) is behind a Decision not yet opened (KTD9); once
-it is, a new backend fills the same two function pointers in
-`key_output.h` and nothing above changes.
+`--output` has two backends. `virtual` drives nothing and writes each edge
+on `--edges`. `serial` keys the rig on a serial port's DTR and RTS lines
+(decision #98), and writes the same edge lines: see *Serial output at the
+station*. Both fill the same two function pointers in `key_output.h`.
+
+Exit codes: 0 after SIGINT or SIGTERM, 1 when the start fails (the port, the
+socket, memory), 2 for a bad flag, 3 after an output FAULT (`stato fault:
+uscita ...`).
 
 ## Two outputs, and why
 
@@ -126,9 +134,102 @@ cost is made visible instead of hidden:
   edge is capped at one second: a descriptor that nobody drains must not
   make the daemon impossible to close except with SIGKILL. The edges left
   behind end up in the `persi` count of the last line.
+- **With `--output serial` a stall is a FAULT.** The line has already
+  changed when the edge line is written, so while the loop waits the rig
+  is keyed and nothing can key it up. A wait over 100 ms ends the session:
+  `stato fault: uscita DEVICE: fronti bloccati da N ms`, the port closed,
+  exit code 3, the edge not written counted in `persi`. A Ctrl-S in the
+  terminal that shows stderr is enough to cause it: with the serial output,
+  send the edges to a file. This limits one write, not how long the key is
+  held: a key held down for tuning writes one line and then nothing.
 
 `--edges stdout` is rejected at startup: it's the only descriptor that
 cannot give edges the separation R11 requires.
+
+**On a serial port, rest is the kernel's job.** The port is opened with
+`HUPCL`, so the last close of the descriptor drops DTR and RTS. That close
+happens on SIGINT and SIGTERM (after the daemon has put key up and PTT
+off), on an output FAULT (with no line call before it, so key and PTT drop
+together), and on SIGKILL or a crash (the kernel closes every descriptor
+of a dead process). With plain lines, dropped is rest: the transmitter is
+at key up and PTT off whenever `cwnetd` is not running. Where it stops
+holding:
+
+- **An inverted line.** Dropped is *active* for `dtr-inv` and `rts-inv`:
+  every stop and every crash leaves that function on.
+- **SIGSTOP, a debugger, a sleeping PC.** No close happens, so the lines
+  keep their state, key down included. Only the rig's own transmit timer
+  ends a key-down then. Set it.
+- **Another process holding the port.** The lines drop on the *last*
+  close, so while ModemManager, brltty or a CAT program has the port open,
+  a crash of `cwnetd` drops nothing.
+
+## Serial output at the station
+
+```sh
+host/build/cwnetd --output serial --serial /dev/serial/by-id/usb-FTDI_...-if00-port0 \
+                  --edges fronti.log
+```
+
+**Wiring.** The default follows N1MM Logger+ and the DL4YHF program: DTR
+(DB9 pin 4) is the CW key, RTS (DB9 pin 7) is PTT, and a high line is an
+active function. `--key-line` and `--ptt-line` move a function to the
+other line, invert it (`dtr-inv`, `rts-inv`), or leave PTT on no line
+(`--ptt-line none`, for a rig that switches on the key with its own
+break-in). Key and PTT on the same line are refused. A line no function
+uses is held low.
+
+**Naming the port.** On Linux use `/dev/serial/by-id/...`: the name stays
+the same whatever order adapters are plugged in, where `/dev/ttyUSB0` does
+not. On macOS use `/dev/cu.*`, not `/dev/tty.*`. The user needs read and
+write access to the device: on most Linux distributions, membership of the
+`dialout` group.
+
+**Start the daemon with the rig off, or its keying input disabled.**
+Opening a USB serial port raises DTR and RTS for about one control
+transfer before `cwnetd` can put them back to rest, and neither OS lets
+software prevent it:
+
+- on Linux, at the first start after the adapter is plugged in, and at
+  every start when a line is inverted. With plain lines `cwnetd` leaves the
+  port at speed B0, which the kernel remembers until the adapter is
+  unplugged, and at B0 a later open does not raise the lines
+  (`tty_port.c:504-507`);
+- on macOS, at every start (`IOSerialBSDClient.cpp:2401-2408`). There
+  `cwnetd` does not set B0: it would not prevent this, and macOS passes the
+  rate 0 to a closed driver.
+
+How wide that rise is on each OS is under *Measured numbers*.
+
+**Nothing else may hold the port.** `cwnetd` locks it (`TIOCEXCL` and
+`flock`), so a second `cwnetd` or a terminal program is refused. Two cases
+get past the lock:
+
+- **Programs already holding the port.** On Linux, ModemManager probes new
+  serial devices and raises DTR while it does. Tell it to ignore the
+  adapter with a udev rule, for an FT232R
+  `ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", ENV{ID_MM_DEVICE_IGNORE}="1"`
+  (`lsusb` gives the ids of yours), or remove ModemManager. brltty claims some USB serial chips (CH341, CP210x): remove
+  it on a station PC.
+- **root.** The lock does not stop root, so a root process that opens the
+  port raises the lines under a running `cwnetd`. Started as root,
+  `cwnetd` says so on stderr and runs anyway. Run it as a normal user.
+
+**The port settings are cwnetd's.** At open it sets `HUPCL` and `CLOCAL`,
+raw mode, and turns hardware flow control off: with `CRTSCTS` on, the
+driver drives RTS itself, and RTS is the PTT. Linux keeps a port's settings
+across closes, so whatever the last program left would otherwise still be
+in force. Bytes the device sends (a rig's own USB port may) are read and
+dropped.
+
+**Faults.** A line change that fails or takes over 100 ms, or a port that
+disappears (the adapter unplugged), is an output FAULT: `stato fault:
+uscita DEVICE: ...`, no further line change, the port closed, exit code 3.
+`cwnetd` never re-opens the port on its own, because a re-open raises the
+lines again: restart it by hand, with the rig off.
+
+With an inverted line, every stop and every crash leaves that function
+active (see *Two outputs, and why*).
 
 ## Reading a status line
 
@@ -154,6 +255,7 @@ Vocabulary (clients, connections):
 |---|---|
 | `stato ascolto ADDR:PORTA max-clients N B>=X ms tetto Y ms coda Z ms lead W ms out-cap C byte` | the daemon is ready, with the configuration it actually has. A reader treats it as a new daemon: what it knew before belongs to another process |
 | `stato uscita BACKEND fronti DEST` | where the edges end up (a separate line: a long path must not truncate the configuration) |
+| `stato uscita serial tasto LINE ptt LINE porta DEVICE fronti DEST` | the same, for `--output serial`: the line of each function as `--key-line` and `--ptt-line` gave it, and the port. `DEVICE` is escaped as `NOME` is, and ends at the first ` fronti ` |
 | `stato accettato client N da IP:PORTA` | TCP accepted, waiting for the CONNECT |
 | `stato rifiutato da IP:PORTA: nessuno slot libero` | beyond `--max-clients`, closed immediately (R1: accept never blocks) |
 | `stato connesso client N NOME da IP:PORTA` | CONNECT complete, the client is READY |
@@ -173,6 +275,7 @@ Vocabulary (key, PTT, link, over):
 | `stato over client N NOME B X ms` | an over has started, with the B computed for that session |
 | `stato byte in ritardo client N NOME: B byte, M ms in totale` | a byte arrived after the deadline of the edge it carried: the element came out longer than it was keyed, and the link is slipping. Cumulative, so two lines apart say *how fast* |
 | `stato fault [client N NOME:] MOTIVO` | FAULT philosophy: key up and it stops (holder vanished mid-over - TCP closed or three PINGs without an answer -, over too long, holder silent past `--idle` with the key up). A fault says nothing about who holds the key: a `chiave` line says that |
+| `stato fault: uscita DEVICE: CAUSA` | the serial output failed, and the daemon stops right after it with exit code 3: the port is in a state nobody knows. `CAUSA` is `porta scomparsa (hang-up)`, `porta scomparsa (read: ERRORE)` (the adapter was unplugged), `TIOCMSET: ERRORE dopo N ms` (a line change failed), `TIOCMSET lento: N ms` (a line change took over 100 ms) or `fronti bloccati da N ms` (the `--edges` descriptor stopped taking lines for 100 ms, see *Two outputs*). No line is driven after it: closing the port drops both lines together. It can also come after `stato arresto`, when the release at shutdown fails (the adapter was unplugged first): the exit code is then 3, not 0 |
 | `stato eventi persi N` | the core produced more events than the read buffer could hold, `N` in that batch: no edge is lost, only the descriptive lines, so a reader rebuilding the state from the lines is wrong until the next snapshot |
 
 Vocabulary (the daemon itself):
@@ -180,7 +283,7 @@ Vocabulary (the daemon itself):
 | Line | Meaning |
 |---|---|
 | `stato stdout N righe scartate` | the confession: `N` status lines, counted since start, that stdout did not take. It is written right before the next line that gets through, and only when `N` has grown since the last confession |
-| `stato arresto` | SIGINT or SIGTERM: the daemon is stopping. What follows belongs to the shutdown: the `disconnesso ...: arresto` lines, `stato ptt 0` if the PTT was on, the two totals below |
+| `stato arresto` | SIGINT, SIGTERM or an output FAULT: the daemon is stopping. What follows belongs to the shutdown: the `disconnesso ...: arresto` lines, `stato ptt 0` if the PTT was on, the two totals below |
 | `stato stdout N righe scartate in totale` | at shutdown, if any line was dropped: the same count as the last confession, not a new one |
 | `stato uscita fronti (DEST): A attese per M ms, E errori, P persi` | at shutdown, if the edges descriptor ever waited or failed: `P` other than zero is the only case where an edge was not written, and it only happens after a SIGINT |
 | `stato uscita fronti (DEST) non drena: N ms e aspetto` | the edges descriptor has stopped taking bytes and the loop has been stuck there for N ms (see *Two outputs*) |
@@ -196,15 +299,16 @@ the daemon also writes the whole state, over several lines, because 8
 clients with their names do not fit in one:
 
 ```
-stato snap inizio v1 istanza S-P seq N client K chiave C ptt L periodo MS
+stato snap inizio v2 istanza S-P seq N client K chiave C ptt L periodo MS
 stato snap manopole max-clients N B>= MS tetto MS coda MS lead MS idle MS over-max MS handshake MS out-cap BYTE
 stato snap client I/K IDX STATO ADDR lat MS peak MS nome LEN NOME      (K lines)
+stato snap uscita cambi N max-us US lenti N
 stato snap fine seq N
 ```
 
 | Field | Meaning |
 |---|---|
-| `v1` | the version of this vocabulary. It changes when a line in these tables changes shape, so a reader can say it no longer knows what it is reading |
+| `v2` | the version of this vocabulary. It changes when a line in these tables changes shape, so a reader can say it no longer knows what it is reading. `v2` added `stato snap uscita`, the serial form of `stato uscita` and the output fault |
 | `istanza S-P` | which daemon wrote it: `S` its start instant in seconds since the Unix epoch, `P` its pid. The pid alone repeats in a container. Another value means another process, even when its `stato ascolto` line was lost |
 | `seq N` | counts snapshots from 1. It grows for every snapshot the daemon writes, taken by stdout or not, so a gap between two complete snapshots means some were lost; `fine` carries the same `N` |
 | `client K` | how many `stato snap client` lines follow: the connections with an open socket |
@@ -217,12 +321,13 @@ stato snap fine seq N
 | `STATO` | `pronto` when the client has completed the CONNECT; `attesa` when the socket is open and it has not, which includes a client the core has already closed while the event that said so was lost |
 | `ADDR` | `IP:PORTA`, or `?` when the system could not say |
 | `lat`, `peak` | the RTT of the last PING and its peak-hold, in ms; `-1` until a PING has come back |
+| `uscita cambi N max-us US lenti N` | the output's line changes since start: how many, the slowest in microseconds, and how many took over 100 ms (each of those is a FAULT). All zero for `virtual`, which drives no line |
 | `nome LEN NOME` | the name, escaped as above and empty before the CONNECT, last on the line, preceded by its length in characters. A name shorter than `LEN` was cut by the 254-character limit |
 
 The lines of one snapshot are written in one go, with no other line between
 them. A reader applies a snapshot only when it has all of it: the opening,
 `manopole`, exactly `K` client lines with positions `1/K` to `K/K` in order,
-and `fine` with the same `seq`. With anything else between them, or a line
+`uscita`, and `fine` with the same `seq`. With anything else between them, or a line
 missing, it discards the snapshot and waits for the next one. The name's
 declared length is what lets a reader tell a name containing `stato stdout`
 from a confession glued after half a line, which is what stdout does when

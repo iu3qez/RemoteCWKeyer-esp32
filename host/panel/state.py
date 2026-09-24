@@ -34,12 +34,13 @@ import time
 from typing import Callable, Dict, List, NamedTuple
 
 # The vocabulary this module reads (README, "The periodic snapshot").
-VOCABULARY = "v1"
+VOCABULARY = "v2"
 
 # The ids to_dict() sends for panel.js to look up in its text tables: every
 # one needs an entry there, and test_web checks that it has one.
 LIVENESS_VALUES = frozenset({"waiting", "alive", "silent", "stopped", "input_closed"})
-BANNER_IDS = (LIVENESS_VALUES - {"alive"}) | {"not_guaranteed", "mixed_edges", "vocabulary"}
+BANNER_IDS = ((LIVENESS_VALUES - {"alive"}) |
+              {"not_guaranteed", "mixed_edges", "vocabulary", "output_fault"})
 KEY_STATES = frozenset({"unknown", "free", "held"})
 PTT_STATES = frozenset({"unknown", "on", "off"})
 FITNESS_VALUES = frozenset({"unknown", "fit", "unfit"})
@@ -77,7 +78,7 @@ _ADDR = r"(?:\d{1,3}(?:\.\d{1,3}){3}:\d{1,5}|\?)"
 
 # Fields kept as text; every other field is a number.
 _TEXT_FIELDS = {"listen", "dest", "error", "backend", "addr", "name", "reason", "vocabulary",
-                "instance", "holder", "state"}
+                "instance", "holder", "state", "key_line", "ptt_line", "device"}
 
 # Recognised whole, never by prefix, in this order: the "uscita fronti (...)"
 # lines before "uscita BACKEND fronti DEST", and the shutdown total is its own
@@ -92,7 +93,10 @@ _GRAMMAR = [(kind, re.compile(rx.replace("ADDR", _ADDR), re.DOTALL)) for kind, r
     ("edges_refused", r"stato uscita fronti \((?P<dest>.*)\) rifiuta: (?P<error>.*)"),
     ("edges_summary", r"stato uscita fronti \((?P<dest>.*)\): (?P<waits>\d+) attese per "
                       r"(?P<ms>-?\d+) ms, (?P<errors>\d+) errori, (?P<lost>\d+) persi"),
-    ("uscita", r"stato uscita (?P<backend>\S+) fronti (?P<dest>.+)"),
+    # A serial output adds its mapping and port before "fronti": the port is
+    # a path and can hold spaces, so it ends at the first " fronti ".
+    ("uscita", r"stato uscita (?P<backend>\S+)(?: tasto (?P<key_line>\S+) ptt (?P<ptt_line>\S+) "
+               r"porta (?P<device>.+?))? fronti (?P<dest>.+)"),
     ("accepted", r"stato accettato client (?P<idx>\d+) da (?P<addr>ADDR)"),
     ("refused", r"stato rifiutato da (?P<addr>ADDR): nessuno slot libero"),
     ("connected", r"stato connesso client (?P<idx>\d+) (?P<name>.*) da (?P<addr>ADDR)"),
@@ -127,6 +131,8 @@ _GRAMMAR = [(kind, re.compile(rx.replace("ADDR", _ADDR), re.DOTALL)) for kind, r
                       r"coda (?P<ptt_tail_ms>\d+) lead (?P<ptt_lead_ms>\d+) "
                       r"idle (?P<idle_ms>\d+) over-max (?P<over_max_ms>\d+) "
                       r"handshake (?P<handshake_ms>\d+) out-cap (?P<out_cap_bytes>\d+)"),
+    ("snap_output", r"stato snap uscita cambi (?P<changes>\d+) max-us (?P<max_us>\d+) "
+                    r"lenti (?P<slow>\d+)"),
     ("snap_close", r"stato snap fine seq (?P<seq>\d+)"),
 ]]
 
@@ -364,7 +370,9 @@ class Model:
         self.ptt = None
         self.period_ms = DEFAULT_PERIOD_MS
         self.listen = None
-        self.output = {"backend": None, "edges": None}
+        self.output = {"backend": None, "edges": None, "device": None, "key_line": None,
+                       "ptt_line": None, "changes": None, "max_us": None, "slow": None}
+        self.output_fault = False
         self.settings = dict.fromkeys(SETTINGS)
         self.daemon_vocabulary = None
         self._confessed = 0
@@ -406,6 +414,8 @@ class Model:
             out.append("mixed_edges")
         if self.daemon_vocabulary not in (None, VOCABULARY):
             out.append("vocabulary")
+        if self.output_fault:
+            out.append("output_fault")
         return out
 
     def _update_liveness(self, now):
@@ -432,6 +442,10 @@ class Model:
             # KTD7: these say what happened, not what is. A fault in
             # particular says nothing about who holds the key.
             self._event(p.kind, _body(p.text))
+            if p.kind == "fault" and p.fields["reason"].startswith("uscita "):
+                # The transmitter output failed and the daemon is stopping
+                # (plan 2026-09-24-2143, R9): it stays up until a new daemon.
+                self.output_fault = True
         elif p.kind in _EDGES_EVENTS:
             where = "stderr" if p.fields["dest"] == "stderr" else "file"
             self._event(p.kind, _body(p.text).replace("(%s)" % p.fields["dest"],
@@ -454,8 +468,10 @@ class Model:
     def _on_uscita(self, f, text):
         # KTD7: whether the edges go to a file, never the path, which on a
         # LAN page would show user names and directories.
-        self.output = {"backend": f["backend"],
-                       "edges": "stderr" if f["dest"] == "stderr" else "file"}
+        self.output.update({"backend": f["backend"],
+                            "edges": "stderr" if f["dest"] == "stderr" else "file",
+                            "device": f["device"], "key_line": f["key_line"],
+                            "ptt_line": f["ptt_line"]})
 
     def _on_accepted(self, f, text):
         c = self.clients.get(f["idx"])
@@ -565,7 +581,7 @@ class Model:
     def _on_snap_open(self, f, text):
         if self._snap is not None:
             self._discard_snapshot()
-        self._snap = {"open": f, "settings": None, "clients": []}
+        self._snap = {"open": f, "settings": None, "clients": [], "output": None}
 
     def _on_snap_settings(self, f, text):
         if self._snap is None:
@@ -579,18 +595,28 @@ class Model:
         s = self._snap
         if s is None:
             self._stray_snapshot_line()
-        elif (s["settings"] is None or f["k"] != s["open"]["k"] or
+        elif (s["settings"] is None or s["output"] is not None or f["k"] != s["open"]["k"] or
               f["pos"] != len(s["clients"]) + 1):
             self._discard_snapshot()
         else:
             s["clients"].append(f)
+
+    def _on_snap_output(self, f, text):
+        s = self._snap
+        if s is None:
+            self._stray_snapshot_line()
+        elif (s["settings"] is None or s["output"] is not None or
+              len(s["clients"]) != s["open"]["k"]):
+            self._discard_snapshot()
+        else:
+            s["output"] = f
 
     def _on_snap_close(self, f, text):
         s = self._snap
         if s is None:
             self._stray_snapshot_line()
         elif (s["settings"] is None or len(s["clients"]) != s["open"]["k"] or
-              f["seq"] != s["open"]["seq"]):
+              s["output"] is None or f["seq"] != s["open"]["seq"]):
             self._discard_snapshot()
         else:
             self._snap = None
@@ -611,6 +637,7 @@ class Model:
         self.daemon_vocabulary = o["vocabulary"]
         self.period_ms = o["period_ms"]
         self.settings = {key: s["settings"][key] for key in SETTINGS}
+        self.output.update(s["output"])
         self.clients = {}
         for c in s["clients"]:
             self.clients[c["idx"]] = _new_client(

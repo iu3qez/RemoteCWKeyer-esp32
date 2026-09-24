@@ -125,6 +125,11 @@ void sock_close(sock_handle_t *h);
  *  next sock_recv() returns 0), matching plain poll() semantics. */
 #define SOCK_POLLIN  0x0001
 #define SOCK_POLLOUT 0x0002
+/** The handle hung up, is in error, or is not open (POLLHUP, POLLERR,
+ *  POLLNVAL). Reported whatever `events` asks for. On a socket it comes
+ *  with SOCK_POLLIN, as before; it exists for a descriptor that is not a
+ *  socket, where nothing else says the device has gone. */
+#define SOCK_POLLHUP 0x0004
 
 typedef struct sock_pollfd {
     sock_handle_t handle;
@@ -142,6 +147,14 @@ typedef struct sock_pollfd {
 #define SOCK_POLL_MAX_FDS 64
 
 int sock_poll(sock_pollfd_t *fds, size_t nfds, int timeout_ms);
+
+/**
+ * POSIX only: a descriptor that is not a socket, such as a serial port, as
+ * a handle sock_poll() can watch for SOCK_POLLHUP. Never pass the result to
+ * the other sock_* calls. A winsock port has no equivalent: a COM port is
+ * not a SOCKET, and the Windows serial output is #94.
+ */
+sock_handle_t sock_handle_from_fd(int fd);
 
 /** errno-equivalent of the last failing call on this thread. Plain errno on
  *  POSIX; the winsock port returns WSAGetLastError(). */

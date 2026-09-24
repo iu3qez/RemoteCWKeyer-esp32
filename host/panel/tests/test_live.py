@@ -225,5 +225,50 @@ class LiveTest(unittest.TestCase):
         self.assertGreaterEqual(len(ptt_lines), 10, "the PTT must alternate during the over")
 
 
+
+class SerialStartTest(unittest.TestCase):
+    """How the built cwnetd starts, or refuses to, with --output serial. No
+    serial port is needed: these are the starts that must fail before any
+    line is driven (plan 2026-09-24-2143, R6, U3)."""
+
+    def setUp(self):
+        if not CWNETD:
+            if REQUIRE_LIVE:
+                self.fail("PANEL_REQUIRE_LIVE=1 and no $CWNETD: the live run did not run")
+            self.skipTest("set CWNETD to the built cwnetd to run the live tests")
+
+    def run_daemon(self, *args):
+        return subprocess.run([os.path.abspath(CWNETD), "--listen", "127.0.0.1"] + list(args),
+                              capture_output=True, text=True, timeout=10)
+
+    def test_missing_device_exits_non_zero_names_it_and_writes_no_status(self):
+        r = self.run_daemon("--port", "0", "--output", "serial", "--serial", "/nonexistent")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("/nonexistent", r.stderr)
+        self.assertIn("non esiste", r.stderr)
+        self.assertNotIn("stato uscita", r.stdout)
+        self.assertNotIn("stato ascolto", r.stdout)
+
+    def test_listen_port_in_use_fails_before_the_device_is_opened(self):
+        # KTD6: the output opens after the socket, so a busy port never
+        # reaches the device. /nonexistent would name itself if it were
+        # opened; it must not appear.
+        import socket
+        busy = socket.socket()
+        self.addCleanup(busy.close)
+        busy.bind(("127.0.0.1", 0))
+        busy.listen()
+        r = self.run_daemon("--port", str(busy.getsockname()[1]),
+                            "--output", "serial", "--serial", "/nonexistent")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("ascolto", r.stderr)
+        self.assertNotIn("/nonexistent", r.stderr)
+
+    def test_serial_flag_without_serial_output_is_refused(self):
+        r = self.run_daemon("--port", "0", "--serial", "/dev/ttyUSB0")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("--serial", r.stderr)
+        self.assertNotIn("stato ascolto", r.stdout)
+
 if __name__ == "__main__":
     unittest.main()

@@ -15,9 +15,11 @@ Key abstractions:
   (the core's or the snapshot's), never a tick. Owns stdout: droppable status lines with
   each loss confessed, `stato ptt` when the output PTT changes, and every `--snapshot-ms`
   the whole state over several lines. The tables in `cwnetd/README.md` are the contract
-  with every reader, versioned (`v1`).
-- `cwnetd/key_output.[ch]` — the seam key and PTT edges leave through (one backend,
-  `virtual`), to the `--edges` descriptor, which never drops a line.
+  with every reader, versioned (`v2`).
+- `cwnetd/key_output.[ch]` — the seam key and PTT edges leave through: `virtual`, and
+  `serial` (`key_output_serial.[ch]`: DTR = key, RTS = PTT, OS calls behind a table
+  the host test replaces). Every backend writes each edge to the `--edges` descriptor,
+  which never drops a line.
 - `panel/cwnetd_panel.py` — joins `follow.py` (stdin, or a file followed like `tail -F`),
   `state.py` (pure model; the guarantee and liveness kept apart) and `web.py` (fixed
   routes, `/events` SSE, Host allow-list). Read-only; never talks to the daemon.
@@ -32,8 +34,9 @@ Used by: the maintainer's station PC, run by hand (no systemd or launchd units y
 What is NOT here, and why:
 - **No GUI in the daemon.** Decision #65, closed 2026-09-18: the loop is the timing, so
   the page is `panel/`, another process that reads the lines and commands nothing.
-- **No physical key/PTT backend.** A serial or GPIO one needs its own Decision (KTD9),
-  not filed yet: rest state and key-down ceiling on a real transmitter come first.
+- **No GPIO or CAT keying, and no Windows serial output.** Decision #98 chose a serial
+  port's control lines; the Windows backend is #94. The key-down ceiling is the rig's
+  own transmit timer, not the daemon.
 - **No Windows build.** The winsock seam makes one possible; the client is #68.
 
 Conventions: C under the same strict flags as `test_host`, Linux and macOS. `main.c`
@@ -49,7 +52,8 @@ Gotchas:
   client line declares the name's length, so a reader tells a cut name from a
   confession glued to half a line.
 - `2>&1` into a pipe the panel reads lets a slow panel stall `edge_write()`.
-- Tests: `tests/loopback_test.c` covers `platform/` only; `panel/tests/` include a real
+- Tests: `tests/loopback_test.c` covers `platform/`; `tests/key_output_serial_test.c`
+  the serial backend's calls to the OS, in order; `panel/tests/` include a real
   recorded stream with lines removed and a live run against the built `cwnetd`
   (`CWNETD=host/build/cwnetd`). CI jobs `host-build` and `panel-tests` need no submodule.
 <!-- END treecode (auto) -->

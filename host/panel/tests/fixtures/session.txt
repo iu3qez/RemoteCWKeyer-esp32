@@ -2,10 +2,10 @@
 # with its arrival time in ms after `stato ascolto`. Our own recording: it
 # proves the panel against our daemon, not wire conformance.
 # command: cwnetd --listen 127.0.0.1 --port 0 --max-clients 2 --snapshot-ms 250 --edges edges.log
-# commit: c0154f2
-# date: 2026-09-18T23:32:51Z
+# commit: 4aebed8
+# date: 2026-09-24T20:25:23Z
 # snapshot-ms: 250
-# vocabulary: v1
+# vocabulary: v2
 # client at 0.3 s: cwnet_send.py --call IU3QEZ --fixture key_down_only --delay 0.8 --hold 3.0
 # client at 0.5 s: cwnet_send.py --call 'B2 <b>x</b>' --fixture first_over --delay 3.6 --hold 5.5
 # client at 1.6 s: cwnet_send.py --call C3 --fixture first_over --hold 1.0
@@ -39,145 +39,173 @@
 # checkpoint seq=26 edges-ptt=0
 # checkpoint seq=27 edges-ptt=0
 # checkpoint seq=28 edges-ptt=0
-0 stato ascolto 127.0.0.1:64030 max-clients 2 B>=100 ms tetto 1000 ms coda 100 ms lead 0 ms out-cap 16384 byte
+0 stato ascolto 127.0.0.1:49256 max-clients 2 B>=100 ms tetto 1000 ms coda 100 ms lead 0 ms out-cap 16384 byte
 0 stato uscita virtual fronti edges.log
-0 stato snap inizio v1 istanza 1789774363-49755 seq 1 client 0 chiave libera ptt 0 periodo 250
+0 stato snap inizio v2 istanza 1790281516-16873 seq 1 client 0 chiave libera ptt 0 periodo 250
 0 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+0 stato snap uscita cambi 0 max-us 0 lenti 0
 0 stato snap fine seq 1
-252 stato snap inizio v1 istanza 1789774363-49755 seq 2 client 0 chiave libera ptt 0 periodo 250
-252 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-252 stato snap fine seq 2
-377 stato accettato client 1 da 127.0.0.1:64031
-377 stato connesso client 1 IU3QEZ da 127.0.0.1:64031
-504 stato snap inizio v1 istanza 1789774363-49755 seq 3 client 1 chiave libera ptt 0 periodo 250
-504 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-504 stato snap client 1/1 1 pronto 127.0.0.1:64031 lat -1 peak -1 nome 6 IU3QEZ
-504 stato snap fine seq 3
-561 stato accettato client 2 da 127.0.0.1:64032
-561 stato connesso client 2 B2 <b>x</b> da 127.0.0.1:64032
-757 stato snap inizio v1 istanza 1789774363-49755 seq 4 client 2 chiave libera ptt 0 periodo 250
-757 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-757 stato snap client 1/2 1 pronto 127.0.0.1:64031 lat -1 peak -1 nome 6 IU3QEZ
-757 stato snap client 2/2 2 pronto 127.0.0.1:64032 lat -1 peak -1 nome 11 B2 <b>x</b>
-757 stato snap fine seq 4
-1007 stato snap inizio v1 istanza 1789774363-49755 seq 5 client 2 chiave libera ptt 0 periodo 250
-1007 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-1007 stato snap client 1/2 1 pronto 127.0.0.1:64031 lat -1 peak -1 nome 6 IU3QEZ
-1007 stato snap client 2/2 2 pronto 127.0.0.1:64032 lat -1 peak -1 nome 11 B2 <b>x</b>
-1007 stato snap fine seq 5
-1192 stato over client 1 IU3QEZ B 100 ms
-1192 stato chiave client 1 IU3QEZ
-1259 stato snap inizio v1 istanza 1789774363-49755 seq 6 client 2 chiave 1 ptt 0 periodo 250
-1259 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-1259 stato snap client 1/2 1 pronto 127.0.0.1:64031 lat -1 peak -1 nome 6 IU3QEZ
-1259 stato snap client 2/2 2 pronto 127.0.0.1:64032 lat -1 peak -1 nome 11 B2 <b>x</b>
-1259 stato snap fine seq 6
-1295 stato ptt 1
-1510 stato snap inizio v1 istanza 1789774363-49755 seq 7 client 2 chiave 1 ptt 1 periodo 250
-1511 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-1511 stato snap client 1/2 1 pronto 127.0.0.1:64031 lat -1 peak -1 nome 6 IU3QEZ
-1511 stato snap client 2/2 2 pronto 127.0.0.1:64032 lat -1 peak -1 nome 11 B2 <b>x</b>
-1511 stato snap fine seq 7
-1660 stato rifiutato da 127.0.0.1:64033: nessuno slot libero
-1762 stato snap inizio v1 istanza 1789774363-49755 seq 8 client 2 chiave 1 ptt 1 periodo 250
-1762 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-1762 stato snap client 1/2 1 pronto 127.0.0.1:64031 lat -1 peak -1 nome 6 IU3QEZ
-1762 stato snap client 2/2 2 pronto 127.0.0.1:64032 lat -1 peak -1 nome 11 B2 <b>x</b>
-1762 stato snap fine seq 8
-2013 stato snap inizio v1 istanza 1789774363-49755 seq 9 client 2 chiave 1 ptt 1 periodo 250
-2013 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-2013 stato snap client 1/2 1 pronto 127.0.0.1:64031 lat -1 peak -1 nome 6 IU3QEZ
-2013 stato snap client 2/2 2 pronto 127.0.0.1:64032 lat -1 peak -1 nome 11 B2 <b>x</b>
-2013 stato snap fine seq 9
-2265 stato snap inizio v1 istanza 1789774363-49755 seq 10 client 2 chiave 1 ptt 1 periodo 250
-2265 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-2265 stato snap client 1/2 1 pronto 127.0.0.1:64031 lat -1 peak -1 nome 6 IU3QEZ
-2266 stato snap client 2/2 2 pronto 127.0.0.1:64032 lat -1 peak -1 nome 11 B2 <b>x</b>
-2266 stato snap fine seq 10
-2380 stato latenza client 1 0 ms peak 0 ms
-2517 stato snap inizio v1 istanza 1789774363-49755 seq 11 client 2 chiave 1 ptt 1 periodo 250
-2517 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-2517 stato snap client 1/2 1 pronto 127.0.0.1:64031 lat 0 peak 0 nome 6 IU3QEZ
-2517 stato snap client 2/2 2 pronto 127.0.0.1:64032 lat -1 peak -1 nome 11 B2 <b>x</b>
-2517 stato snap fine seq 11
-2564 stato latenza client 2 1 ms peak 1 ms
-2769 stato snap inizio v1 istanza 1789774363-49755 seq 12 client 2 chiave 1 ptt 1 periodo 250
-2769 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-2769 stato snap client 1/2 1 pronto 127.0.0.1:64031 lat 0 peak 0 nome 6 IU3QEZ
-2769 stato snap client 2/2 2 pronto 127.0.0.1:64032 lat 1 peak 1 nome 11 B2 <b>x</b>
-2769 stato snap fine seq 12
-3021 stato snap inizio v1 istanza 1789774363-49755 seq 13 client 2 chiave 1 ptt 1 periodo 250
-3021 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-3021 stato snap client 1/2 1 pronto 127.0.0.1:64031 lat 0 peak 0 nome 6 IU3QEZ
-3021 stato snap client 2/2 2 pronto 127.0.0.1:64032 lat 1 peak 1 nome 11 B2 <b>x</b>
-3021 stato snap fine seq 13
-3272 stato snap inizio v1 istanza 1789774363-49755 seq 14 client 2 chiave 1 ptt 1 periodo 250
-3272 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-3272 stato snap client 1/2 1 pronto 127.0.0.1:64031 lat 0 peak 0 nome 6 IU3QEZ
-3272 stato snap client 2/2 2 pronto 127.0.0.1:64032 lat 1 peak 1 nome 11 B2 <b>x</b>
-3272 stato snap fine seq 14
-3401 stato disconnesso client 1 IU3QEZ da 127.0.0.1:64031: chiuso dal peer
-3401 stato fault client 1 IU3QEZ: titolare sparito a meta' over
-3401 stato chiave libera
-3503 stato ptt 0
-3524 stato snap inizio v1 istanza 1789774363-49755 seq 15 client 1 chiave libera ptt 0 periodo 250
-3524 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-3524 stato snap client 1/1 2 pronto 127.0.0.1:64032 lat 1 peak 1 nome 11 B2 <b>x</b>
-3524 stato snap fine seq 15
-3776 stato snap inizio v1 istanza 1789774363-49755 seq 16 client 1 chiave libera ptt 0 periodo 250
-3776 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-3776 stato snap client 1/1 2 pronto 127.0.0.1:64032 lat 1 peak 1 nome 11 B2 <b>x</b>
-3776 stato snap fine seq 16
-4028 stato snap inizio v1 istanza 1789774363-49755 seq 17 client 1 chiave libera ptt 0 periodo 250
-4028 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-4028 stato snap client 1/1 2 pronto 127.0.0.1:64032 lat 1 peak 1 nome 11 B2 <b>x</b>
-4028 stato snap fine seq 17
-4218 stato over client 2 B2 <b>x</b> B 100 ms
-4218 stato chiave client 2 B2 <b>x</b>
-4280 stato snap inizio v1 istanza 1789774363-49755 seq 18 client 1 chiave 2 ptt 0 periodo 250
-4280 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-4280 stato snap client 1/1 2 pronto 127.0.0.1:64032 lat 1 peak 1 nome 11 B2 <b>x</b>
-4280 stato snap fine seq 18
-4320 stato ptt 1
-4532 stato snap inizio v1 istanza 1789774363-49755 seq 19 client 1 chiave 2 ptt 1 periodo 250
-4532 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-4532 stato snap client 1/1 2 pronto 127.0.0.1:64032 lat 1 peak 1 nome 11 B2 <b>x</b>
-4532 stato snap fine seq 19
-4564 stato latenza client 2 0 ms peak 1 ms
-4661 stato chiave libera
-4661 stato ptt 0
-4783 stato snap inizio v1 istanza 1789774363-49755 seq 20 client 1 chiave libera ptt 0 periodo 250
-4783 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-4783 stato snap client 1/1 2 pronto 127.0.0.1:64032 lat 0 peak 1 nome 11 B2 <b>x</b>
-4783 stato snap fine seq 20
-5035 stato snap inizio v1 istanza 1789774363-49755 seq 21 client 1 chiave libera ptt 0 periodo 250
-5035 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-5035 stato snap client 1/1 2 pronto 127.0.0.1:64032 lat 0 peak 1 nome 11 B2 <b>x</b>
-5035 stato snap fine seq 21
-5287 stato snap inizio v1 istanza 1789774363-49755 seq 22 client 1 chiave libera ptt 0 periodo 250
-5288 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-5288 stato snap client 1/1 2 pronto 127.0.0.1:64032 lat 0 peak 1 nome 11 B2 <b>x</b>
-5288 stato snap fine seq 22
-5540 stato snap inizio v1 istanza 1789774363-49755 seq 23 client 1 chiave libera ptt 0 periodo 250
-5540 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-5540 stato snap client 1/1 2 pronto 127.0.0.1:64032 lat 0 peak 1 nome 11 B2 <b>x</b>
-5540 stato snap fine seq 23
-5792 stato snap inizio v1 istanza 1789774363-49755 seq 24 client 1 chiave libera ptt 0 periodo 250
-5792 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-5792 stato snap client 1/1 2 pronto 127.0.0.1:64032 lat 0 peak 1 nome 11 B2 <b>x</b>
-5792 stato snap fine seq 24
-6044 stato snap inizio v1 istanza 1789774363-49755 seq 25 client 1 chiave libera ptt 0 periodo 250
-6044 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-6044 stato snap client 1/1 2 pronto 127.0.0.1:64032 lat 0 peak 1 nome 11 B2 <b>x</b>
-6044 stato snap fine seq 25
-6095 stato disconnesso client 2 B2 <b>x</b> da 127.0.0.1:64032: chiuso dal peer
-6295 stato snap inizio v1 istanza 1789774363-49755 seq 26 client 0 chiave libera ptt 0 periodo 250
-6295 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-6295 stato snap fine seq 26
-6545 stato snap inizio v1 istanza 1789774363-49755 seq 27 client 0 chiave libera ptt 0 periodo 250
-6545 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-6545 stato snap fine seq 27
-6798 stato snap inizio v1 istanza 1789774363-49755 seq 28 client 0 chiave libera ptt 0 periodo 250
-6798 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
-6798 stato snap fine seq 28
-7011 stato arresto
+250 stato snap inizio v2 istanza 1790281516-16873 seq 2 client 0 chiave libera ptt 0 periodo 250
+250 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+250 stato snap uscita cambi 0 max-us 0 lenti 0
+250 stato snap fine seq 2
+368 stato accettato client 1 da 127.0.0.1:49258
+368 stato connesso client 1 IU3QEZ da 127.0.0.1:49258
+501 stato snap inizio v2 istanza 1790281516-16873 seq 3 client 1 chiave libera ptt 0 periodo 250
+501 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+501 stato snap client 1/1 1 pronto 127.0.0.1:49258 lat -1 peak -1 nome 6 IU3QEZ
+501 stato snap uscita cambi 0 max-us 0 lenti 0
+501 stato snap fine seq 3
+560 stato accettato client 2 da 127.0.0.1:49259
+560 stato connesso client 2 B2 <b>x</b> da 127.0.0.1:49259
+753 stato snap inizio v2 istanza 1790281516-16873 seq 4 client 2 chiave libera ptt 0 periodo 250
+753 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+753 stato snap client 1/2 1 pronto 127.0.0.1:49258 lat -1 peak -1 nome 6 IU3QEZ
+753 stato snap client 2/2 2 pronto 127.0.0.1:49259 lat -1 peak -1 nome 11 B2 <b>x</b>
+753 stato snap uscita cambi 0 max-us 0 lenti 0
+753 stato snap fine seq 4
+1004 stato snap inizio v2 istanza 1790281516-16873 seq 5 client 2 chiave libera ptt 0 periodo 250
+1004 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+1004 stato snap client 1/2 1 pronto 127.0.0.1:49258 lat -1 peak -1 nome 6 IU3QEZ
+1004 stato snap client 2/2 2 pronto 127.0.0.1:49259 lat -1 peak -1 nome 11 B2 <b>x</b>
+1004 stato snap uscita cambi 0 max-us 0 lenti 0
+1004 stato snap fine seq 5
+1176 stato over client 1 IU3QEZ B 100 ms
+1176 stato chiave client 1 IU3QEZ
+1255 stato snap inizio v2 istanza 1790281516-16873 seq 6 client 2 chiave 1 ptt 0 periodo 250
+1255 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+1255 stato snap client 1/2 1 pronto 127.0.0.1:49258 lat -1 peak -1 nome 6 IU3QEZ
+1255 stato snap client 2/2 2 pronto 127.0.0.1:49259 lat -1 peak -1 nome 11 B2 <b>x</b>
+1255 stato snap uscita cambi 0 max-us 0 lenti 0
+1255 stato snap fine seq 6
+1276 stato ptt 1
+1507 stato snap inizio v2 istanza 1790281516-16873 seq 7 client 2 chiave 1 ptt 1 periodo 250
+1507 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+1507 stato snap client 1/2 1 pronto 127.0.0.1:49258 lat -1 peak -1 nome 6 IU3QEZ
+1507 stato snap client 2/2 2 pronto 127.0.0.1:49259 lat -1 peak -1 nome 11 B2 <b>x</b>
+1507 stato snap uscita cambi 0 max-us 0 lenti 0
+1507 stato snap fine seq 7
+1669 stato rifiutato da 127.0.0.1:49262: nessuno slot libero
+1757 stato snap inizio v2 istanza 1790281516-16873 seq 8 client 2 chiave 1 ptt 1 periodo 250
+1757 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+1757 stato snap client 1/2 1 pronto 127.0.0.1:49258 lat -1 peak -1 nome 6 IU3QEZ
+1757 stato snap client 2/2 2 pronto 127.0.0.1:49259 lat -1 peak -1 nome 11 B2 <b>x</b>
+1757 stato snap uscita cambi 0 max-us 0 lenti 0
+1757 stato snap fine seq 8
+2008 stato snap inizio v2 istanza 1790281516-16873 seq 9 client 2 chiave 1 ptt 1 periodo 250
+2008 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+2008 stato snap client 1/2 1 pronto 127.0.0.1:49258 lat -1 peak -1 nome 6 IU3QEZ
+2008 stato snap client 2/2 2 pronto 127.0.0.1:49259 lat -1 peak -1 nome 11 B2 <b>x</b>
+2008 stato snap uscita cambi 0 max-us 0 lenti 0
+2008 stato snap fine seq 9
+2259 stato snap inizio v2 istanza 1790281516-16873 seq 10 client 2 chiave 1 ptt 1 periodo 250
+2259 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+2259 stato snap client 1/2 1 pronto 127.0.0.1:49258 lat -1 peak -1 nome 6 IU3QEZ
+2259 stato snap client 2/2 2 pronto 127.0.0.1:49259 lat -1 peak -1 nome 11 B2 <b>x</b>
+2259 stato snap uscita cambi 0 max-us 0 lenti 0
+2259 stato snap fine seq 10
+2369 stato latenza client 1 1 ms peak 1 ms
+2509 stato snap inizio v2 istanza 1790281516-16873 seq 11 client 2 chiave 1 ptt 1 periodo 250
+2509 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+2509 stato snap client 1/2 1 pronto 127.0.0.1:49258 lat 1 peak 1 nome 6 IU3QEZ
+2509 stato snap client 2/2 2 pronto 127.0.0.1:49259 lat -1 peak -1 nome 11 B2 <b>x</b>
+2509 stato snap uscita cambi 0 max-us 0 lenti 0
+2509 stato snap fine seq 11
+2561 stato latenza client 2 0 ms peak 0 ms
+2760 stato snap inizio v2 istanza 1790281516-16873 seq 12 client 2 chiave 1 ptt 1 periodo 250
+2760 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+2760 stato snap client 1/2 1 pronto 127.0.0.1:49258 lat 1 peak 1 nome 6 IU3QEZ
+2760 stato snap client 2/2 2 pronto 127.0.0.1:49259 lat 0 peak 0 nome 11 B2 <b>x</b>
+2760 stato snap uscita cambi 0 max-us 0 lenti 0
+2760 stato snap fine seq 12
+3011 stato snap inizio v2 istanza 1790281516-16873 seq 13 client 2 chiave 1 ptt 1 periodo 250
+3011 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+3011 stato snap client 1/2 1 pronto 127.0.0.1:49258 lat 1 peak 1 nome 6 IU3QEZ
+3011 stato snap client 2/2 2 pronto 127.0.0.1:49259 lat 0 peak 0 nome 11 B2 <b>x</b>
+3011 stato snap uscita cambi 0 max-us 0 lenti 0
+3011 stato snap fine seq 13
+3262 stato snap inizio v2 istanza 1790281516-16873 seq 14 client 2 chiave 1 ptt 1 periodo 250
+3262 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+3262 stato snap client 1/2 1 pronto 127.0.0.1:49258 lat 1 peak 1 nome 6 IU3QEZ
+3262 stato snap client 2/2 2 pronto 127.0.0.1:49259 lat 0 peak 0 nome 11 B2 <b>x</b>
+3262 stato snap uscita cambi 0 max-us 0 lenti 0
+3262 stato snap fine seq 14
+3380 stato disconnesso client 1 IU3QEZ da 127.0.0.1:49258: chiuso dal peer
+3380 stato fault client 1 IU3QEZ: titolare sparito a meta' over
+3380 stato chiave libera
+3481 stato ptt 0
+3512 stato snap inizio v2 istanza 1790281516-16873 seq 15 client 1 chiave libera ptt 0 periodo 250
+3512 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+3512 stato snap client 1/1 2 pronto 127.0.0.1:49259 lat 0 peak 0 nome 11 B2 <b>x</b>
+3512 stato snap uscita cambi 0 max-us 0 lenti 0
+3512 stato snap fine seq 15
+3763 stato snap inizio v2 istanza 1790281516-16873 seq 16 client 1 chiave libera ptt 0 periodo 250
+3763 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+3763 stato snap client 1/1 2 pronto 127.0.0.1:49259 lat 0 peak 0 nome 11 B2 <b>x</b>
+3763 stato snap uscita cambi 0 max-us 0 lenti 0
+3763 stato snap fine seq 16
+4014 stato snap inizio v2 istanza 1790281516-16873 seq 17 client 1 chiave libera ptt 0 periodo 250
+4014 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+4014 stato snap client 1/1 2 pronto 127.0.0.1:49259 lat 0 peak 0 nome 11 B2 <b>x</b>
+4014 stato snap uscita cambi 0 max-us 0 lenti 0
+4014 stato snap fine seq 17
+4188 stato over client 2 B2 <b>x</b> B 100 ms
+4188 stato chiave client 2 B2 <b>x</b>
+4265 stato snap inizio v2 istanza 1790281516-16873 seq 18 client 1 chiave 2 ptt 0 periodo 250
+4265 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+4265 stato snap client 1/1 2 pronto 127.0.0.1:49259 lat 0 peak 0 nome 11 B2 <b>x</b>
+4265 stato snap uscita cambi 0 max-us 0 lenti 0
+4265 stato snap fine seq 18
+4288 stato ptt 1
+4515 stato snap inizio v2 istanza 1790281516-16873 seq 19 client 1 chiave 2 ptt 1 periodo 250
+4515 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+4515 stato snap client 1/1 2 pronto 127.0.0.1:49259 lat 0 peak 0 nome 11 B2 <b>x</b>
+4515 stato snap uscita cambi 0 max-us 0 lenti 0
+4515 stato snap fine seq 19
+4562 stato latenza client 2 1 ms peak 1 ms
+4628 stato chiave libera
+4628 stato ptt 0
+4766 stato snap inizio v2 istanza 1790281516-16873 seq 20 client 1 chiave libera ptt 0 periodo 250
+4766 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+4766 stato snap client 1/1 2 pronto 127.0.0.1:49259 lat 1 peak 1 nome 11 B2 <b>x</b>
+4766 stato snap uscita cambi 0 max-us 0 lenti 0
+4766 stato snap fine seq 20
+5016 stato snap inizio v2 istanza 1790281516-16873 seq 21 client 1 chiave libera ptt 0 periodo 250
+5016 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+5016 stato snap client 1/1 2 pronto 127.0.0.1:49259 lat 1 peak 1 nome 11 B2 <b>x</b>
+5016 stato snap uscita cambi 0 max-us 0 lenti 0
+5016 stato snap fine seq 21
+5267 stato snap inizio v2 istanza 1790281516-16873 seq 22 client 1 chiave libera ptt 0 periodo 250
+5267 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+5267 stato snap client 1/1 2 pronto 127.0.0.1:49259 lat 1 peak 1 nome 11 B2 <b>x</b>
+5267 stato snap uscita cambi 0 max-us 0 lenti 0
+5267 stato snap fine seq 22
+5518 stato snap inizio v2 istanza 1790281516-16873 seq 23 client 1 chiave libera ptt 0 periodo 250
+5519 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+5519 stato snap client 1/1 2 pronto 127.0.0.1:49259 lat 1 peak 1 nome 11 B2 <b>x</b>
+5519 stato snap uscita cambi 0 max-us 0 lenti 0
+5519 stato snap fine seq 23
+5770 stato snap inizio v2 istanza 1790281516-16873 seq 24 client 1 chiave libera ptt 0 periodo 250
+5770 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+5770 stato snap client 1/1 2 pronto 127.0.0.1:49259 lat 1 peak 1 nome 11 B2 <b>x</b>
+5770 stato snap uscita cambi 0 max-us 0 lenti 0
+5770 stato snap fine seq 24
+6021 stato snap inizio v2 istanza 1790281516-16873 seq 25 client 1 chiave libera ptt 0 periodo 250
+6021 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+6021 stato snap client 1/1 2 pronto 127.0.0.1:49259 lat 1 peak 1 nome 11 B2 <b>x</b>
+6021 stato snap uscita cambi 0 max-us 0 lenti 0
+6021 stato snap fine seq 25
+6147 stato disconnesso client 2 B2 <b>x</b> da 127.0.0.1:49259: chiuso dal peer
+6271 stato snap inizio v2 istanza 1790281516-16873 seq 26 client 0 chiave libera ptt 0 periodo 250
+6271 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+6271 stato snap uscita cambi 0 max-us 0 lenti 0
+6271 stato snap fine seq 26
+6521 stato snap inizio v2 istanza 1790281516-16873 seq 27 client 0 chiave libera ptt 0 periodo 250
+6521 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+6521 stato snap uscita cambi 0 max-us 0 lenti 0
+6521 stato snap fine seq 27
+6772 stato snap inizio v2 istanza 1790281516-16873 seq 28 client 0 chiave libera ptt 0 periodo 250
+6773 stato snap manopole max-clients 2 B>= 100 tetto 1000 coda 100 lead 0 idle 5000 over-max 120000 handshake 5000 out-cap 16384
+6773 stato snap uscita cambi 0 max-us 0 lenti 0
+6773 stato snap fine seq 28
+7003 stato arresto
