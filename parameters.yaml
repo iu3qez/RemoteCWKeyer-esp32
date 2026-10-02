@@ -49,7 +49,7 @@ families:
       iambic_mode:
         type: enum
         enum_values: [ModeA, ModeB]
-        default: ModeA
+        default: ModeB
         nvs_key: "mode"
         runtime_change: idle_only
         priority: 2
@@ -117,7 +117,7 @@ families:
       squeeze_mode:
         type: enum
         enum_values: [LATCH_OFF, LATCH_ON, SAMPLED]
-        default: SAMPLED
+        default: LATCH_OFF
         nvs_key: "sqz_mode"
         runtime_change: idle_only
         priority: 4
@@ -174,7 +174,7 @@ families:
 
       mem_window_start_pct:
         type: u8
-        default: 0
+        default: 7
         range: [0, 100]
         nvs_key: "mem_start"
         runtime_change: idle_only
@@ -197,7 +197,7 @@ families:
 
       mem_window_end_pct:
         type: u8
-        default: 100
+        default: 60
         range: [0, 100]
         nvs_key: "mem_end"
         runtime_change: idle_only
