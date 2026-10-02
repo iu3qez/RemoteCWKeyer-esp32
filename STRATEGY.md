@@ -1,6 +1,6 @@
 ---
 name: RemoteCWKeyer-esp32
-last_updated: 2026-09-19
+last_updated: 2026-10-02
 ---
 
 # RemoteCWKeyer-esp32 Strategy
@@ -21,9 +21,10 @@ reason: a valid and fast test method was never set up.
 
 Every behaviour that matters has a real reference and is proven against it,
 not made similar: the CWNet wire against the original DL4YHF client and
-server, the keyer against the executed K1EL K8: human input → K8 output,
-reproducible, up to 40 WPM. The K8 is the reference for the feel, not for
-the implementation: the limits of a 1998 PIC12 are not ours.
+server, the keyer against the operator's own keyer, the CW QRS EVO: human
+input → EVO output, reproducible, up to 60 WPM, proven on recordings of the
+operator's hands on it. The EVO is the reference for the feel, not for the
+implementation.
 The DL4YHF program is the reference for the protocol, not for the product:
 the product is our two ends, the server and a client that is the box or a
 program on a PC, and the station choices (PTT, key handover, playback
@@ -54,10 +55,10 @@ proven. Their tool is the serial console, not the WebUI.
 
 - WireGuard: added because "it is there and costs little", never tested; in
   a contest the VPN on the PC is needed anyway. Dropped if it hurts.
-- Presets other than the K8 (Curtis A/B, Winkeyer, Ultimatic): the logic
-  stays configurable along axes and is not tied to the K8, but a value that
-  no executable reference proves is not populated. Best effort, no investment.
-- Above 40 WPM the K8 is no longer the reference: the configurable windows
+- Keyers other than the EVO (K1EL K8, Curtis A/B, Winkeyer, Ultimatic): no
+  investment until the remote keyer works end to end. The K8 tooling stays in
+  the keyer-logic repo as an optional tool, not a reference.
+- Above 60 WPM the EVO is no longer the reference: the configurable windows
   are best effort, without a metric.
 - No DL4YHF clone: compatible on the wire, not a replica of everything. This
   holds even more now that both ends are ours on the PC too: CW-only, no
@@ -66,7 +67,7 @@ proven. Their tool is the serial console, not the WebUI.
   target, Linux after; the paddle comes in through the control lines of a
   USB serial port, and with the Mac's system driver the latency timer stays
   at 16 ms. No metric, no investment.
-- K8 feel on the PC client: no metric until the jitter of the 1 ms tick on
+- Keyer feel on the PC client: no metric until the jitter of the 1 ms tick on
   Windows is measured. The metric stays with the box.
 - Station on Windows: not claimed until CWNet conformance passes there and
   the daemon's jitter is measured there, as the jitter already is on Linux
@@ -79,7 +80,7 @@ proven. Their tool is the serial console, not the WebUI.
   too, but not now.
 - No OTA now: update via web flasher (separate repo) + USB. If it comes
   later, so much the better.
-- WebUI: no investment until the test bench, CWNet and K8 hold.
+- WebUI: no investment until the test bench, CWNet and the keyer hold.
 - The serial log on ESP32 blocks real time: no blocking log on the RT path,
   ever.
 
@@ -87,14 +88,14 @@ A boundary forbids **building**, not **remembering**. Opening an issue about
 something outside the boundaries is not investment: it is how we avoid
 rediscovering it from scratch in six months, and how we know what is
 waiting when the boundary moves. What the boundary excludes is scheduling -
-parked work does not jump ahead of the test bench, CWNet and K8.
+parked work does not jump ahead of the test bench, CWNet and the keyer.
 
 The tracker also records what we will not do now. A backlog that holds only
 authorised work is not discipline: it is amnesia.
 
 _Resist a change when:_ the only argument is "it is there and costs little
-to add", it cannot be proven against the reference (DL4YHF client, executed
-K8), or it reproduces a station choice of the DL4YHF program only because
+to add", it cannot be proven against the reference (DL4YHF client,
+recordings of the EVO), or it reproduces a station choice of the DL4YHF program only because
 the reference makes it.
 
 ## Key metrics
@@ -104,9 +105,9 @@ the reference makes it.
   DL4YHF server, our daemon against the DL4YHF client. It lives in
   `test_host` plus a bench with the Windows program. It has been the most
   painful part: metric number one.
-- **K8 feel** - on a corpus of real keying up to 40 WPM, our element
-  sequence matches that of the executed K8, stable under the phase of the
-  stimulus: passes or not. It lives in the keyer-logic repo, as its CI gate;
+- **Keyer feel** - every recording of the operator keying the CW QRS EVO, up
+  to 60 WPM, passes: our element sequence is in the EVO's own answer, stable
+  under the phase of the stimulus: passes or not. It lives in the keyer-logic repo, as its CI gate;
   here we read which pinned commit passed it.
   Timing stays tolerant as written in
   [docs/k8-timing-tolerance.md](docs/k8-timing-tolerance.md): one tick,
@@ -151,7 +152,7 @@ pinned commit. The interface (`iambic.h`, `sample.h`) and the RT engine
 belong to this repo and are not touched from there; the rest is that
 repo's. Here we do the bump and supply the lever capture.
 
-_Why it serves the approach:_ the K8 feel is proven with a tool of its own,
+_Why it serves the approach:_ the EVO feel is proven with a tool of its own,
 without stopping CWNet and without CWNet stopping it.
 
 ### Frictionless operating position
