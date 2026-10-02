@@ -11,7 +11,7 @@ Remove every comment block before filing. Keep the headings verbatim.
 A boundary forbids building, not remembering (STRATEGY.md, "Boundaries").
 This issue records something we will not do now, so it is not rediscovered
 in six months and so we know what waits when the boundary moves. It does not
-pass in front of the bench, CWNet and K8.
+pass in front of the bench, CWNet and the keyer.
 
 Same rules as a Work issue on reader, length (body under 300 words), refs
 and comments.
